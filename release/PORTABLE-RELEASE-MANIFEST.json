@@ -3,7 +3,7 @@
   "schemaVersion": "1.0",
   "phase": "agent-workspace-portable-release",
   "packageName": "PVF-Agent-Workbench",
-  "packageVersion": "2.1.0",
+  "packageVersion": "2.1.1",
   "purpose": "Portable self-contained PVF Agent workspace with a preferred native backend, a bundled dependency-free TypeScript read-only fallback, Agent Skill adapter, built-in NUT/tag/bookmark facts, dungeon/world and cross-cutting productized capability models, controlled output, clean knowledge routing, release gates, and deterministic Agent evaluations.",
   "portableCore": {
     "include": [

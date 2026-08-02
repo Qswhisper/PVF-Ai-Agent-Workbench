@@ -18,3 +18,4 @@
 - `config/pvf-adapter.json` 只启动随包内置 backend，不依赖宿主插件或外部服务。
 - 随包 native backend 始终优先；native 无法加载时，固定 Node.js runtime 直接执行 `tools/pvf-bridge/fallback/*.ts`，只允许读取和 dry-run。
 - `config/write-policy.json` 定义 `pvf-change-set.js` 的受控写入通道；写入只能保存到显式 output，不能覆盖源 PVF，不能写客户端资源。
+- 文本 readback 先要求全文 SHA 一致；若 PVF 编译器只规范化了 Section 外空白、数据换行或 float32 展示，则再做区分大小写的 token 等价校验。反引号字符串、标签、整数、顺序或数量有任何变化仍会失败，manifest 会分别记录 exact 与 normalized-equivalent 数量。

@@ -51,16 +51,19 @@ function pvfTokens(value) {
 }
 
 function normalizePvfToken(token) {
-  const lowered = token.toLowerCase();
-  if (/^[-+]?(?:\d+\.\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(lowered)) {
-    return `float32:${Math.fround(Number(lowered))}`;
+  const value = String(token);
+  if (/^[-+]?(?:\d+\.\d*|\.\d+)(?:e[-+]?\d+)?$/i.test(value)) {
+    const float32 = Math.fround(Number(value));
+    return `float32:${Object.is(float32, -0) ? 0 : float32}`;
   }
-  return lowered;
+  return `exact:${value}`;
 }
 
 function comparePvfTextReadback(sourceText, readbackText) {
-  const source = pvfTokens(sourceText);
-  const actual = pvfTokens(readbackText);
+  const sourceRaw = String(sourceText || "");
+  const actualRaw = String(readbackText || "");
+  const source = pvfTokens(sourceRaw);
+  const actual = pvfTokens(actualRaw);
   const expectedNormalized = source.map(normalizePvfToken);
   const actualNormalized = actual.map(normalizePvfToken);
   const mismatches = [];
@@ -74,13 +77,54 @@ function comparePvfTextReadback(sourceText, readbackText) {
       mismatches.push({ index, sourceToken, actualToken, reason: "token-mismatch" });
     }
   }
+  const exactTextOk = sourceRaw === actualRaw;
+  const tokenEquivalent = mismatches.length === 0;
   return {
-    ok: mismatches.length === 0,
-    expectedSha256: sha256(expectedNormalized.join("\n")),
-    actualSha256: sha256(actualNormalized.join("\n")),
+    ok: exactTextOk || tokenEquivalent,
+    exactTextOk,
+    layoutNormalizationAccepted: !exactTextOk && tokenEquivalent,
+    comparison: exactTextOk
+      ? "exact-text-sha256"
+      : (tokenEquivalent ? "normalized-pvf-token-sha256" : "normalized-pvf-token-mismatch"),
+    expectedTextSha256: sha256(sourceRaw),
+    actualTextSha256: sha256(actualRaw),
+    expectedTokenSha256: sha256(expectedNormalized.join("\n")),
+    actualTokenSha256: sha256(actualNormalized.join("\n")),
     sourceTokenCount: source.length,
     readbackTokenCount: actual.length,
     mismatches: mismatches.slice(0, 20),
+  };
+}
+
+function pvfTextReadbackResult(expectedText, readbackText) {
+  if (typeof readbackText !== "string") {
+    return {
+      comparison: "missing-text-readback",
+      ok: false,
+      exactTextOk: false,
+      layoutNormalizationAccepted: false,
+      expectedSha256: sha256(String(expectedText || "")),
+      actualSha256: null,
+      expectedTokenSha256: null,
+      actualTokenSha256: null,
+      sourceTokenCount: pvfTokens(expectedText).length,
+      readbackTokenCount: 0,
+      mismatches: [{ index: 0, sourceToken: null, actualToken: null, reason: "missing-text-readback" }],
+    };
+  }
+  const comparison = comparePvfTextReadback(expectedText, readbackText);
+  return {
+    comparison: comparison.comparison,
+    ok: comparison.ok,
+    exactTextOk: comparison.exactTextOk,
+    layoutNormalizationAccepted: comparison.layoutNormalizationAccepted,
+    expectedSha256: comparison.expectedTextSha256,
+    actualSha256: comparison.actualTextSha256,
+    expectedTokenSha256: comparison.expectedTokenSha256,
+    actualTokenSha256: comparison.actualTokenSha256,
+    sourceTokenCount: comparison.sourceTokenCount,
+    readbackTokenCount: comparison.readbackTokenCount,
+    mismatches: comparison.mismatches,
   };
 }
 
@@ -247,6 +291,57 @@ function changeSetAuthorizationSelfTest() {
       blockedRejected = /manifest is blocked/.test(String(error.message));
     }
     checks.push({ id: "blocked-dry-run-rejected", ok: blockedRejected });
+
+    const exactComparison = comparePvfTextReadback(
+      "[equipment]\r\n100\t0\t0\t\r\n[/equipment]\r\n",
+      "[equipment]\r\n100\t0\t0\t\r\n[/equipment]\r\n",
+    );
+    checks.push({
+      id: "exact-text-readback-accepted",
+      ok: exactComparison.ok && exactComparison.exactTextOk && !exactComparison.layoutNormalizationAccepted,
+    });
+
+    const uiLayoutComparison = comparePvfTextReadback(
+      "#PVF_File\r\n\r\n[ui controls]\r\n`[balloon]`\r\n`IDC_FIXTURE_1`\r\n[/ui controls]\r\n\r\n\r\n[ui controls]\r\n`[balloon]`\r\n`IDC_FIXTURE_2`\r\n[/ui controls]\r\n",
+      "#PVF_File\r\n\r\n[ui controls]\r\n`[balloon]`\r\n`IDC_FIXTURE_1`\r\n[/ui controls]\r\n\r\n[ui controls]\r\n`[balloon]`\r\n`IDC_FIXTURE_2`\r\n[/ui controls]\r\n",
+    );
+    checks.push({
+      id: "ui-blank-line-normalization-accepted",
+      ok: uiLayoutComparison.ok && !uiLayoutComparison.exactTextOk && uiLayoutComparison.layoutNormalizationAccepted,
+    });
+
+    const aicLayoutComparison = comparePvfTextReadback(
+      "[equipment]\r\n100\t0\t0\t\r\n400\t0\t0\t\r\n[/equipment]\r\n",
+      "[equipment]\r\n100\t0\t0\t400\t0\t0\t\r\n[/equipment]\r\n",
+    );
+    checks.push({
+      id: "aic-data-row-normalization-accepted",
+      ok: aicLayoutComparison.ok && !aicLayoutComparison.exactTextOk && aicLayoutComparison.layoutNormalizationAccepted,
+    });
+
+    const float32Comparison = comparePvfTextReadback(
+      "[rate]\r\n0.2\t\r\n",
+      "[rate]\r\n0.20000000298023224\t\r\n",
+    );
+    checks.push({
+      id: "float32-readback-normalization-accepted",
+      ok: float32Comparison.ok && float32Comparison.layoutNormalizationAccepted,
+    });
+
+    const changedNumber = comparePvfTextReadback(
+      "[equipment]\r\n400330094\t0\t0\t\r\n[/equipment]\r\n",
+      "[equipment]\r\n400330095\t0\t0\t\r\n[/equipment]\r\n",
+    );
+    checks.push({ id: "changed-number-readback-rejected", ok: !changedNumber.ok && changedNumber.mismatches.length === 1 });
+
+    const changedStringCase = comparePvfTextReadback("[name]\r\n`Fixture Name`\r\n", "[name]\r\n`fixture Name`\r\n");
+    checks.push({ id: "changed-string-case-readback-rejected", ok: !changedStringCase.ok });
+
+    const changedStringWhitespace = comparePvfTextReadback("[name]\r\n`Fixture Name`\r\n", "[name]\r\n`Fixture  Name`\r\n");
+    checks.push({ id: "changed-string-whitespace-readback-rejected", ok: !changedStringWhitespace.ok });
+
+    const changedTag = comparePvfTextReadback("[equipment]\r\n100\t0\t0\t\r\n[/equipment]\r\n", "[quick item]\r\n100\t0\t0\t\r\n[/quick item]\r\n");
+    checks.push({ id: "changed-tag-readback-rejected", ok: !changedTag.ok });
   } finally {
     if (!pathInside(os.tmpdir(), tempRoot)) throw new Error(`Unsafe change-set self-test path: ${tempRoot}`);
     fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -838,38 +933,41 @@ async function runApply(changeSet, changeSetFile) {
         maxChars: 0,
       });
       if (expected.kind === "replace-text") {
-        const actualText = rb.textContent;
-        const actualSha256 = typeof actualText === "string" ? sha256(actualText) : null;
-        const expectedSha256 = sha256(expected.expectedText);
         readback.push({
           pvfPath,
           kind: expected.kind,
-          ok: actualSha256 === expectedSha256,
-          expectedSha256,
-          actualSha256,
+          ...pvfTextReadbackResult(expected.expectedText, rb.textContent),
           metadata: rb.metadata,
         });
       } else {
         const hasText = typeof rb.textContent === "string";
-        const textComparison = hasText
-          ? comparePvfTextReadback(expected.sourceText, rb.textContent)
-          : null;
-        const expectedSha256 = hasText ? textComparison.expectedSha256 : expected.sourceRawSha256;
-        const actualSha256 = hasText
-          ? textComparison.actualSha256
-          : (rb.base64Content ? sha256(Buffer.from(rb.base64Content, "base64")) : null);
-        readback.push({
-          pvfPath,
-          kind: expected.kind,
-          comparison: hasText ? "normalized-pvf-token-sha256" : "raw-base64-sha256",
-          ok: hasText ? textComparison.ok : actualSha256 === expectedSha256,
-          expectedSha256,
-          actualSha256,
-          sourceTokenCount: textComparison?.sourceTokenCount,
-          readbackTokenCount: textComparison?.readbackTokenCount,
-          mismatches: textComparison?.mismatches,
-          metadata: rb.metadata,
-        });
+        if (hasText) {
+          readback.push({
+            pvfPath,
+            kind: expected.kind,
+            ...pvfTextReadbackResult(expected.sourceText, rb.textContent),
+            metadata: rb.metadata,
+          });
+        } else {
+          const expectedSha256 = expected.sourceRawSha256;
+          const actualSha256 = rb.base64Content ? sha256(Buffer.from(rb.base64Content, "base64")) : null;
+          readback.push({
+            pvfPath,
+            kind: expected.kind,
+            comparison: "raw-base64-sha256",
+            ok: actualSha256 === expectedSha256,
+            exactTextOk: null,
+            layoutNormalizationAccepted: false,
+            expectedSha256,
+            actualSha256,
+            expectedTokenSha256: null,
+            actualTokenSha256: null,
+            sourceTokenCount: null,
+            readbackTokenCount: null,
+            mismatches: [],
+            metadata: rb.metadata,
+          });
+        }
       }
     }
   } finally {
@@ -884,6 +982,10 @@ async function runApply(changeSet, changeSetFile) {
   }
 
   const readbackOk = readback.every((item) => item.ok);
+  const readbackExactCount = readback.filter((item) => item.ok && item.exactTextOk === true).length;
+  const readbackNormalizedEquivalentCount = readback.filter((item) => item.ok && item.layoutNormalizationAccepted === true).length;
+  const readbackRawBinaryCount = readback.filter((item) => item.ok && item.comparison === "raw-base64-sha256").length;
+  const readbackFailedCount = readback.filter((item) => !item.ok).length;
   const manifest = {
     schemaVersion: "1.0",
     phase: "phase-3-controlled-output-apply",
@@ -910,6 +1012,7 @@ async function runApply(changeSet, changeSetFile) {
       explicitOutputPath: true,
       readbackExecuted: true,
       readbackOk,
+      readbackComparisonPolicy: "exact-text-or-float32-aware-token-equivalence",
       clientResourceWrite: false,
     },
     summary: {
@@ -918,6 +1021,10 @@ async function runApply(changeSet, changeSetFile) {
       outputExists: fs.existsSync(paths.outputPvf),
       backupExists: fs.existsSync(paths.backupPath),
       readbackOk,
+      readbackExactCount,
+      readbackNormalizedEquivalentCount,
+      readbackRawBinaryCount,
+      readbackFailedCount,
     },
     backupResult,
     saveResult,

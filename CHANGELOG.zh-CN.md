@@ -2,6 +2,10 @@
 
 ## 未发布
 
+## 2.1.1
+
+- 修正受控 `replace-text` apply 对 PVF 编译器排版规范化的 readback 假失败：保留全文 SHA，新增区分大小写且仅允许 Section 外空白、数据换行与 float32 展示等价的 token 校验；manifest 分列 exact、normalized-equivalent、binary 与 failed 数量，并补齐 UI/AIC 正例及标签、整数、字符串负控。
+
 ## 2.1.0
 
 - 将只读备用后端的运行源码从 JavaScript 迁移为由固定 Node.js 24 runtime 直接执行的 TypeScript；不增加 npm、联网或构建步骤。

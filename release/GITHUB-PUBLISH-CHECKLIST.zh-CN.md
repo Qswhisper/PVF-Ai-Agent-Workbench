@@ -1,4 +1,4 @@
-# GitHub 2.1.0 发布清单
+# GitHub 2.1.1 发布清单
 
 本清单用于把当前干净目录同步到 GitHub。Gate 报告、真实 PVF、客户端、
 本机 profile 和研究目录都不进入仓库。
@@ -29,7 +29,7 @@
    secret、数据库、压缩包、缓存目录或 Gate 输出。
 7. 提交并推送后，在远端 tag 对应的 Source code zip 中再次运行
    `workbench.bat check`、`workbench.bat fallback-self-test` 和
-   `workbench.bat release gate3`，再创建 `v2.1.0`
+   `workbench.bat release gate3`，再创建 `v2.1.1`
    Release。
 
 ## 发布措辞边界
