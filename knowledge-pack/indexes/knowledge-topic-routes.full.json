@@ -10,7 +10,7 @@
     "safety/README.zh-CN.md",
     "indexes/knowledge-index.json"
   ],
-  "topicCount": 289,
+  "topicCount": 288,
   "topics": {
     "pvf-safety": {
       "status": "默认可用",
@@ -3283,7 +3283,6 @@
       "entries": [
         "safety/README.zh-CN.md",
         "indexes/extraction-capability-router.zh-CN.md",
-        "indexes/commercial-tool-capability-boundary.zh-CN.md",
         "workflows/item-stackable-dependency-planner.zh-CN.md",
         "workflows/dungeon-extraction-planner.zh-CN.md",
         "workflows/apc-extraction-planner.zh-CN.md",
@@ -3323,25 +3322,6 @@
         "encyclopedia/pvf-file-types/apc-ai-key-stream.zh-CN.md",
         "dictionaries/pvf-registry-lst-topology-fields.zh-CN.md",
         "task-cards/pvf-registry-lst-topology-readonly-audit.zh-CN.md"
-      ]
-    },
-    "commercial-tool-capability-boundary": {
-      "status": "需验证",
-      "entries": [
-        "indexes/extraction-capability-router.zh-CN.md",
-        "workflows/dungeon-extraction-planner.zh-CN.md",
-        "workflows/apc-extraction-planner.zh-CN.md",
-        "indexes/dungeon-extraction-boundary.zh-CN.md",
-        "indexes/apc-extraction-boundary.zh-CN.md",
-        "task-cards/equipment-avatar-aura-creature-extraction-preview.zh-CN.md",
-        "workflows/equipment-avatar-aura-creature-extraction-planner.zh-CN.md",
-        "indexes/equipment-avatar-aura-creature-extraction-boundary.zh-CN.md",
-        "task-cards/stackable-package-orb-card-extraction-preview.zh-CN.md",
-        "workflows/stackable-package-orb-card-extraction-planner.zh-CN.md",
-        "indexes/stackable-package-orb-card-extraction-boundary.zh-CN.md",
-        "task-cards/client-asset-path-preview.zh-CN.md",
-        "workflows/client-asset-path-preview.zh-CN.md",
-        "indexes/client-asset-path-boundary.zh-CN.md"
       ]
     },
     "dungeon-map-entry-clear": {

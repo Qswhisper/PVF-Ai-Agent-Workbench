@@ -1,8 +1,8 @@
 {
   "schemaVersion": "1.0",
   "packageName": "PVF-Agent-Workbench",
-  "packageVersion": "2.1.1",
-  "purpose": "Self-contained clean workspace with a preferred native PVF backend, a bundled dependency-free TypeScript read-only fallback, NUT/tag/bookmark facts, portable dungeon/world models, and seven cross-cutting productized PVF workflows for safe inspection and controlled output.",
+  "packageVersion": "2.1.3",
+  "purpose": "Self-contained clean workspace with automatic Cn semantic read protection, a preferred native PVF backend, a dependency-free TypeScript read-only fallback, SHA-bound indexes, bundled knowledge, and controlled output.",
   "includes": [
     ".gitattributes",
     ".gitignore",
@@ -63,7 +63,10 @@
     "sourcePvfOverwriteAllowed": false,
     "clientResourceWriteAllowedByDefault": false,
     "writeRequiresExplicitOutputBackupReadbackManifest": true,
-    "readOnlyFallbackWriteAllowed": false
+    "readOnlyFallbackWriteAllowed": false,
+    "semanticCnReadGuardAutomatic": true,
+    "directNonAsciiTextWriteAllowed": false,
+    "fullIndexSourceSha256Bound": true
   },
   "release": {
     "manifest": "release/PORTABLE-RELEASE-MANIFEST.json",

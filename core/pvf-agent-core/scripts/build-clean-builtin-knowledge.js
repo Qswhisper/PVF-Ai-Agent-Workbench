@@ -24,6 +24,10 @@ function options(name) {
   return values;
 }
 
+function flag(name) {
+  return args.includes(name);
+}
+
 function required(name) {
   const value = option(name);
   if (!value) throw new Error(`${name} is required.`);
@@ -64,6 +68,101 @@ function compactReturn(value) {
 
 function compactVersion(value) {
   return value ? String(value).replace(/\s+https?:\/\/\S+/gi, "").trim() : null;
+}
+
+function comparableText(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/^\[|\]$/g, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function authorMembers(value) {
+  return String(value || "")
+    .split(/[|｜]/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function compactCommunityComment(item, blockedAuthors = []) {
+  const raw = String(item.comment ?? item.normalizedComment ?? "")
+    .replace(/^\uFEFF/, "")
+    .replace(/\r\n?/g, "\n")
+    .trim();
+  if (!raw) return "";
+  const section = comparableText(item.section || item.normalizedSection);
+  const authors = [...blockedAuthors].map(comparableText).filter(Boolean);
+  const disclosure = /(?:https?:\/\/|www\.|[\w.+-]+@[\w.-]+\.[a-z]{2,}|\b[a-z]:[\\/]|\\\\[^\\\s]+\\|(?:qq|微信|群号|群聊|邮箱|e-?mail)\s*[:：]?\s*\d|(?:作者|署名|来源|转载|版权|制作|整理|汉化|翻译|维护者)(?:\s*[:：]|\s+)|最后编辑时间|mkjung\s+\d{6}|^(?:by|from)\s+\S+)/i;
+  const irrelevant = /歌词|\blyrics?\b|never\s+gonna/i;
+  const cleanLine = (value) => String(value || "")
+    .trim()
+    .replace(/^[-*]\s+/, "")
+    .replace(/^`+|`+$/g, "")
+    .trim();
+  const usable = (value) => {
+    const line = cleanLine(value);
+    if (!line || line.length > 160 || disclosure.test(line) || irrelevant.test(line)) return false;
+    const normalizedLine = comparableText(line);
+    if (authors.some((author) => normalizedLine.includes(author))) return false;
+    if (/^[\p{P}\p{S}\s\d]+$/u.test(line)) return false;
+    return true;
+  };
+  const scoreLine = (line) => {
+    let score = 0;
+    if (/[\u3400-\u9fff]/u.test(line)) score += 20;
+    if (/(?:表示|代表|用于|使用|控制|几率|概率|奖励|权重|第一|左边|右边|无视|显示|增加|减少|消耗|属性|伤害|等级|时间|位置|数量|范围|效果|判定|出售|商店|列表|索引|帧|职业|材料|交易|绑定|状态|异常|防御|攻击|容量)/.test(line)) score += 20;
+    score += Math.min(line.length, 40) / 4;
+    if ((line.match(/、/g) || []).length >= 3) score -= 10;
+    if (/\s{3,}|[（(][^）)]*$/.test(line)) score -= 20;
+    if (!/[\u3400-\u9fff]/u.test(line)) score -= 10;
+    return score;
+  };
+
+  const lines = raw.split("\n");
+  const titleIndex = lines.findIndex((line) => /^\s*标题\s*[:：]/.test(line));
+  const candidates = [];
+  if (titleIndex >= 0) {
+    const title = cleanLine(lines[titleIndex].replace(/^\s*标题\s*[:：]\s*/, ""));
+    if (usable(title) && comparableText(title) !== section) return title;
+    if (!title) {
+      for (let index = titleIndex + 1; index < lines.length; index += 1) {
+        const rawLine = lines[index];
+        if (!rawLine.trim()) {
+          if (candidates.length > 0) break;
+          continue;
+        }
+        if (!/^\s*[-*]\s+/.test(rawLine)) break;
+        const line = cleanLine(rawLine);
+        if (!usable(line) || comparableText(line) === section || /^#+\d*$/.test(line)) continue;
+        candidates.push({ line, score: scoreLine(line) + 10, index });
+      }
+    }
+  }
+
+  let inFence = false;
+  for (let index = titleIndex >= 0 ? titleIndex + 1 : 0; index < lines.length; index += 1) {
+    const rawLine = lines[index].trim();
+    if (/^```/.test(rawLine)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    if (/^#{2,}\s*/.test(rawLine)) break;
+    if (/^(?:\/\/|\/\*|\*\/)/.test(rawLine)) continue;
+    if (/^[—–_=/\\]{3,}$/.test(rawLine)) continue;
+    const line = cleanLine(rawLine);
+    if (!usable(line)) continue;
+    if (/^\[\/?[^\]]+\]$/.test(line)) continue;
+    if (comparableText(line) === section) continue;
+    if (/^(?:[-+]?\d+(?:\.\d+)?\s*)+$/.test(line)) continue;
+    candidates.push({ line, score: scoreLine(line), index });
+  }
+  candidates.sort((left, right) => right.score - left.score || left.index - right.index);
+  if (candidates.length > 0) return candidates[0].line;
+  const fallback = cleanLine(item.normalizedComment);
+  return usable(fallback) && comparableText(fallback) !== section ? fallback : "";
 }
 
 function buildNutCatalog(source) {
@@ -108,18 +207,30 @@ function buildNutCatalog(source) {
   };
 }
 
-function buildTagCatalog(source) {
+function buildTagCatalog(source, allowedCommunityAuthors = []) {
   const corruptText = (value) => /\uFFFD|[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/.test(String(value || ""));
+  const communitySource = source.community || source.xiti || {};
+  const sourceRows = communitySource.newRows || communitySource.rows || [];
+  const normalizedAuthors = new Set(allowedCommunityAuthors.map((item) => String(item).trim().toLowerCase()).filter(Boolean));
+  const sourceHasAuthors = sourceRows.some((item) => item.authors !== undefined && item.authors !== null && String(item.authors).trim());
+  if (sourceHasAuthors && normalizedAuthors.size === 0) {
+    throw new Error("A tag catalog with author metadata requires at least one explicit --community-author value.");
+  }
+  const selectedRows = sourceHasAuthors
+    ? sourceRows.filter((item) => authorMembers(item.authors).some((author) => normalizedAuthors.has(author)))
+    : sourceRows;
   const rowKeys = new Set();
   const newRows = [];
-  for (const item of source.community?.newRows || []) {
+  for (const item of selectedRows) {
     if (!item.normalizedSection) continue;
     if ([item.section, item.normalizedSection, item.comment, item.normalizedComment].some(corruptText)) continue;
+    const comment = compactCommunityComment(item, normalizedAuthors);
+    if (!comment) continue;
     const row = {
       section: item.section || item.normalizedSection,
       normalizedSection: item.normalizedSection,
-      comment: item.normalizedComment || item.comment || "",
-      normalizedComment: item.normalizedComment || item.comment || "",
+      comment,
+      normalizedComment: comment,
       fileType: item.fileType ?? null,
     };
     const key = JSON.stringify(row);
@@ -128,13 +239,19 @@ function buildTagCatalog(source) {
       newRows.push(row);
     }
   }
-  const layeredTags = (source.layeredTags?.tags || []).map((item) => ({
+  const layeredSource = source.layeredTags?.tags || source.korean?.tags || [];
+  const layeredTags = layeredSource.map((item) => ({
     normalizedTag: item.normalizedTag,
     displayTag: item.displayTag,
-    officialOriginalOccurrences: item.officialOriginalOccurrences?.length ? [{ layer: "official-original", occurrenceCount: item.officialOriginalOccurrences.length }] : [],
-    toolExtensionOccurrences: item.toolExtensionOccurrences?.length ? [{ layer: "tool-extension", occurrenceCount: item.toolExtensionOccurrences.length }] : [],
+    officialOriginalOccurrences: (item.officialOriginalOccurrences || item.officialOccurrences || []).length
+      ? [{ layer: "official-original", occurrenceCount: (item.officialOriginalOccurrences || item.officialOccurrences).length }]
+      : [],
+    toolExtensionOccurrences: (item.toolExtensionOccurrences || item.bytoolOccurrences || []).length
+      ? [{ layer: "tool-extension", occurrenceCount: (item.toolExtensionOccurrences || item.bytoolOccurrences).length }]
+      : [],
   }));
-  const registryEntries = (source.registryHints?.entries || []).map((item) => ({
+  const registrySource = source.registryHints || source.hoverConfig || {};
+  const registryEntries = (registrySource.entries || []).map((item) => ({
     nodeType: item.nodeType || null,
     fileName: item.fileName || null,
     SectionName: item.SectionName || null,
@@ -143,7 +260,7 @@ function buildTagCatalog(source) {
     Description: item.Description || null,
     registryStatus: "unverified-source-hint",
   }));
-  const spellingCandidates = (source.registryHints?.suspiciousRegistryCandidates || []).map((item) => ({
+  const spellingCandidates = (registrySource.suspiciousRegistryCandidates || []).map((item) => ({
     observed: item.observed,
     candidate: item.candidate,
     status: "spelling-candidate-not-registry-fact",
@@ -256,15 +373,26 @@ function updateKnowledgeManifest(outputs) {
 }
 
 function main() {
-  const nutSource = readJson(required("--nut-catalog"));
-  const tagSource = readJson(required("--tag-catalog"));
-  const bookmarkSource = readJson(required("--bookmarks"));
+  const only = String(option("--only", "all")).toLowerCase();
+  if (!["all", "nut", "tag", "bookmark"].includes(only)) throw new Error("--only must be all, nut, tag, or bookmark.");
   const outputDir = path.join(workbenchRoot, "knowledge-pack", "indexes");
-  const products = [
-    { dest: "indexes/nut-api-facts.compact.json", value: buildNutCatalog(nutSource) },
-    { dest: "indexes/pvf-tag-facts.compact.json", value: buildTagCatalog(tagSource) },
-    { dest: "indexes/pvf-task-bookmarks.compact.json", value: buildBookmarkCatalog(bookmarkSource) },
-  ];
+  const products = [];
+  if (only === "all" || only === "nut") {
+    products.push({ dest: "indexes/nut-api-facts.compact.json", value: buildNutCatalog(readJson(required("--nut-catalog"))) });
+  }
+  if (only === "all" || only === "tag") {
+    products.push({
+      dest: "indexes/pvf-tag-facts.compact.json",
+      value: buildTagCatalog(readJson(required("--tag-catalog")), options("--community-author")),
+    });
+  }
+  if (only === "all" || only === "bookmark") {
+    products.push({ dest: "indexes/pvf-task-bookmarks.compact.json", value: buildBookmarkCatalog(readJson(required("--bookmarks"))) });
+  }
+  if (flag("--dry-run")) {
+    process.stdout.write(`${JSON.stringify({ ok: true, command: "build-clean-builtin-knowledge", dryRun: true, summaries: Object.fromEntries(products.map((item) => [item.dest, item.value.summary])) }, null, 2)}\n`);
+    return;
+  }
   const outputs = products.map((product) => ({
     dest: product.dest,
     ...writeJson(path.join(outputDir, path.basename(product.dest)), product.value),

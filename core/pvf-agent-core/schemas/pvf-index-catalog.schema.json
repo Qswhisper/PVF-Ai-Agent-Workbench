@@ -15,7 +15,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["scopeKey", "scopeName", "indexDir", "manifestPath", "generatedAt", "scope", "summary", "safety"],
+        "required": ["scopeKey", "scopeName", "indexDir", "manifestPath", "generatedAt", "sourceSha256", "scope", "summary", "safety"],
         "additionalProperties": false,
         "properties": {
           "scopeKey": { "type": "string" },
@@ -23,6 +23,7 @@
           "indexDir": { "type": "string" },
           "manifestPath": { "type": "string" },
           "generatedAt": { "type": "string" },
+          "sourceSha256": { "type": ["string", "null"], "pattern": "^[A-Fa-f0-9]{64}$" },
           "scope": { "type": "object", "additionalProperties": true },
           "summary": { "type": "object", "additionalProperties": true },
           "safety": { "type": "object", "additionalProperties": true }

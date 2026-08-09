@@ -24,10 +24,14 @@ function option(name, fallback) {
   return index >= 0 && args[index + 1] ? args[index + 1] : fallback;
 }
 
+function flag(name) {
+  return args.includes(name);
+}
+
 function main() {
-  if (command !== "check") throw new Error("Usage: workbench.bat release gate2 [--out <dir>]");
+  if (command !== "check") throw new Error("Usage: workbench.bat release gate2 [--out <dir>] [--details]");
   const outRoot = path.resolve(option("--out", runtimePath(workbenchRoot, "release-runs", timestamp(), "gate2")));
-  const packageRun = runNode(workbenchRoot, "core/pvf-agent-core/scripts/portable-package-dry-run.js", ["check", "--out", path.join(outRoot, "gate1")], 180000);
+  const packageRun = runNode(workbenchRoot, "core/pvf-agent-core/scripts/portable-package-dry-run.js", ["check", "--out", path.join(outRoot, "gate1"), "--details"], 180000);
   const errors = [];
   const warnings = [];
   if (!packageRun.ok || packageRun.parsed?.summary?.ok !== true) errors.push("Release Gate 1 failed.");
@@ -92,7 +96,17 @@ function main() {
     warnings,
   };
   writeJson(reportPath, report);
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  const visible = flag("--details") ? report : {
+    schemaVersion: report.schemaVersion,
+    phase: report.phase,
+    stageDir,
+    reportPath,
+    gate1ReportPath: report.gate1ReportPath,
+    summary: report.summary,
+    errors,
+    warnings,
+  };
+  process.stdout.write(`${JSON.stringify(visible, null, 2)}\n`);
   if (!report.summary.ok) process.exitCode = 1;
 }
 

@@ -17,6 +17,7 @@
   "expectedPvfPath": "itemshop/birken.shp",
   "registryExpectedText": "37\t`birken.shp`",
   "readPath": "itemshop/itemshop.lst",
+  "semanticReadPath": "itemshop/itemshop.kor.str",
   "pathSearchContains": "birken",
   "index": {
     "scope": "itemshop",

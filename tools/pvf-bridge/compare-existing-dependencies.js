@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { isPathInside, resolvePvfPathInside } = require("./fallback/path-safety.ts");
 const crypto = require("crypto");
 const { loadPvfBackend } = require("./native-backend");
 
@@ -29,22 +30,17 @@ function normalizeKey(value) {
   return normalizePvfPath(value).toLowerCase();
 }
 
-function isInside(parent, child) {
-  const relative = path.relative(parent, child);
-  return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
 function resolveInsideWorkspace(targetPath, label) {
   const resolved = path.resolve(targetPath || "");
   const cwd = process.cwd();
-  if (!targetPath || !isInside(cwd, resolved)) {
+  if (!targetPath || !isPathInside(cwd, resolved)) {
     throw new Error(`Refusing ${label || "path"} outside workspace: ${resolved}`);
   }
   return resolved;
 }
 
 function localPath(extractDir, pvfPath) {
-  return path.join(extractDir, ...normalizePvfPath(pvfPath).split("/"));
+  return resolvePvfPathInside(extractDir, pvfPath, "Extracted PVF entry path");
 }
 
 function listedFileName(item) {

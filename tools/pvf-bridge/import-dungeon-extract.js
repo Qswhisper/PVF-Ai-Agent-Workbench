@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { loadPvfBackend } = require("./native-backend");
+const { isPathInside, resolvePvfPathInside } = require("./fallback/path-safety.ts");
 
 const native = loadPvfBackend().api;
 
@@ -40,36 +41,17 @@ function normalizeKey(value) {
   return normalizePvfPath(value).toLowerCase();
 }
 
-function isInside(parent, child) {
-  const relative = path.relative(parent, child);
-  return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
 function resolveInsideWorkspace(targetPath, label) {
   const resolved = path.resolve(targetPath || "");
   const cwd = process.cwd();
-  if (!targetPath || !isInside(cwd, resolved)) {
+  if (!targetPath || !isPathInside(cwd, resolved)) {
     throw new Error(`Refusing ${label || "path"} outside workspace: ${resolved}`);
   }
   return resolved;
 }
 
 function localPath(extractDir, pvfPath) {
-  return path.join(extractDir, ...normalizePvfPath(pvfPath).split("/"));
-}
-
-function timestamp() {
-  const d = new Date();
-  const pad = (value) => String(value).padStart(2, "0");
-  return [
-    d.getFullYear(),
-    pad(d.getMonth() + 1),
-    pad(d.getDate()),
-    "-",
-    pad(d.getHours()),
-    pad(d.getMinutes()),
-    pad(d.getSeconds()),
-  ].join("");
+  return resolvePvfPathInside(extractDir, pvfPath, "Imported PVF entry path");
 }
 
 function registryPathForSection(section) {
@@ -196,12 +178,6 @@ async function readPvfTextOrEmpty(sessionId, pvfPath) {
   }
 }
 
-function appendRegistryEntries(existingText, entries) {
-  const base = String(existingText || "#PVF_File\r\n").replace(/\s*$/, "\r\n");
-  const addition = entries.map((entry) => `${entry.id}\t\`${entry.rawPath}\``).join("\r\n");
-  return `${base}${addition}\r\n`;
-}
-
 function summarizeRoots(paths) {
   const counts = {};
   for (const pvfPath of paths) {
@@ -301,57 +277,13 @@ async function buildPlan(sessionId, extractDir, targetFiles, registries) {
   };
 }
 
-async function writePlan(sessionId, extractDir, plan, replaceExisting) {
-  const writeTargets = replaceExisting ? plan.extractedFiles : plan.filesToWrite;
-  for (const pvfPath of writeTargets) {
-    const text = fs.readFileSync(localPath(extractDir, pvfPath), "utf8");
-    await native.upsertTextFileRaw(sessionId, pvfPath, Buffer.from(text, "utf8"), {
-      pvfEncoding: "Tw",
-      compileScript: true,
-      compileBinaryAni: true,
-      convertToTraditionalChinese: true,
-    });
-  }
-
-  for (const item of plan.registryPlans) {
-    if (!item.additions.length) {
-      continue;
-    }
-    const nextText = appendRegistryEntries(item.existing.text, item.additions);
-    await native.upsertTextFileRaw(sessionId, item.registryPath, Buffer.from(nextText, "utf8"), {
-      pvfEncoding: "Tw",
-      compileScript: true,
-      compileBinaryAni: false,
-      convertToTraditionalChinese: true,
-    });
-  }
-}
-
-async function saveImportedPvf(sessionId, targetPvf, outPvf, apply) {
-  if (!apply) {
-    return { saved: false, backupPath: null, outputPath: null };
-  }
-  const stamp = timestamp();
-  if (outPvf) {
-    const resolvedOut = resolveInsideWorkspace(outPvf, "out-pvf");
-    await native.saveSession(sessionId, resolvedOut);
-    return { saved: true, backupPath: null, outputPath: resolvedOut };
-  }
-
-  const backupPath = `${targetPvf}.bak-${stamp}`;
-  const tempPath = `${targetPvf}.import-${stamp}.tmp`;
-  fs.copyFileSync(targetPvf, backupPath);
-  await native.saveSession(sessionId, tempPath);
-  fs.copyFileSync(tempPath, targetPvf);
-  fs.unlinkSync(tempPath);
-  return { saved: true, backupPath, outputPath: targetPvf };
-}
-
-function compactPlan(plan, saveInfo, apply, replaceExisting) {
+function compactPlan(plan, replaceExisting) {
   const replacedExistingCount = replaceExisting ? plan.filesAlreadyPresent.length : 0;
   return {
     ok: plan.conflicts.length === 0 && plan.missingLocalFiles.length === 0,
-    applied: Boolean(apply && saveInfo.saved),
+    applied: false,
+    previewOnly: true,
+    controlledWriteLaneRequired: "workbench.bat pvf-change",
     replaceExisting: Boolean(replaceExisting),
     extractedFileCount: plan.extractedFiles.length,
     filesToWriteCount: replaceExisting ? plan.extractedFiles.length : plan.filesToWrite.length,
@@ -374,8 +306,8 @@ function compactPlan(plan, saveInfo, apply, replaceExisting) {
     conflicts: plan.conflicts.slice(0, 50),
     missingLocalFileCount: plan.missingLocalFiles.length,
     missingLocalFiles: plan.missingLocalFiles.slice(0, 50),
-    backupPath: saveInfo.backupPath,
-    outputPath: saveInfo.outputPath,
+    backupPath: null,
+    outputPath: null,
   };
 }
 
@@ -385,6 +317,14 @@ async function main() {
   const outPvf = argValue("out-pvf", "");
   const apply = hasFlag("apply");
   const replaceExisting = hasFlag("replace-existing");
+
+  if (apply || outPvf) {
+    const error = new Error(
+      "Direct dungeon import writes were removed. This helper is preview-only; rebuild an authorized change-set and use workbench.bat pvf-change dry-run/apply.",
+    );
+    error.code = "CONTROLLED_WRITE_LANE_REQUIRED";
+    throw error;
+  }
 
   if (!fs.existsSync(extractDir)) {
     throw new Error(`Extract directory does not exist: ${extractDir}`);
@@ -405,26 +345,19 @@ async function main() {
     const targetFiles = new Set((await native.listFiles(session.sessionId)).map((item) => normalizeKey(listedFileName(item))));
     const registries = parseImportList(importListPath);
     const plan = await buildPlan(session.sessionId, extractDir, targetFiles, registries);
-    let saveInfo = { saved: false, backupPath: null, outputPath: null };
-
     if (plan.conflicts.length || plan.missingLocalFiles.length) {
-      const result = compactPlan(plan, saveInfo, false, replaceExisting);
+      const result = compactPlan(plan, replaceExisting);
       result.error = "Import blocked by conflicts or missing local files.";
       console.log(JSON.stringify(result, null, 2));
       process.exitCode = 1;
       return;
     }
 
-    if (apply) {
-      await writePlan(session.sessionId, extractDir, plan, replaceExisting);
-      saveInfo = await saveImportedPvf(session.sessionId, targetPvf, outPvf, true);
-    }
-
-    const result = compactPlan(plan, saveInfo, apply, replaceExisting);
+    const result = compactPlan(plan, replaceExisting);
     const metaDir = path.join(extractDir, "_meta");
     fs.mkdirSync(metaDir, { recursive: true });
     fs.writeFileSync(
-      path.join(metaDir, apply ? "import-result.json" : "import-plan.json"),
+      path.join(metaDir, "import-plan.json"),
       JSON.stringify(result, null, 2),
       "utf8"
     );
@@ -435,6 +368,8 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(error && error.stack ? error.stack : String(error));
+  const code = error?.code ? `[${error.code}] ` : "";
+  console.error(`ERROR ${code}${error?.message || String(error)}`);
+  if (process.argv.includes("--debug") && error?.stack) console.error(error.stack);
   process.exitCode = 1;
 });

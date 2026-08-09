@@ -22,7 +22,7 @@
     "mode": { "const": "read-only-index" },
     "source": {
       "type": "object",
-      "required": ["sourcePvf", "sourceSize", "sourceMtimeMs", "sourceSha256Sample"],
+      "required": ["sourcePvf", "sourceSize", "sourceMtimeMs", "sourceSha256", "sourceSha256Sample"],
       "additionalProperties": false,
       "properties": {
         "profile": { "type": ["string", "null"] },
@@ -30,6 +30,7 @@
         "sourcePvf": { "type": "string" },
         "sourceSize": { "type": "integer", "minimum": 0 },
         "sourceMtimeMs": { "type": "number", "minimum": 0 },
+        "sourceSha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
         "sourceSha256Sample": { "type": "string" },
         "pvfEncoding": {
           "type": "object",
@@ -112,12 +113,13 @@
     },
     "safety": {
       "type": "object",
-      "required": ["readOnly", "sourceOverwritten", "clientResourceWrite"],
+      "required": ["readOnly", "sourceOverwritten", "clientResourceWrite", "fullSourceSha256Bound"],
       "additionalProperties": false,
       "properties": {
         "readOnly": { "const": true },
         "sourceOverwritten": { "const": false },
-        "clientResourceWrite": { "const": false }
+        "clientResourceWrite": { "const": false },
+        "fullSourceSha256Bound": { "const": true }
       }
     }
   }

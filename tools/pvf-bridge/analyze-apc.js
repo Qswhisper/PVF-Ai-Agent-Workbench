@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { isPathInside, resolvePvfPathInside } = require("./fallback/path-safety.ts");
 
 const REGISTRY_PATHS = {
   aicharacter: "aicharacter/aicharacter.lst",
@@ -123,15 +124,10 @@ function normalizeSectionName(value) {
   return String(value || "").trim().toLowerCase();
 }
 
-function isInside(parent, child) {
-  const relative = path.relative(parent, child);
-  return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
 function resolveInsideWorkspace(targetPath, label) {
   const resolved = path.resolve(targetPath || "");
   const cwd = process.cwd();
-  if (!targetPath || !isInside(cwd, resolved)) {
+  if (!targetPath || !isPathInside(cwd, resolved)) {
     throw new Error(`Refusing ${label || "path"} outside workspace: ${resolved}`);
   }
   return resolved;
@@ -163,7 +159,7 @@ function resolveRegisteredPath(registryPath, rawPath) {
 }
 
 function localPath(extractDir, pvfPath) {
-  return path.join(extractDir, ...normalizePvfPath(pvfPath).split("/"));
+  return resolvePvfPathInside(extractDir, pvfPath, "Extracted PVF entry path");
 }
 
 function readText(filePath) {

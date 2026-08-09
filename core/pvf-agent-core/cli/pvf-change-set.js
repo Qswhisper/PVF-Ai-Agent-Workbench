@@ -14,6 +14,7 @@ const {
 } = require("../lib/adapter-config");
 const { runtimePath } = require("../lib/runtime-state");
 const { sha256File } = require("../lib/release-utils");
+const { semanticWriteSafety } = require("../lib/semantic-read-guard");
 
 const rawArgs = process.argv.slice(2);
 const workbenchRoot = resolveWorkbenchRoot(rawArgs, path.resolve(__dirname, "../../.."));
@@ -342,6 +343,57 @@ function changeSetAuthorizationSelfTest() {
 
     const changedTag = comparePvfTextReadback("[equipment]\r\n100\t0\t0\t\r\n[/equipment]\r\n", "[quick item]\r\n100\t0\t0\t\r\n[/quick item]\r\n");
     checks.push({ id: "changed-tag-readback-rejected", ok: !changedTag.ok });
+
+    const cnStrSafety = semanticWriteSafety({
+      kind: "replace-text",
+      pvfPath: "itemshop/itemshop.kor.str",
+      pvfEncoding: "Cn",
+      previousText: "1",
+      newText: "2",
+      sourceText: "message_1>中文",
+    });
+    checks.push({
+      id: "cn-str-write-blocked",
+      ok: !cnStrSafety.allowed && cnStrSafety.code === "CN_LOCALIZATION_WRITE_UNVERIFIED",
+    });
+
+    const noOpCnStrSafety = semanticWriteSafety({
+      kind: "replace-text",
+      pvfPath: "itemshop/itemshop.kor.str",
+      pvfEncoding: "Cn",
+      previousText: "message_1>",
+      newText: "message_1>",
+      sourceText: "message_1>中文",
+    });
+    checks.push({
+      id: "no-op-cn-str-requires-no-write",
+      ok: noOpCnStrSafety.allowed && noOpCnStrSafety.noOp === true,
+    });
+
+    const directChineseSafety = semanticWriteSafety({
+      kind: "replace-text",
+      pvfPath: "itemshop/birken.shp",
+      pvfEncoding: "Cn",
+      previousText: "旧文本",
+      newText: "新文本",
+    });
+    checks.push({
+      id: "direct-non-ascii-write-blocked",
+      ok: !directChineseSafety.allowed && directChineseSafety.code === "NON_ASCII_TEXT_WRITE_UNVERIFIED",
+    });
+
+    const numericStringLinkSafety = semanticWriteSafety({
+      kind: "replace-text",
+      pvfPath: "itemshop/birken.shp",
+      pvfEncoding: "Cn",
+      previousText: "9990001",
+      newText: "9990002",
+      sourceText: "[message]\r\n<5::message_520`中文`>\r\n",
+    });
+    checks.push({
+      id: "numeric-stringlink-change-allowed-with-smoke-check",
+      ok: numericStringLinkSafety.allowed && numericStringLinkSafety.clientTextSmokeCheckRequired,
+    });
   } finally {
     if (!pathInside(os.tmpdir(), tempRoot)) throw new Error(`Unsafe change-set self-test path: ${tempRoot}`);
     fs.rmSync(tempRoot, { recursive: true, force: true });
@@ -381,12 +433,40 @@ function assertControlledWriteRunnerPolicy(writePolicy) {
   if (runner.requiresDryRunFirst !== true || runner.requiresMatchingDryRunManifest !== true || runner.requiresExplicitAuthorizationCode !== true) {
     throw new Error("Controlled write runner must require a matching dry-run manifest and explicit authorization code.");
   }
+  if (
+    runner.serverCapability?.environmentVariable !== "PVF_WORKBENCH_SERVER_MODE" ||
+    runner.serverCapability?.value !== "controlled-write"
+  ) {
+    throw new Error("Controlled write runner must activate the dedicated controlled-write server capability.");
+  }
+  const semanticSafety = runner.semanticTextSafety || {};
+  if (
+    semanticSafety.automaticCnReadGuardRequired !== true ||
+    semanticSafety.cnStrWriteAllowed !== false ||
+    semanticSafety.directNonAsciiTextWriteAllowed !== false ||
+    semanticSafety.numericOrAsciiMinimalWriteAllowed !== true ||
+    semanticSafety.clientTextSmokeCheckRequired !== true
+  ) {
+    throw new Error("Controlled write runner semantic text safety policy is incomplete or unsafe.");
+  }
   const allowedBridgeTools = new Set(runner.allowedBridgeTools || []);
   for (const tool of ["pvf_open", "pvf_list_files", "pvf_read_file", "pvf_replace_text", "pvf_write_file", "pvf_backup", "pvf_save", "pvf_close"]) {
     if (!allowedBridgeTools.has(tool)) {
       throw new Error(`controlledWriteRunner.allowedBridgeTools is missing required tool: ${tool}`);
     }
   }
+}
+
+function controlledWriteLaunchOptions(adapterConfig, writePolicy) {
+  const launch = upstreamLaunchOptions(adapterConfig);
+  const capability = writePolicy.controlledWriteRunner.serverCapability;
+  return {
+    ...launch,
+    env: {
+      ...(launch.env || {}),
+      [capability.environmentVariable]: capability.value,
+    },
+  };
 }
 
 function validateChangeSet(changeSet) {
@@ -649,6 +729,13 @@ async function runDryRun(changeSet, changeSetFile, outDirOverride) {
       if (change.type === "write-file") {
         const source = readVerifiedSourceFile(changeSetFile, change);
         const targetExists = await pvfPathExists(client, sessionId, pvfPath, directoryCache);
+        const writeSafety = semanticWriteSafety({
+          kind: "write-file",
+          pvfPath,
+          pvfEncoding: change.pvfEncoding || changeSet.target.pvfReadEncoding,
+          fallbackEncoding: adapterConfig.defaults.pvfReadEncoding,
+          textContent: source.textContent,
+        });
         results.push({
           id: change.id,
           type: change.type,
@@ -658,8 +745,9 @@ async function runDryRun(changeSet, changeSetFile, outDirOverride) {
           sourceLength: source.raw.length,
           expectAbsent: true,
           targetExists,
-          applicable: !targetExists,
-          changed: !targetExists,
+          applicable: !targetExists && writeSafety.allowed,
+          changed: !targetExists && writeSafety.allowed,
+          semanticWriteSafety: writeSafety,
           rationale: change.rationale || "",
         });
         continue;
@@ -676,18 +764,31 @@ async function runDryRun(changeSet, changeSetFile, outDirOverride) {
       }
       const occurrenceCount = countOccurrences(read.textContent, change.previousText);
       const replaceAll = change.replaceAll === true;
-      const applicable = replaceAll ? occurrenceCount > 0 : occurrenceCount === 1;
-      const after = applicable ? replaceText(read.textContent, change.previousText, change.newText, replaceAll) : read.textContent;
+      const occurrenceApplicable = replaceAll ? occurrenceCount > 0 : occurrenceCount === 1;
+      const writeSafety = semanticWriteSafety({
+        kind: "replace-text",
+        pvfPath,
+        pvfEncoding: change.pvfEncoding || changeSet.target.pvfReadEncoding,
+        fallbackEncoding: adapterConfig.defaults.pvfReadEncoding,
+        previousText: change.previousText,
+        newText: change.newText,
+        sourceText: read.textContent,
+      });
+      const applicable = occurrenceApplicable && writeSafety.allowed;
+      const after = occurrenceApplicable ? replaceText(read.textContent, change.previousText, change.newText, replaceAll) : read.textContent;
       results.push({
         id: change.id,
         type: change.type,
         pvfPath,
         occurrenceCount,
         replaceAll,
+        occurrenceApplicable,
         applicable,
-        changed: after !== read.textContent,
+        changed: applicable && after !== read.textContent,
         fileMetadata: read.metadata,
         diff: diffSummary(read.textContent, after),
+        semanticReadGuard: read.semanticReadGuard || null,
+        semanticWriteSafety: writeSafety,
         rationale: change.rationale || "",
       });
     }
@@ -712,12 +813,15 @@ async function runDryRun(changeSet, changeSetFile, outDirOverride) {
       backupRequiredBeforeFutureApply: true,
       explicitOutputRequiredBeforeFutureApply: true,
       readbackRequiredBeforeFutureApply: true,
+      semanticWriteGuardEnabled: true,
+      directNonAsciiTextWriteAllowed: false,
     },
     summary: {
       changeCount: results.length,
       applicableCount: results.filter((item) => item.applicable).length,
       changedCount: results.filter((item) => item.changed).length,
       blockedCount: results.filter((item) => !item.applicable).length,
+      clientTextSmokeCheckRequiredCount: results.filter((item) => item.semanticWriteSafety?.clientTextSmokeCheckRequired).length,
     },
     binding: dryRunBinding(
       results,
@@ -777,11 +881,20 @@ async function runApply(changeSet, changeSetFile) {
   const authorization = verifyDryRunAuthorization(sourcePvf, changeSetFile);
 
   const paths = resolveApplyPaths(writePolicy, sourcePvf);
+  for (const [label, candidate] of [
+    ["output PVF", paths.outputPvf],
+    ["backup", paths.backupPath],
+    ["apply manifest", paths.manifestPath],
+  ]) {
+    if (fs.existsSync(candidate)) {
+      throw new Error(`Refusing to overwrite an existing ${label}: ${candidate}`);
+    }
+  }
   fs.mkdirSync(path.dirname(paths.outputPvf), { recursive: true });
   fs.mkdirSync(path.dirname(paths.backupPath), { recursive: true });
   fs.mkdirSync(path.dirname(paths.manifestPath), { recursive: true });
 
-  const client = new BackendStdioClient(upstreamLaunchOptions(adapterConfig));
+  const client = new BackendStdioClient(controlledWriteLaunchOptions(adapterConfig, writePolicy));
   const opened = await callAndParse(client, "pvf_open", {
     path: sourcePvf,
     encoding: changeSet.target.pvfOpenEncoding || adapterConfig.defaults.pvfOpenEncoding,
@@ -827,6 +940,18 @@ async function runApply(changeSet, changeSetFile) {
         if (targetExists) {
           throw new Error(`Controlled write-file target already exists: ${pvfPath}`);
         }
+        const writeSafety = semanticWriteSafety({
+          kind: "write-file",
+          pvfPath,
+          pvfEncoding: change.pvfEncoding || changeSet.target.pvfReadEncoding,
+          fallbackEncoding: adapterConfig.defaults.pvfReadEncoding,
+          textContent: source.textContent,
+        });
+        if (!writeSafety.allowed) {
+          const error = new Error(`Change ${change.id} is blocked: ${writeSafety.reason}`);
+          error.code = writeSafety.code;
+          throw error;
+        }
         const applyResult = await callAndParse(client, "pvf_write_file", {
           sessionId,
           pvfPath,
@@ -850,6 +975,7 @@ async function runApply(changeSet, changeSetFile) {
           sourceLength: source.raw.length,
           targetExistedBeforeApply: false,
           changed: true,
+          semanticWriteSafety: writeSafety,
           applyResult,
           rationale: change.rationale || "",
         });
@@ -865,6 +991,20 @@ async function runApply(changeSet, changeSetFile) {
       if (typeof beforeRead.textContent !== "string") {
         throw new Error(`PVF file is not readable as text for apply: ${pvfPath}`);
       }
+      const writeSafety = semanticWriteSafety({
+        kind: "replace-text",
+        pvfPath,
+        pvfEncoding: change.pvfEncoding || changeSet.target.pvfReadEncoding,
+        fallbackEncoding: adapterConfig.defaults.pvfReadEncoding,
+        previousText: change.previousText,
+        newText: change.newText,
+        sourceText: beforeRead.textContent,
+      });
+      if (!writeSafety.allowed) {
+        const error = new Error(`Change ${change.id} is blocked: ${writeSafety.reason}`);
+        error.code = writeSafety.code;
+        throw error;
+      }
       const occurrenceCount = countOccurrences(beforeRead.textContent, change.previousText);
       const replaceAll = change.replaceAll === true;
       const applicable = replaceAll ? occurrenceCount > 0 : occurrenceCount === 1;
@@ -872,15 +1012,17 @@ async function runApply(changeSet, changeSetFile) {
         throw new Error(`Change is not safely applicable: ${change.id} occurrences=${occurrenceCount}`);
       }
       const expectedAfter = replaceText(beforeRead.textContent, change.previousText, change.newText, replaceAll);
-      const applyResult = await callAndParse(client, "pvf_replace_text", {
-        sessionId,
-        pvfPath,
-        previousText: change.previousText,
-        newText: change.newText,
-        replaceAll,
-        dryRun: false,
-        ...rawTextOptions(changeSet, change, adapterConfig),
-      });
+      const applyResult = expectedAfter === beforeRead.textContent
+        ? { ok: true, skipped: true, reason: "no-op replacement" }
+        : await callAndParse(client, "pvf_replace_text", {
+          sessionId,
+          pvfPath,
+          previousText: change.previousText,
+          newText: change.newText,
+          replaceAll,
+          dryRun: false,
+          ...rawTextOptions(changeSet, change, adapterConfig),
+        });
       expectedAfterByPath.set(pvfPath, { kind: "replace-text", expectedText: expectedAfter });
       results.push({
         id: change.id,
@@ -891,6 +1033,8 @@ async function runApply(changeSet, changeSetFile) {
         changed: expectedAfter !== beforeRead.textContent,
         beforeSha256: sha256(beforeRead.textContent),
         expectedAfterSha256: sha256(expectedAfter),
+        semanticReadGuard: beforeRead.semanticReadGuard || null,
+        semanticWriteSafety: writeSafety,
         applyResult,
         rationale: change.rationale || "",
       });
@@ -1013,6 +1157,9 @@ async function runApply(changeSet, changeSetFile) {
       readbackExecuted: true,
       readbackOk,
       readbackComparisonPolicy: "exact-text-or-float32-aware-token-equivalence",
+      semanticWriteGuardEnabled: true,
+      directNonAsciiTextWriteAllowed: false,
+      clientTextSmokeCheckRequired: results.some((item) => item.semanticWriteSafety?.clientTextSmokeCheckRequired),
       clientResourceWrite: false,
     },
     summary: {
@@ -1025,6 +1172,7 @@ async function runApply(changeSet, changeSetFile) {
       readbackNormalizedEquivalentCount,
       readbackRawBinaryCount,
       readbackFailedCount,
+      clientTextSmokeCheckRequiredCount: results.filter((item) => item.semanticWriteSafety?.clientTextSmokeCheckRequired).length,
     },
     backupResult,
     saveResult,
@@ -1066,12 +1214,23 @@ async function main() {
   }
   if (command === "dry-run") {
     const { manifestPath, manifest } = await runDryRun(changeSet, file, option("--out"));
+    const blockedChanges = manifest.results
+      .filter((item) => !item.applicable)
+      .map((item) => ({
+        id: item.id,
+        pvfPath: item.pvfPath,
+        occurrenceCount: item.occurrenceCount,
+        targetExists: item.targetExists,
+        code: item.semanticWriteSafety?.code || null,
+        reason: item.semanticWriteSafety?.reason || (item.occurrenceApplicable === false ? "Exact source text did not match once." : "Change is not safely applicable."),
+      }));
     printJson({
       ok: true,
       command,
       manifestPath,
       summary: manifest.summary,
-      approvalCode: manifest.binding.approvalCode,
+      approvalCode: blockedChanges.length ? null : manifest.binding.approvalCode,
+      blockedChanges,
     });
     if (manifest.summary.blockedCount > 0) {
       process.exit(2);
@@ -1094,6 +1253,14 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error(`ERROR ${error.message}`);
+  const code = error?.code ? `[${error.code}] ` : "";
+  console.error(`ERROR ${code}${error.message}`);
+  if (error?.code === "CN_LOCALIZATION_WRITE_UNVERIFIED") {
+    console.error("提示：这是工作台主动阻止可能导致中文乱码的 .str 写入；没有生成或覆盖 PVF。");
+  } else if (error?.code === "NON_ASCII_TEXT_WRITE_UNVERIFIED") {
+    console.error("提示：当前只放行数字或 ASCII 最小修改，直接中文文本修改保持只读；没有生成或覆盖 PVF。");
+  } else if (error?.code === "READ_ONLY_FALLBACK") {
+    console.error("提示：读取仍可使用，但写出环境未就绪。请运行 workbench.bat check 查看修复说明。");
+  }
   process.exit(1);
 });

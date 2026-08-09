@@ -163,16 +163,89 @@ function main() {
     }
     const forbiddenTerms = [
       ["retired-source-a", new RegExp("Gitee" + "Nut", "i")],
-      ["retired-source-b", new RegExp("Xi" + "ti", "i")],
+      ["retired-source-b", new RegExp(["Xi", "ti|Fox", "c"].join(""), "i")],
       ["retired-tool-layer-name", new RegExp("by" + "tool", "i")],
       ["retired-product-name", new RegExp("\\u5b87\\u5b99\\u9b54\\u65b9", "u")],
       ["historical-client-name-a", new RegExp("\\u6e05\\u98ce", "u")],
       ["historical-client-name-b", new RegExp("\\u5e7b\\u5883", "u")],
+      ["historical-client-name-c", new RegExp("\\u52a8\\u4f5c\\u5316", "u")],
+      ["historical-client-role", /低噪声\s*85|low-noise-85-baseline|action-research-baseline|content-compatibility-upper-bound/i],
       ["historical-target-role", /主目标|辅助对照/],
       ["baseline-counter", new RegExp(["observed", "BaselineCount|compiled", "BaselineCount|rawReadbackVerified", "TargetCount"].join(""))],
       ["historical-evidence-route", new RegExp(["source", "-position|(?:^|[\\/-])led", "ger(?:[\\/.\\-]|$)|completion", "-audit"].join(""), "i")],
     ];
     for (const [id, pattern] of forbiddenTerms) if (pattern.test(text)) errors.push(`Semantic cleanliness violation (${id}): ${rel}`);
+  }
+
+  const compactArtifacts = [
+    "indexes/nut-api-facts.compact.json",
+    "indexes/pvf-tag-facts.compact.json",
+    "indexes/pvf-task-bookmarks.compact.json",
+    "indexes/skill-parameter-facts.compact.json",
+  ];
+  const privateMetadataKeys = new Set([
+    "attribution", "author", "authors", "channel", "contact", "contributor", "contributors",
+    "copyright", "create", "createdat", "credit", "credits", "generatedat", "generator",
+    "generatorname", "homepage", "lastmodified", "license", "licenseholder", "licenseurl", "licensor",
+    "maintainedat", "maintainer", "maintainers", "origin", "originname", "originurl", "provider",
+    "providername", "repo", "repository", "source", "sourcefile", "sourceid", "sourcename",
+    "sourcepath", "sourceroot", "sourceurl", "timestamp", "tool", "toolname", "updatedat",
+    "updatetime", "url", "website",
+  ]);
+  function normalizeMetadataKey(key) {
+    return String(key || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
+  }
+  function findPrivateMetadata(value, currentPath, matches) {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => findPrivateMetadata(item, `${currentPath}[${index}]`, matches));
+      return;
+    }
+    for (const [key, item] of Object.entries(value)) {
+      const nextPath = `${currentPath}.${key}`;
+      if (privateMetadataKeys.has(normalizeMetadataKey(key))) matches.push(nextPath);
+      findPrivateMetadata(item, nextPath, matches);
+    }
+  }
+  const compactDisclosurePatterns = [
+    ["url", /https?:\/\/|www\./i],
+    ["email", /[\w.+-]+@[\w.-]+\.[a-z]{2,}/i],
+    ["absolute-path", /\b[a-z]:[\\/]|\\\\[^\\\s]+\\/i],
+    ["contact", /(?:qq|微信|群号|群聊|邮箱|e-?mail)\s*[:：]?\s*\d{4,}/i],
+    ["identity-label", /(?:作者|署名|来源|转载|版权|制作|整理|汉化|翻译|维护者|最后编辑)(?:\s*[:：]|\s+)/i],
+  ];
+  function findPrivateStringDisclosure(value, currentPath, matches) {
+    if (typeof value === "string") {
+      for (const [kind, pattern] of compactDisclosurePatterns) {
+        if (pattern.test(value)) matches.push(`${currentPath} (${kind})`);
+      }
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => findPrivateStringDisclosure(item, `${currentPath}[${index}]`, matches));
+      return;
+    }
+    for (const [key, item] of Object.entries(value)) findPrivateStringDisclosure(item, `${currentPath}.${key}`, matches);
+  }
+  for (const rel of compactArtifacts) {
+    const file = path.join(knowledgeRoot, rel);
+    if (!fs.existsSync(file)) continue;
+    const value = readJson(file, errors);
+    if (!value) continue;
+    const matches = [];
+    findPrivateMetadata(value, "$", matches);
+    if (matches.length > 0) errors.push(`Private source metadata found in compact knowledge: ${rel} (${matches.slice(0, 5).join(", ")})`);
+    const disclosureMatches = [];
+    findPrivateStringDisclosure(value, "$", disclosureMatches);
+    if (disclosureMatches.length > 0) errors.push(`Private source disclosure found in compact knowledge: ${rel} (${disclosureMatches.slice(0, 5).join(", ")})`);
+  }
+  const tagFactsPath = path.join(knowledgeRoot, "indexes", "pvf-tag-facts.compact.json");
+  if (fs.existsSync(tagFactsPath)) {
+    const tagFacts = readJson(tagFactsPath, errors);
+    const disclosurePattern = /(?:mkjung\s+\d{6}|歌词|never\s+gonna|https?:\/\/|www\.|(?:qq|微信|群号|群聊|邮箱|e-?mail)\s*[:：]?\s*\d|(?:作者|署名|来源|转载|版权|制作)\s*[:：]|最后编辑时间)/i;
+    const leakedRow = (tagFacts?.community?.rows || []).find((item) => disclosurePattern.test(`${item.section || ""}\n${item.comment || ""}`));
+    if (leakedRow) errors.push(`Source identity or maintenance text found in portable tag facts: ${leakedRow.normalizedSection || leakedRow.section}`);
   }
   for (const file of allFiles) {
     const rel = toPosix(path.relative(knowledgeRoot, file));

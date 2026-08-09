@@ -22,8 +22,12 @@ function option(name, fallback) {
   return index >= 0 && args[index + 1] ? args[index + 1] : fallback;
 }
 
+function flag(name) {
+  return args.includes(name);
+}
+
 function main() {
-  if (command !== "check") throw new Error("Usage: workbench.bat release gate1 [--out <dir>]");
+  if (command !== "check") throw new Error("Usage: workbench.bat release gate1 [--out <dir>] [--details]");
   const manifestPath = path.join(workbenchRoot, "release", "PORTABLE-RELEASE-MANIFEST.json");
   const versionPath = path.join(workbenchRoot, "VERSION");
   const manifest = readJson(manifestPath);
@@ -70,7 +74,16 @@ function main() {
     warnings,
   };
   writeJson(reportPath, report);
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  const visible = flag("--details") ? report : {
+    schemaVersion: report.schemaVersion,
+    phase: report.phase,
+    packageVersion: report.packageVersion,
+    reportPath,
+    summary: report.summary,
+    errors,
+    warnings,
+  };
+  process.stdout.write(`${JSON.stringify(visible, null, 2)}\n`);
   if (!report.summary.ok) process.exitCode = 1;
 }
 

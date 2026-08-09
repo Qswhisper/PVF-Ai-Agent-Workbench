@@ -3,8 +3,8 @@
   "schemaVersion": "1.0",
   "phase": "agent-workspace-portable-release",
   "packageName": "PVF-Agent-Workbench",
-  "packageVersion": "2.1.1",
-  "purpose": "Portable self-contained PVF Agent workspace with a preferred native backend, a bundled dependency-free TypeScript read-only fallback, Agent Skill adapter, built-in NUT/tag/bookmark facts, dungeon/world and cross-cutting productized capability models, controlled output, clean knowledge routing, release gates, and deterministic Agent evaluations.",
+  "packageVersion": "2.1.3",
+  "purpose": "Portable self-contained PVF Agent workspace with automatic Cn semantic read protection, a preferred native backend, a bundled dependency-free TypeScript read-only fallback, SHA-bound indexes, controlled output, clean knowledge routing, Agent Skill, release gates, and deterministic evaluations.",
   "portableCore": {
     "include": [
       ".gitattributes",
@@ -101,6 +101,9 @@
     "sourcePvfOverwriteAllowed": false,
     "clientResourceWriteAllowedByDefault": false,
     "readOnlyFallbackWriteAllowed": false,
+    "semanticCnReadGuardAutomatic": true,
+    "directNonAsciiTextWriteAllowed": false,
+    "fullIndexSourceSha256Bound": true,
     "realPvfRequiredForReleaseGates": false,
     "writeRequiresExplicitOutputBackupReadbackManifest": true
   }

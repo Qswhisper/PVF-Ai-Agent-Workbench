@@ -339,6 +339,7 @@ function checkRequiredPaths(errors) {
       "evals/agent/README.zh-CN.md",
       "evals/agent/suite.json",
       "workspaces/examples/change-set.replace-text.example.json",
+      "workspaces/examples/change-set.blocked-cn-text.example.json",
       "workspaces/examples/local-workspace-profile.example.json",
       "workspaces/examples/real-task-report-template.zh-CN.md",
       "workspaces/examples/real-task-summary.example.json",
@@ -485,6 +486,7 @@ function checkRequiredPaths(errors) {
     "workspaces/absorption-checklists/README.zh-CN.md",
     "workspaces/doctor-runs/README.zh-CN.md",
     "workspaces/examples/change-set.replace-text.example.json",
+    "workspaces/examples/change-set.blocked-cn-text.example.json",
     "workspaces/indexes/README.zh-CN.md",
     "workspaces/package-dry-runs/README.zh-CN.md",
   ];
@@ -772,6 +774,22 @@ function checkWritePolicy(writePolicy, errors) {
   if (writePolicy.controlledWriteRunner?.requiresDryRunFirst !== true || writePolicy.controlledWriteRunner?.requiresMatchingDryRunManifest !== true || writePolicy.controlledWriteRunner?.requiresExplicitAuthorizationCode !== true) {
     errors.push("write-policy.json must require dry-run, a matching dry-run manifest, and an explicit authorization code.");
   }
+  if (
+    writePolicy.controlledWriteRunner?.serverCapability?.environmentVariable !== "PVF_WORKBENCH_SERVER_MODE" ||
+    writePolicy.controlledWriteRunner?.serverCapability?.value !== "controlled-write"
+  ) {
+    errors.push("write-policy.json must reserve the controlled-write server capability for pvf-change apply.");
+  }
+  const semanticSafety = writePolicy.controlledWriteRunner?.semanticTextSafety || {};
+  if (
+    semanticSafety.automaticCnReadGuardRequired !== true ||
+    semanticSafety.cnStrWriteAllowed !== false ||
+    semanticSafety.directNonAsciiTextWriteAllowed !== false ||
+    semanticSafety.numericOrAsciiMinimalWriteAllowed !== true ||
+    semanticSafety.clientTextSmokeCheckRequired !== true
+  ) {
+    errors.push("write-policy.json must keep automatic Cn read protection, block Cn .str/non-ASCII writes, and require client text smoke checks.");
+  }
   const runnerTools = new Set(writePolicy.controlledWriteRunner?.allowedBridgeTools || []);
   for (const tool of ["pvf_open", "pvf_read_file", "pvf_replace_text", "pvf_backup", "pvf_save", "pvf_close"]) {
     if (!runnerTools.has(tool)) {
@@ -779,7 +797,7 @@ function checkWritePolicy(writePolicy, errors) {
     }
   }
   const forbidden = new Set(writePolicy.forbiddenOperations || []);
-  for (const operation of ["overwrite-source-pvf", "client-resource-write", "apply-without-backup", "apply-without-explicit-output", "apply-without-readback", "apply-without-matching-dry-run", "apply-without-explicit-authorization-code"]) {
+  for (const operation of ["overwrite-source-pvf", "client-resource-write", "apply-without-backup", "apply-without-explicit-output", "apply-without-readback", "apply-without-matching-dry-run", "apply-without-explicit-authorization-code", "direct-cn-str-write", "direct-non-ascii-text-write"]) {
     if (!forbidden.has(operation)) {
       errors.push(`write-policy.json must explicitly forbid: ${operation}`);
     }
@@ -792,7 +810,7 @@ function checkWritePolicy(writePolicy, errors) {
   }
 }
 
-function checkWorkspaceProfiles(profilesConfig, errors, warnings, localProfilesConfig) {
+function checkWorkspaceProfiles(profilesConfig, errors, warnings, localProfilesConfig, info) {
   if (!profilesConfig) {
     return;
   }
@@ -866,7 +884,7 @@ function checkWorkspaceProfiles(profilesConfig, errors, warnings, localProfilesC
       errors.push(`activeProfile does not match a configured profile: ${activeProfile}`);
     }
   } else {
-    warnings.push("No activeProfile is selected. Run workbench.bat profile init ... --set-active or use direct --pvf commands.");
+    info.push("Active profile: none (optional; direct --pvf commands remain fully supported)");
   }
 }
 
@@ -946,7 +964,7 @@ function main() {
   }
   checkPvfAdapter(adapterConfig, errors, warnings);
   checkWritePolicy(writePolicy, errors);
-  checkWorkspaceProfiles(profilesConfig, errors, warnings, localProfilesConfig);
+  checkWorkspaceProfiles(profilesConfig, errors, warnings, localProfilesConfig, info);
 
   for (const line of info) {
     console.log(`INFO ${line}`);

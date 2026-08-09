@@ -18,10 +18,9 @@
 
 - planner 报告不是导入计划，也不是 change-set，不能直接 apply。
 - PVF 中出现 IMG、ANI、UI、音频或 NPK 线索，不证明目标客户端资源存在，更不证明运行时显示、播放或行为正确。
-- 商业工具只提供“应具备哪些能力”的类别线索；源码方法体、UI、认证、商业限制和破坏性写入逻辑不进入实现或知识包。
+- 外部资料或工具只提供类别线索；其方法体、界面、认证和破坏性写入逻辑不进入实现或知识包。
 - NPK/IMG 只允许另行授权的只读路径或存在性预览；本 planner 不写、删、合并、替换客户端资源。
 
 ## 写入交接
 
 确需形成 PVF 改动时，重新读取目标 PVF 的 raw no-simplified 文本和最近邻样本，再进入 `workbench.bat pvf-change` 的同源同 change-set dry-run、approval code、显式 output、backup、readback 与 manifest 通道。
-

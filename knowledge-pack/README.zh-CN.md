@@ -16,7 +16,7 @@ Agent 应先读：
 
 如果某个主题没有命中路由，先做只读定位，不要回退到来源资料或旧报告。
 
-涉及全包质检、双 PVF 语义对比、结果集、LST 登记、独立掉落整理、物品来源、技能树布局或原子内容生成时，先读 `indexes/pvf-productized-capability-router.zh-CN.md`。它把完整产品能力分为现有覆盖、新增高价值路线、只读审计边界和工作台外四类；普通任务仍不需要原 GUI 或额外资料目录。
+涉及全包质检、双 PVF 语义对比、结果集、LST 登记、独立掉落整理、物品来源、技能树布局或原子内容生成时，先读 `encyclopedia/pvf-file-types/pvf-crosscutting-productivity.zh-CN.md`。普通任务继续直接使用具体主题，不需要额外资料目录。
 
 ## 子目录
 

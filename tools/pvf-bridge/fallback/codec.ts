@@ -87,7 +87,7 @@ function decodeText(source: Uint8Array, encoding: unknown, options: DecodeTextOp
 }
 
 function decodeFileName(source: Uint8Array): string {
-  return decodeText(source, "Kr").replace(/\\/g, "/").replace(/^\/+/, "").toLowerCase();
+  return decodeText(source, "Kr").replace(/\\/g, "/");
 }
 
 module.exports = {

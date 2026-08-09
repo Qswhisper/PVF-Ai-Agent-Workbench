@@ -26,7 +26,7 @@ function usage() {
   workbench.bat pvf-read list-registries [--profile <name> | --pvf <Script.pvf>] [--include-counts] [--raw]
   workbench.bat pvf-read list-files [--profile <name> | --pvf <Script.pvf>] [--prefix itemshop] [--contains shp] [--limit 20]
   workbench.bat pvf-read list-files-page [--profile <name> | --pvf <Script.pvf>] [--prefix itemshop] [--contains shp] [--offset 0] [--limit 2000]
-  workbench.bat pvf-read search [--profile <name> | --pvf <Script.pvf>] --keyword <text> [--search-type SearchFileName] [--search-path itemshop] [--limit 20] [--raw]
+  workbench.bat pvf-read search [--profile <name> | --pvf <Script.pvf>] --keyword <text> [--search-type SearchFileName] [--search-path itemshop] [--pvf-encoding Cn] [--limit 20] [--raw]
   workbench.bat pvf-read read [--profile <name> | --pvf <Script.pvf>] --path <pvf/path.ext> [--start-line 1] [--end-line 20] [--max-chars 30000] [--raw]
   workbench.bat pvf-read read-batch [--profile <name> | --pvf <Script.pvf>] --path <pvf/path.ext> --path <...> [--max-chars-per-file 30000] [--max-total-chars 300000] [--raw]
   workbench.bat pvf-read resolve-lst [--profile <name> | --pvf <Script.pvf>] --lst <registry.lst> --id <number> [--no-summary] [--raw]
@@ -119,6 +119,7 @@ function toolArgsFor(commandName, config, sessionId) {
       isUseLikeSearchPath: flag("--like-search-path"),
       searchType: option("--search-type", "SearchName"),
       matchMode: option("--match-mode", "Like"),
+      pvfEncoding: option("--pvf-encoding", config.defaults.pvfReadEncoding),
       convertToSimplifiedChinese: !(flag("--no-simplified") || rawDisplayMode()),
       limit: numberOption("--limit", config.defaults.searchLimit),
     };

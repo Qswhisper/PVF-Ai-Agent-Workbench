@@ -5,6 +5,11 @@ const fs = require("fs");
 const path = require("path");
 const fallback = require("../../../tools/pvf-bridge/fallback/pvf-readonly-backend.ts");
 const { loadPvfBackend } = require("../../../tools/pvf-bridge/native-backend");
+const {
+  directReadReason,
+  directSearchReason,
+  retryReadReason,
+} = require("../lib/semantic-read-guard");
 
 const rawArgs = process.argv.slice(2);
 const rootIndex = rawArgs.indexOf("--root");
@@ -156,6 +161,65 @@ async function inspectOne(pvfPath, label, native) {
       });
     }
 
+    const semanticPaths = [
+      "itemshop/birken.shp",
+      "itemshop/itemshop.kor.str",
+    ].filter((candidate) => available.has(candidate));
+    const semanticFallbackText = new Map();
+    for (const pvfFile of semanticPaths) {
+      const options = {
+        decompileScript: true,
+        decompileBinaryAni: false,
+        autoConvertStringLink: false,
+        convertToSimplifiedChinese: false,
+        pvfEncoding: "Cn",
+      };
+      const [fallbackRead, nativeRead] = await Promise.all([
+        fallback.readFile(fallbackSession, pvfFile, options),
+        native.readFile(nativeSession, pvfFile, options),
+      ]);
+      const fallbackText = normalizedText(fallbackRead);
+      const nativeText = normalizedText(nativeRead);
+      semanticFallbackText.set(pvfFile, fallbackText);
+      const guardReason = directReadReason(pvfFile, options, "Tw") || retryReadReason(nativeRead, options, "Tw");
+      add(`semantic-cn-guard:${pvfFile}`, nativeText === fallbackText || Boolean(guardReason), {
+        nativeSemanticEqual: nativeText === fallbackText,
+        guardReason,
+        fallbackSha256: sha256(fallbackText),
+        nativeSha256: sha256(nativeText),
+      });
+    }
+
+    const birkenCnText = semanticFallbackText.get("itemshop/birken.shp") || "";
+    const chineseNeedle = birkenCnText.match(/[\u3400-\u9fff]{2,}/)?.[0];
+    if (chineseNeedle) {
+      const query = {
+        keyword: chineseNeedle,
+        searchPath: "itemshop",
+        isStartMatch: false,
+        isUseLikeSearchPath: false,
+        searchType: "SearchScript",
+        matchMode: "Like",
+        sourceFiles: ["itemshop/birken.shp"],
+        pvfEncoding: "Cn",
+        convertToSimplifiedChinese: false,
+      };
+      const [fallbackResult, nativeResult] = await Promise.all([
+        fallback.searchFiles(fallbackSession, query),
+        native.searchFiles(nativeSession, query),
+      ]);
+      const fallbackMatches = searchPaths(fallbackResult);
+      const nativeMatches = searchPaths(nativeResult);
+      const guardReason = directSearchReason(query, "Tw");
+      add("search:cn-semantic-guard", fallbackMatches.includes("itemshop/birken.shp") && Boolean(guardReason), {
+        keywordSha256: sha256(chineseNeedle),
+        nativeSemanticEqual: sameArray(fallbackMatches, nativeMatches),
+        guardReason,
+        fallbackMatches,
+        nativeMatches,
+      });
+    }
+
     const searchCases = [];
     if (available.has("itemshop/birken.shp")) {
       searchCases.push({
@@ -242,7 +306,22 @@ async function main() {
     fs.mkdirSync(path.dirname(out), { recursive: true });
     fs.writeFileSync(out, output, "utf8");
   }
-  process.stdout.write(output);
+  const visible = out && !args.includes("--details")
+    ? {
+      schemaVersion: report.schemaVersion,
+      phase: report.phase,
+      reportPath: out,
+      summary: report.summary,
+      targets: report.targets.map((target) => ({
+        label: target.label,
+        pvfSha256: target.pvfSha256,
+        fileCount: target.checks.find((check) => check.id === "file-count")?.details?.fallback,
+        summary: target.summary,
+        failedChecks: target.checks.filter((check) => !check.ok),
+      })),
+    }
+    : report;
+  process.stdout.write(`${JSON.stringify(visible, null, 2)}\n`);
   if (!report.summary.ok) process.exitCode = 1;
 }
 

@@ -25,7 +25,7 @@ function usage() {
   workbench.bat pvf-index build [--profile <name> | --pvf <Script.pvf>] --scope itemshop --prefix itemshop [--limit 1000]
   workbench.bat pvf-index catalog [--profile <name> | --pvf <Script.pvf>]
   workbench.bat pvf-index summary [--profile <name> | --index-dir <dir>] [--scope itemshop]
-  workbench.bat pvf-index status [--profile <name> | --pvf <Script.pvf> | --index-dir <dir>] [--scope itemshop] [--skip-sample-hash]
+  workbench.bat pvf-index status [--profile <name> | --pvf <Script.pvf> | --index-dir <dir>] [--scope itemshop] [--skip-sample-hash] [--verify-full-sha] [--details]
   workbench.bat pvf-index path [--profile <name> | --index-dir <dir>] [--scope itemshop] [--prefix itemshop] [--contains birken] [--ext .shp] [--limit 20]
   workbench.bat pvf-index resolve-lst [--profile <name> | --index-dir <dir>] [--scope itemshop] --lst <registry.lst> --id <number> [--limit 20]
 `;
@@ -355,13 +355,27 @@ async function summarizeIndex() {
 }
 
 async function statusIndex() {
-  output(indexStore.indexStatus(workbenchRoot, {
+  const result = indexStore.indexStatus(workbenchRoot, {
     profile: option("--profile"),
     pvf: option("--pvf"),
     indexDir: option("--index-dir"),
     scope: option("--scope"),
     skipSampleHash: flag("--skip-sample-hash"),
-  }));
+    verifyFullSha: flag("--verify-full-sha"),
+  });
+  output(flag("--details") ? result : {
+    ok: result.ok,
+    command: "status",
+    indexDir: result.indexDir,
+    manifestPath: result.manifestPath,
+    sourcePvf: result.sourcePvf,
+    exists: result.exists,
+    fresh: result.fresh,
+    verification: result.verification,
+    checks: result.checks,
+    scope: result.manifest?.scope,
+    warnings: result.manifest?.summary?.warnings || [],
+  });
 }
 
 async function queryPathIndex() {
@@ -403,7 +417,13 @@ async function buildIndex() {
   const resolved = resolveSourcePvf(workbenchRoot, option("--profile"), option("--pvf"));
   const sourceStat = fs.statSync(resolved.sourcePvf);
   const profileName = resolved.profile?.name || null;
-  const indexName = safeName(profileName || path.basename(resolved.sourcePvf, path.extname(resolved.sourcePvf)));
+  const indexName = profileName ? safeName(profileName) : indexStore.sourceIndexName(resolved.sourcePvf);
+  const sourceSha256 = sha256File(resolved.sourcePvf);
+  const sourceSha256Sample = sourceSampleHash(resolved.sourcePvf);
+  const postHashStat = fs.statSync(resolved.sourcePvf);
+  if (postHashStat.size !== sourceStat.size || Math.abs(postHashStat.mtimeMs - sourceStat.mtimeMs) >= 2) {
+    throw new Error("Source PVF changed while its index identity was being calculated; run the build again.");
+  }
   const scopeName = option("--scope");
   const outputDir = path.resolve(
     option(
@@ -495,6 +515,10 @@ async function buildIndex() {
       }
 
       const manifestPath = path.join(outputDir, "INDEX-MANIFEST.json");
+      const finalSourceStat = fs.statSync(resolved.sourcePvf);
+      if (finalSourceStat.size !== sourceStat.size || Math.abs(finalSourceStat.mtimeMs - sourceStat.mtimeMs) >= 2) {
+        throw new Error("Source PVF changed during index build; no trustworthy index manifest was written.");
+      }
       const manifest = {
         schemaVersion: "1.0",
         phase: "phase-4-readonly-session-index",
@@ -506,7 +530,8 @@ async function buildIndex() {
           sourcePvf: resolved.sourcePvf,
           sourceSize: sourceStat.size,
           sourceMtimeMs: sourceStat.mtimeMs,
-          sourceSha256Sample: sourceSampleHash(resolved.sourcePvf),
+          sourceSha256,
+          sourceSha256Sample,
           pvfEncoding: resolved.profile?.pvfEncoding || null,
         },
         scope: {
@@ -544,6 +569,7 @@ async function buildIndex() {
           readOnly: true,
           sourceOverwritten: false,
           clientResourceWrite: false,
+          fullSourceSha256Bound: true,
         },
       };
       writeJson(manifestPath, manifest);

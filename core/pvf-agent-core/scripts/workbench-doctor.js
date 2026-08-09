@@ -36,7 +36,7 @@ const OPTIONAL_PLANNER_SCRIPTS = [];
 
 function usage() {
   return `Usage:
-  workbench.bat doctor check [--profile <name> | --all-profiles | --skip-profiles] [--scope itemshop] [--out <dir>] [--include-write-smoke] [--skip-release-gates]
+  workbench.bat doctor check [--profile <name> | --all-profiles | --skip-profiles] [--scope itemshop] [--out <dir>] [--include-write-smoke] [--skip-release-gates] [--details]
   workbench.bat doctor release-manifest
   workbench.bat doctor package-dry-run
 `;
@@ -764,7 +764,16 @@ async function runCheck() {
     checks,
   };
   fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-  output(report);
+  output(flag("--details") ? report : {
+    schemaVersion: report.schemaVersion,
+    phase: report.phase,
+    reportPath,
+    summary: report.summary,
+    failedChecks: checks.filter((check) => !check.ok),
+    warningChecks: checks
+      .filter((check) => check.warning === true || check.details?.warning === true)
+      .map((check) => ({ id: check.id, warnings: check.details?.warnings || [] })),
+  });
   if (failed > 0) {
     process.exitCode = 1;
   }

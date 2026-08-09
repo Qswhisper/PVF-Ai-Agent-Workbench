@@ -9,16 +9,16 @@
 ## 输入
 
 - Workbench 外的私有 profile。
-- 至少三个目标，分别承担低噪声 85 基线、动作化研发基准和内容兼容上界角色。
+- 至少三个目标，分别承担稳定功能基线、SHA 研究基线和兼容压力上界角色。
 - 每个目标的完整 PVF SHA、客户端根目录、客户端伴随 PVF 和资源时间对齐状态。
 - 有界的 registry、PVF probe、client anchor 和资源扫描策略。
 
 ## 执行
 
-1. 校验三种角色和禁止声明：低噪声功能基线不证明官服原版；内容兼容上界不具官方字段权威。
+1. 校验三种角色和禁止声明：稳定功能基线不证明官服原版；兼容压力上界不具官方字段权威。
 2. 重哈希每份目标 PVF，使用 raw no-simplified 读取指定 registry 与 probe。
 3. 分别记录文件存在性、raw 文本 SHA、registry fingerprint、依赖引用和读错误。
-4. 扫描客户端 anchor 的完整 SHA 与编码候选；动作归档 PVF和当前客户端伴随 PVF不一致时保持时间对齐未知。
+4. 扫描客户端 anchor 的完整 SHA 与编码候选；SHA 研究基线的归档 PVF 与当前客户端伴随 PVF 不一致时保持时间对齐未知。
 5. 客户端资源默认只扫元数据。只有 profile 明确要求时才做 scoped/complete NPK 索引读取，并保存外部缓存与中断 checkpoint。
 6. 动态格式 IMG 路径标 `unknown`；完整索引覆盖下的精确路径未命中才可标 `missing`。
 7. 生成 `present / missing / divergent / custom-only / unknown` 矩阵。

@@ -41,6 +41,34 @@ function sourceSampleHash(file) {
   return hash.digest("hex");
 }
 
+function sha256File(file) {
+  const hash = crypto.createHash("sha256");
+  const fd = fs.openSync(file, "r");
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  try {
+    for (;;) {
+      const count = fs.readSync(fd, buffer, 0, buffer.length, null);
+      if (count === 0) break;
+      hash.update(buffer.subarray(0, count));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  return hash.digest("hex");
+}
+
+function sourceIndexName(sourcePvf) {
+  const resolved = path.resolve(sourcePvf);
+  const pathIdentity = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+  const pathHash = crypto.createHash("sha256").update(pathIdentity, "utf8").digest("hex").slice(0, 12);
+  return `${safeName(path.basename(resolved, path.extname(resolved)))}-${pathHash}`;
+}
+
+function preferCurrentOrLegacy(currentPath, legacyPath) {
+  if (fs.existsSync(currentPath) || !fs.existsSync(legacyPath)) return currentPath;
+  return legacyPath;
+}
+
 function resolveIndexDir(workbenchRoot, options = {}) {
   if (options.indexDir) {
     return path.resolve(options.indexDir);
@@ -52,10 +80,15 @@ function resolveIndexDir(workbenchRoot, options = {}) {
       : runtimePath(workbenchRoot, "indexes", safeName(options.profile), "latest");
   }
   if (options.pvf) {
-    const root = safeName(path.basename(options.pvf, path.extname(options.pvf)));
-    return scope
-      ? runtimePath(workbenchRoot, "indexes", root, "scopes", scope)
-      : runtimePath(workbenchRoot, "indexes", root, "latest");
+    const currentRoot = sourceIndexName(options.pvf);
+    const legacyRoot = safeName(path.basename(options.pvf, path.extname(options.pvf)));
+    const current = scope
+      ? runtimePath(workbenchRoot, "indexes", currentRoot, "scopes", scope)
+      : runtimePath(workbenchRoot, "indexes", currentRoot, "latest");
+    const legacy = scope
+      ? runtimePath(workbenchRoot, "indexes", legacyRoot, "scopes", scope)
+      : runtimePath(workbenchRoot, "indexes", legacyRoot, "latest");
+    return preferCurrentOrLegacy(current, legacy);
   }
   const resolved = resolveSourcePvf(workbenchRoot, null, null);
   const indexName = safeName(resolved.profile?.name || path.basename(resolved.sourcePvf, path.extname(resolved.sourcePvf)));
@@ -75,7 +108,9 @@ function resolveCatalogPath(workbenchRoot, options = {}) {
     return runtimePath(workbenchRoot, "indexes", safeName(options.profile), "CATALOG.json");
   }
   if (options.pvf) {
-    return runtimePath(workbenchRoot, "indexes", safeName(path.basename(options.pvf, path.extname(options.pvf))), "CATALOG.json");
+    const current = runtimePath(workbenchRoot, "indexes", sourceIndexName(options.pvf), "CATALOG.json");
+    const legacy = runtimePath(workbenchRoot, "indexes", safeName(path.basename(options.pvf, path.extname(options.pvf))), "CATALOG.json");
+    return options.preferCurrentNaming ? current : preferCurrentOrLegacy(current, legacy);
   }
   const resolved = resolveSourcePvf(workbenchRoot, null, null);
   return runtimePath(
@@ -124,6 +159,7 @@ function indexStatus(workbenchRoot, options = {}) {
       sizeMatches: false,
       mtimeMatches: false,
       sampleHashMatches: false,
+      fullHashMatches: null,
     },
     manifest: {
       generatedAt: loaded.manifest.generatedAt,
@@ -140,11 +176,13 @@ function indexStatus(workbenchRoot, options = {}) {
 
   const stat = fs.statSync(sourcePvf);
   const currentSampleHash = options.skipSampleHash ? null : sourceSampleHash(sourcePvf);
+  const currentFullHash = options.verifyFullSha ? sha256File(sourcePvf) : null;
   result.exists = true;
   result.currentSource = {
     size: stat.size,
     mtimeMs: stat.mtimeMs,
     sha256Sample: currentSampleHash,
+    sha256: currentFullHash,
   };
   result.checks.sourceExists = true;
   result.checks.sizeMatches = stat.size === loaded.manifest.source?.sourceSize;
@@ -152,12 +190,20 @@ function indexStatus(workbenchRoot, options = {}) {
   result.checks.sampleHashMatches = options.skipSampleHash
     ? null
     : currentSampleHash === loaded.manifest.source?.sourceSha256Sample;
+  result.checks.fullHashMatches = options.verifyFullSha
+    ? Boolean(loaded.manifest.source?.sourceSha256) && currentFullHash === loaded.manifest.source.sourceSha256
+    : null;
+  result.verification = {
+    mode: options.verifyFullSha ? "full-sha256" : "fast-metadata-sample",
+    fullSha256Recorded: Boolean(loaded.manifest.source?.sourceSha256),
+  };
   result.fresh =
     result.checks.sourcePathMatches &&
     result.checks.sourceExists &&
     result.checks.sizeMatches &&
     result.checks.mtimeMatches &&
-    (options.skipSampleHash || result.checks.sampleHashMatches === true);
+    (options.skipSampleHash || result.checks.sampleHashMatches === true) &&
+    (!options.verifyFullSha || result.checks.fullHashMatches === true);
   return result;
 }
 
@@ -230,7 +276,7 @@ function loadIndexCatalog(workbenchRoot, options = {}) {
 }
 
 function updateIndexCatalog(workbenchRoot, options = {}) {
-  const catalogPath = resolveCatalogPath(workbenchRoot, options);
+  const catalogPath = resolveCatalogPath(workbenchRoot, { ...options, preferCurrentNaming: true });
   const manifestPath = options.manifestPath;
   if (!manifestPath || !fs.existsSync(manifestPath)) {
     throw new Error("manifestPath is required to update the index catalog.");
@@ -257,6 +303,7 @@ function updateIndexCatalog(workbenchRoot, options = {}) {
     indexDir: path.dirname(manifestPath),
     manifestPath,
     generatedAt: manifest.generatedAt,
+    sourceSha256: manifest.source?.sourceSha256 || null,
     scope: manifest.scope,
     summary: manifest.summary,
     safety: manifest.safety,
@@ -361,6 +408,8 @@ module.exports = {
   resolveIndexDir,
   resolveLstIndex,
   safeName,
+  sha256File,
+  sourceIndexName,
   sourceSampleHash,
   summarizeIndex,
   toPosix,

@@ -18,7 +18,7 @@
     "unifiedQueryQuick": "dictionaries/unified-knowledge-query-boundary-quick.zh-CN.md",
     "taskBookmarksQuick": "dictionaries/pvf-task-bookmarks-boundary-quick.zh-CN.md",
     "dungeonWorldStandardization": "indexes/dungeon-world-standardization-capability-router.zh-CN.md",
-    "pvfProductizedCapabilities": "indexes/pvf-productized-capability-router.zh-CN.md"
+    "pvfCrosscuttingCapabilities": "encyclopedia/pvf-file-types/pvf-crosscutting-productivity.zh-CN.md"
   },
   "builtinQueryArtifacts": {
     "nut": "indexes/nut-api-facts.compact.json",
@@ -131,35 +131,9 @@
         "task-cards/skill-state-nut-runtime-readonly-audit.zh-CN.md"
       ]
     },
-    "commercial-tool-capability-boundary": {
-      "status": "需验证",
-      "entries": [
-        "indexes/commercial-tool-capability-boundary.zh-CN.md",
-        "indexes/pvf-productized-capability-router.zh-CN.md",
-        "dictionaries/dependency-planner-boundary-quick.zh-CN.md",
-        "workflows/unified-dependency-planner.zh-CN.md",
-        "workflows/item-stackable-dependency-planner.zh-CN.md",
-        "indexes/item-stackable-dependency-planner-boundary.zh-CN.md",
-        "indexes/extraction-capability-router.zh-CN.md",
-        "workflows/dungeon-extraction-planner.zh-CN.md",
-        "workflows/apc-extraction-planner.zh-CN.md",
-        "indexes/dungeon-extraction-boundary.zh-CN.md",
-        "indexes/apc-extraction-boundary.zh-CN.md",
-        "task-cards/equipment-avatar-aura-creature-extraction-preview.zh-CN.md",
-        "workflows/equipment-avatar-aura-creature-extraction-planner.zh-CN.md",
-        "indexes/equipment-avatar-aura-creature-extraction-boundary.zh-CN.md",
-        "task-cards/stackable-package-orb-card-extraction-preview.zh-CN.md",
-        "workflows/stackable-package-orb-card-extraction-planner.zh-CN.md",
-        "indexes/stackable-package-orb-card-extraction-boundary.zh-CN.md",
-        "task-cards/client-asset-path-preview.zh-CN.md",
-        "workflows/client-asset-path-preview.zh-CN.md",
-        "indexes/client-asset-path-boundary.zh-CN.md"
-      ]
-    },
-    "pvf-productized-capabilities": {
+    "pvf-crosscutting-capabilities": {
       "status": "默认可用",
       "entries": [
-        "indexes/pvf-productized-capability-router.zh-CN.md",
         "encyclopedia/pvf-file-types/pvf-crosscutting-productivity.zh-CN.md",
         "safety/README.zh-CN.md"
       ]
@@ -486,7 +460,6 @@
       "entries": [
         "safety/README.zh-CN.md",
         "indexes/extraction-capability-router.zh-CN.md",
-        "indexes/commercial-tool-capability-boundary.zh-CN.md",
         "workflows/item-stackable-dependency-planner.zh-CN.md",
         "workflows/dungeon-extraction-planner.zh-CN.md",
         "workflows/apc-extraction-planner.zh-CN.md",

@@ -3,6 +3,11 @@
 const fs = require("fs");
 const path = require("path");
 const { loadPvfBackend } = require("./native-backend");
+const {
+  isPathInside,
+  resolvePvfPathInside,
+  validatePvfEntryPath,
+} = require("./fallback/path-safety.ts");
 
 const native = loadPvfBackend().api;
 
@@ -145,15 +150,10 @@ function normalizeKey(value) {
   return normalizePvfPath(value).toLowerCase();
 }
 
-function isInside(parent, child) {
-  const relative = path.relative(parent, child);
-  return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
-}
-
 function ensureOutputRoot(outputRoot) {
   const resolved = path.resolve(outputRoot);
   const cwd = process.cwd();
-  if (!isInside(cwd, resolved)) {
+  if (!isPathInside(cwd, resolved)) {
     throw new Error(`Refusing to extract outside workspace: ${resolved}`);
   }
   if (fs.existsSync(resolved)) {
@@ -236,8 +236,7 @@ function classifyPath(pvfPath) {
 }
 
 function localPath(outputRoot, pvfPath) {
-  const normalized = normalizePvfPath(pvfPath);
-  return path.join(outputRoot, ...normalized.split("/"));
+  return resolvePvfPathInside(outputRoot, pvfPath, "Extracted PVF entry path");
 }
 
 function commonReadOptions() {
@@ -259,17 +258,28 @@ async function readText(sessionId, pvfPath) {
 }
 
 async function writeExtractedFile(sessionId, outputRoot, pvfPath) {
-  const normalized = normalizePvfPath(pvfPath);
+  const normalized = validatePvfEntryPath(pvfPath, "Extracted PVF entry path");
   const result = await native.readFile(sessionId, normalized, commonReadOptions());
   const target = localPath(outputRoot, normalized);
   fs.mkdirSync(path.dirname(target), { recursive: true });
+  const realRoot = fs.realpathSync.native(outputRoot);
+  const realParent = fs.realpathSync.native(path.dirname(target));
+  if (!isPathInside(realRoot, realParent)) {
+    const error = new Error(`Refusing to follow an extraction directory link outside the output root: ${realParent}`);
+    error.code = "UNSAFE_EXTRACTION_TARGET";
+    throw error;
+  }
+  const finalTarget = path.join(realParent, path.basename(target));
+  if (fs.existsSync(finalTarget)) {
+    throw new Error(`Refusing to overwrite an existing extracted file: ${finalTarget}`);
+  }
   if (typeof result.textContent === "string") {
-    fs.writeFileSync(target, result.textContent, "utf8");
+    fs.writeFileSync(finalTarget, result.textContent, { encoding: "utf8", flag: "wx" });
     return { pvfPath: normalized, type: "text", bytes: Buffer.byteLength(result.textContent, "utf8") };
   }
   if (result.base64Content) {
     const bytes = Buffer.from(result.base64Content, "base64");
-    fs.writeFileSync(target, bytes);
+    fs.writeFileSync(finalTarget, bytes, { flag: "wx" });
     return { pvfPath: normalized, type: "binary", bytes: bytes.length };
   }
   throw new Error(`Cannot extract unreadable file: ${normalized}`);
@@ -618,7 +628,12 @@ async function main() {
     const files = await native.listFiles(session.sessionId);
     const fileSet = new Map();
     for (const file of files) {
-      fileSet.set(normalizeKey(file.fileName), normalizePvfPath(file.fileName));
+      const safePath = validatePvfEntryPath(file.fileName, "PVF file-tree entry");
+      const key = normalizeKey(safePath);
+      if (fileSet.has(key)) {
+        throw new Error(`PVF file tree contains a duplicate normalized path: ${safePath}`);
+      }
+      fileSet.set(key, safePath);
     }
     const registries = await loadRegistries(session.sessionId);
     const dungeon = await findDungeon(session.sessionId, registries, dungeonName, dungeonPath, dungeonId);
@@ -635,6 +650,8 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err && err.stack ? err.stack : String(err));
+  const code = err?.code ? `[${err.code}] ` : "";
+  console.error(`ERROR ${code}${err?.message || String(err)}`);
+  if (process.argv.includes("--debug") && err?.stack) console.error(err.stack);
   process.exit(1);
 });

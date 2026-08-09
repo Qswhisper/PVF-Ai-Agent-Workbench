@@ -529,7 +529,15 @@ function selfTest() {
   const checks = [];
   try {
     const builtin = readJson(path.join(workbenchRoot, "knowledge-pack", "indexes", "pvf-tag-facts.compact.json"));
-    checks.push({ id: "builtin-catalog", ok: builtin.phase === "builtin-pvf-tag-facts" && builtin.community.rows.length >= 6000 && builtin.layeredTags.tags.length >= 2000 });
+    const builtinRows = builtin.community?.rows || [];
+    const privateKeys = new Set(["id", "authors", "author", "create", "updateTime", "source", "sourcePath", "sourceId", "channel"]);
+    checks.push({ id: "builtin-catalog", ok: builtin.phase === "builtin-pvf-tag-facts" && builtinRows.length >= 300 && builtinRows.length < 1000 && builtin.layeredTags.tags.length >= 2000 });
+    checks.push({ id: "builtin-community-useful-summaries", ok:
+      builtinRows.some((item) => item.normalizedSection === "no element" && /无元素/.test(item.comment)) &&
+      builtinRows.some((item) => item.normalizedSection === "ignore defense" && /无视防御/.test(item.comment)) });
+    checks.push({ id: "builtin-community-source-private", ok: builtinRows.every((item) =>
+      Object.keys(item).every((key) => !privateKeys.has(key)) &&
+      !/(?:mkjung\s+\d{6}|歌词|never\s+gonna|https?:\/\/|www\.|(?:qq|微信|群号|邮箱)\s*[:：]?\s*\d)/i.test(`${item.section || ""}\n${item.comment || ""}`)) });
     const oldFile = path.join(tempRoot, "old.db");
     const newFile = path.join(tempRoot, "new.db");
     const officialRoot = path.join(tempRoot, "official-original");

@@ -16,6 +16,20 @@ Workbench 将这层能力分成七条路线：
 6. 技能树 SP / TP 布局与多职业合并安全审计。
 7. 任务、礼盒、徽章和装备复制等多文件原子内容生成。
 
+## 默认路由
+
+| 任务 | 入口 |
+| --- | --- |
+| 全包脚本、SQR、ACT、LST 与 registry 质量审计 | `task-cards/pvf-package-quality-audit-readonly.zh-CN.md` |
+| 双 PVF 语义对比、结果集与集合运算 | `task-cards/pvf-semantic-compare-workset-readonly.zh-CN.md` |
+| `.lst` 新增、查重、导出与引用闭合 | `task-cards/lst-registry-lifecycle-readonly-plan.zh-CN.md` |
+| 独立掉落整理与英雄档候选补全 | `task-cards/independent-drop-normalization-readonly-plan.zh-CN.md` |
+| 任务、掉落、商店、礼包和配方来源反查 | `task-cards/item-source-graph-readonly.zh-CN.md` |
+| 技能树布局与多职业合并 | `task-cards/skill-tree-layout-merge-readonly-plan.zh-CN.md` |
+| 任务、礼盒、徽章和装备复制等原子内容计划 | `task-cards/atomic-content-generation-readonly-plan.zh-CN.md` |
+
+普通商店、装备、技能、任务、副本、APC 和客户端资源问题继续使用 `indexes/knowledge-index.json` 中的具体主题，不需要先经过本入口。
+
 ## 为什么单独成层
 
 - 字段词典回答“这个块可能表示什么”，横向路线回答“一次操作跨哪些文件、如何判冲突、怎样报告遗漏”。
@@ -36,4 +50,3 @@ Workbench 将这层能力分成七条路线：
 ## 写入边界
 
 横向能力默认只读。即使预览没有冲突，也不能直接把生成索引或外部结果写回。任何授权改动都要从目标 raw no-simplified 文本重建最小 change-set，并通过 `pvf-change` 的 dry-run manifest、approval code、显式输出、备份和 readback。
-

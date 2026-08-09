@@ -1,4 +1,4 @@
-# GitHub 2.1.1 发布清单
+# GitHub 2.1.3 发布清单
 
 本清单用于把当前干净目录同步到 GitHub。Gate 报告、真实 PVF、客户端、
 本机 profile 和研究目录都不进入仓库。
@@ -29,7 +29,7 @@
    secret、数据库、压缩包、缓存目录或 Gate 输出。
 7. 提交并推送后，在远端 tag 对应的 Source code zip 中再次运行
    `workbench.bat check`、`workbench.bat fallback-self-test` 和
-   `workbench.bat release gate3`，再创建 `v2.1.1`
+   `workbench.bat release gate3`，再创建 `v2.1.3`
    Release。
 
 ## 发布措辞边界
@@ -44,3 +44,6 @@
   `workbench.bat check` 会明确显示 degraded read-only 并给出微软官方 x64
   运行库链接。人工交互终端会打开官方说明页；Agent/CI 不弹窗，也不会
   自动下载或安装。
+- 可以声明 `Cn` 搜索、`.str`、StringLink 与非 ASCII 脚本读取会自动进行
+  语义保护；不能声明直接中文文本写入已经安全。`Cn .str` 与直接非 ASCII
+  文本写入当前必须失败关闭。

@@ -9,7 +9,7 @@ const { loadPvfBackend } = require("../../../tools/pvf-bridge/native-backend");
 const { backtickValues, normalizeEncoding, normalizeKey, normalizePvfPath, parseLstContent } = require("../../../tools/pvf-bridge/pvf_graph_common");
 
 const STATUS_VALUES = ["present", "missing", "divergent", "custom-only", "unknown"];
-const ROLE_VALUES = new Set(["low-noise-85-baseline", "action-research-baseline", "content-compatibility-upper-bound"]);
+const ROLE_VALUES = new Set(["functional-baseline", "sha-research-baseline", "compatibility-upper-bound"]);
 const RESOURCE_MODES = new Set(["metadata", "scoped", "complete"]);
 const NPK_HEADER = "NeoplePack_Bill";
 const NAME_KEY_PHRASE = "puchikon@neople dungeon and fighter ";
@@ -208,8 +208,8 @@ function validateProfile(profile) {
     roles.add(target.role);
     if (!/^[a-f0-9]{64}$/i.test(String(target.pvfSha256 || ""))) throw new Error(`Target ${target.id} must lock a full pvfSha256.`);
     if (!target.pvf || !target.clientRoot) throw new Error(`Target ${target.id} requires pvf and clientRoot.`);
-    if (target.role === "low-noise-85-baseline" && target.byteExactOfficialOriginalProven !== false) throw new Error("The low-noise baseline must not claim byte-exact official provenance.");
-    if (target.role === "content-compatibility-upper-bound" && target.officialFieldAuthority !== false) throw new Error("The compatibility upper bound must not claim official field authority.");
+    if (target.role === "functional-baseline" && target.byteExactOfficialOriginalProven !== false) throw new Error("The functional baseline must not claim byte-exact official provenance.");
+    if (target.role === "compatibility-upper-bound" && target.officialFieldAuthority !== false) throw new Error("The compatibility upper bound must not claim official field authority.");
   }
   for (const role of ROLE_VALUES) if (!roles.has(role)) throw new Error(`Profile is missing required role: ${role}`);
   const mode = profile.resourceScan?.mode || "metadata";
@@ -577,9 +577,9 @@ async function build() {
     safety: { readOnly: true, sourcePvfsModified: false, clientWritten: false, npkImgWritten: false, outputExternalOnly: true, largeClientDefault: "metadata-only unless profile explicitly requests scoped/complete NPK indexes" },
     statusValues: STATUS_VALUES,
     roleBoundaries: {
-      lowNoise85Baseline: "Functional low-noise baseline only; not proven byte-exact official original.",
-      actionResearchBaseline: "Research PVF facts are SHA-bound; companion client resources may have separate temporal alignment.",
-      contentCompatibilityUpperBound: "Compatibility pressure and extra-content source only; custom-only content is not official field authority.",
+      functionalBaseline: "Stable functional reference only; not proven byte-exact official original.",
+      shaResearchBaseline: "Research PVF facts are SHA-bound; companion client resources may have separate temporal alignment.",
+      compatibilityUpperBound: "Compatibility pressure and extra-content reference only; custom-only content is not official field authority.",
     },
     snapshots,
     matrix,
@@ -668,6 +668,11 @@ function stats() {
 function selfTest() {
   const targets = ["baseline", "action", "upper"];
   const checks = [];
+  checks.push({ id: "neutral-role-contract", ok:
+    ROLE_VALUES.has("functional-baseline") &&
+    ROLE_VALUES.has("sha-research-baseline") &&
+    ROLE_VALUES.has("compatibility-upper-bound") &&
+    ROLE_VALUES.size === 3 });
   const present = classifyCells(targets, { baseline: { state: "present", sig: "a" }, action: { state: "present", sig: "a" }, upper: { state: "present", sig: "a" } }, (value) => value.sig);
   checks.push({ id: "present", ok: Object.values(present).every((cell) => cell.status === "present") });
   const divergent = classifyCells(targets, { baseline: { state: "present", sig: "a" }, action: { state: "present", sig: "b" }, upper: { state: "present", sig: "c" } }, (value) => value.sig);

@@ -24,7 +24,7 @@ function usage() {
   workbench.bat backend-contract show
   workbench.bat backend-contract show-readonly
   workbench.bat backend-contract fixture [--fixture <fixture.json>]
-  workbench.bat backend-contract check [--profile <name> | --pvf <Script.pvf>] [--fixture <fixture.json>] [--scope itemshop] [--out <dir>] [--skip-index] [--include-write-smoke]
+  workbench.bat backend-contract check [--profile <name> | --pvf <Script.pvf>] [--fixture <fixture.json>] [--scope itemshop] [--out <dir>] [--skip-index] [--include-write-smoke] [--details]
 `;
 }
 
@@ -328,10 +328,14 @@ async function runCheck() {
     for (const tool of ["pvf_backup", "pvf_replace_text", "pvf_write_file", "pvf_save"]) {
       assertCondition(adapterConfig.forbiddenToolsSet.has(tool), `adapter must forbid ${tool}`);
     }
+    const directIndexNameA = indexStore.sourceIndexName("C:\\fixture-a\\Script.pvf");
+    const directIndexNameB = indexStore.sourceIndexName("C:\\fixture-b\\Script.pvf");
+    assertCondition(directIndexNameA !== directIndexNameB, "direct PVFs with the same basename must not share an index cache key.");
     return {
       mode: adapterConfig.mode,
       allowedTools: [...adapterConfig.allowedToolsSet].sort(),
       forbiddenTools: [...adapterConfig.forbiddenToolsSet].sort(),
+      directPvfIndexCacheKeysDistinct: true,
     };
   });
 
@@ -486,6 +490,62 @@ async function runCheck() {
       };
     });
 
+    if (fixture.semanticReadPath) {
+      await recordTest(tests, "text.semantic-cn-parity", async () => {
+        const semanticReadPath = normalizePvfPath(fixture.semanticReadPath);
+        const readOptions = {
+          pvfPath: semanticReadPath,
+          pvfEncoding: fixtureEncoding.read || adapterConfig.defaults.pvfReadEncoding,
+          decompileScript: true,
+          decompileBinaryAni: false,
+          useCompatibleDecompiler: true,
+          convertToSimplifiedChinese: false,
+          maxChars: 30000,
+        };
+        const guarded = await callAndParse(client, "pvf_read_file", {
+          sessionId: openedSessionId,
+          ...readOptions,
+        });
+        const launch = upstreamLaunchOptions(adapterConfig);
+        const fallbackClient = new BackendStdioClient({
+          ...launch,
+          env: {
+            ...(launch.env || {}),
+            PVF_WORKBENCH_BACKEND: "typescript-readonly",
+            PVF_WORKBENCH_SERVER_MODE: "read-only",
+          },
+        });
+        let fallbackSessionId = null;
+        try {
+          const fallbackOpened = await callAndParse(fallbackClient, "pvf_open", {
+            path: sourcePvf,
+            encoding: option("--encoding", fixtureEncoding.open || adapterConfig.defaults.pvfOpenEncoding),
+          });
+          fallbackSessionId = fallbackOpened.session?.sessionId;
+          assertCondition(fallbackSessionId, "semantic fallback pvf_open did not return sessionId.");
+          const fallbackRead = await callAndParse(fallbackClient, "pvf_read_file", {
+            sessionId: fallbackSessionId,
+            ...readOptions,
+          });
+          assertCondition(guarded.semanticReadGuard?.applied === true, `${semanticReadPath} did not activate the automatic semantic read guard.`);
+          assertCondition(typeof guarded.textContent === "string", `${semanticReadPath} did not return guarded text.`);
+          assertCondition(guarded.textContent === fallbackRead.textContent, `${semanticReadPath} differs from the TypeScript semantic fallback.`);
+          return {
+            pvfPath: semanticReadPath,
+            textLength: guarded.textContent.length,
+            semanticReadGuard: guarded.semanticReadGuard,
+          };
+        } finally {
+          if (fallbackSessionId) {
+            try { await callAndParse(fallbackClient, "pvf_close", { sessionId: fallbackSessionId }); } catch { /* best effort */ }
+          }
+          fallbackClient.stop();
+        }
+      });
+    } else {
+      skipTest(tests, "text.semantic-cn-parity", "fixture does not define semanticReadPath");
+    }
+
     await recordTest(tests, "text.read-batch", async () => {
       const read = await callAndParse(client, "pvf_read_files", {
         sessionId: openedSessionId,
@@ -637,7 +697,14 @@ async function runCheck() {
     tests,
   };
   fs.writeFileSync(reportPath, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-  output(report);
+  output(flag("--details") ? report : {
+    schemaVersion: report.schemaVersion,
+    phase: report.phase,
+    sourcePvf: report.sourcePvf,
+    reportPath,
+    summary: report.summary,
+    failedTests: tests.filter((test) => !test.ok),
+  });
   if (failed > 0) {
     process.exitCode = 1;
   }

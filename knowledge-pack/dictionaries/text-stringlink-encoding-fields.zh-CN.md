@@ -65,6 +65,9 @@
 
 ## 已验证写入边界
 
+- `Cn` 语义读取已覆盖 `.str`、StringLink、中文脚本搜索和含非 ASCII 的脚本；这是自动只读保护。
+- 数字或 ASCII 最小替换可以使用正确语义源文本、受控输出和 fallback 读回；触达文本承载文件时仍要求客户端 UI smoke check。
+- `Cn .str` 和直接非 ASCII 文本写入当前失败关闭，不能生成 approval code。
 
 边界：
 

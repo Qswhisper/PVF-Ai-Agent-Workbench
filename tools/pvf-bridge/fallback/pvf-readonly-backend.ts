@@ -5,6 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const { decompileBinaryAni } = require("./ani.ts");
 const { createChecksum, decodeFileName, decodeText, decrypt, normalizeEncoding } = require("./codec.ts");
+const { validatePvfEntryPath } = require("./path-safety.ts");
 const {
   SCRIPT_RESOURCE_LIMITS,
   StringTable,
@@ -182,7 +183,8 @@ class ReadonlyPvfSession {
         const fileNameChecksum = tree.readUInt32LE(treeOffset); treeOffset += 4;
         const fileNameLength = tree.readUInt32LE(treeOffset); treeOffset += 4;
         if (fileNameLength > tree.length - treeOffset - 12) throw new Error(`PVF entry ${index} has an invalid file-name length.`);
-        const fileName = decodeFileName(tree.subarray(treeOffset, treeOffset + fileNameLength)); treeOffset += fileNameLength;
+        const decodedFileName = decodeFileName(tree.subarray(treeOffset, treeOffset + fileNameLength)); treeOffset += fileNameLength;
+        const fileName = validatePvfEntryPath(decodedFileName, `PVF entry ${index} path`).toLowerCase();
         const dataLength = tree.readInt32LE(treeOffset); treeOffset += 4;
         const checksum = tree.readUInt32LE(treeOffset); treeOffset += 4;
         const dataOffset = tree.readInt32LE(treeOffset); treeOffset += 4;

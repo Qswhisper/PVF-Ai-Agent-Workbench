@@ -9,6 +9,8 @@ Workbench 的普通后端选择顺序是：
 
 备用后端不是外部插件，也不需要 npm、网络、转译器或额外安装。它的 `.ts` 源码随干净 Workbench 一起复制，由固定的 Node.js 24 runtime 直接做类型擦除并执行，用来保证新电脑暂时缺少 VC++ 运行库时仍能开展只读工作。`workbench.bat check` 会同时验证固定 runtime 具备这项能力。
 
+即使 native 正常加载，统一只读入口仍会在 `Cn` 中文搜索、`.str`、StringLink 或含非 ASCII 脚本出现时自动采用备用后端的语义结果。这个保护按会话复用，不需要 profile 参数，也不要求普通用户手工设置环境变量。
+
 ## 可以做什么
 
 - 打开 PVF、读取文件树和元数据。
@@ -22,6 +24,8 @@ Workbench 的普通后端选择顺序是：
 ## 绝对不能做什么
 
 备用模式下，保存、写文件、非 dry-run 文本替换、删除、重命名、导入、导出和为写入任务创建备份都会抛出 `READ_ONLY_FALLBACK`。stdio 的 `tools/list` 不公开写工具；即使绕过枚举直接按名称调用，分发层和 TypeScript API 层仍会再次阻断。`workbench.bat pvf-change apply` 会在修改发生前停止，不会把备用解析结果交给 native 写回。
+
+native 可写时仍有独立的编码护栏：`Cn .str` 和直接非 ASCII 文本写入会在 dry-run 阶段阻断；数字或 ASCII 最小替换使用语义正确的源文本、会话 overlay 和 fallback 读回，并保留客户端文本 smoke check。
 
 这条限制是架构边界，不是等待用户确认后可以绕开的提示。需要输出 PVF 时，先安装兼容的 Microsoft Visual C++ v14 x64 runtime，再运行 `workbench.bat check`，直到状态显示 native 完整后端可用。
 
@@ -42,5 +46,7 @@ workbench.bat check
 workbench.bat fallback-self-test
 workbench.bat backend-contract show-readonly
 ```
+
+`fallback-self-test` 默认只打印摘要和失败项，完整 66 项报告会写入本机 runtime state；维护人员需要逐项查看时加 `--details`。
 
 维护人员可用 `PVF_WORKBENCH_BACKEND=typescript-readonly` 强制进入备用模式。`workbench.bat fallback-diff` 只用于对外部 PVF 做 native/fallback 回归比较，报告必须写在 Workbench 外。普通用户和 Agent 不应为了绕过 native 错误而强设 backend 模式。

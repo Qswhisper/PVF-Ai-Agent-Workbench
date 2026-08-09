@@ -1,13 +1,39 @@
 "use strict";
 
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const { loadPvfBackend } = require("./native-backend");
+const { loadPvfBackend, loadTypescriptReadonlyBackend } = require("./native-backend");
+const { validatePvfEntryPath } = require("./fallback/path-safety.ts");
+const {
+  directReadReason,
+  directSearchReason,
+  guardDetails,
+  retryReadReason,
+  retrySearchReason,
+  semanticWriteSafety,
+} = require("../../core/pvf-agent-core/lib/semantic-read-guard");
+
+const SERVER_MODE_ENV = "PVF_WORKBENCH_SERVER_MODE";
+const CONTROLLED_WRITE_MODE = "controlled-write";
+const serverMode = String(process.env[SERVER_MODE_ENV] || "read-only").trim().toLowerCase();
+if (!new Set(["read-only", CONTROLLED_WRITE_MODE]).has(serverMode)) {
+  throw new Error(`${SERVER_MODE_ENV} must be read-only or ${CONTROLLED_WRITE_MODE}.`);
+}
+if (serverMode === CONTROLLED_WRITE_MODE && String(process.env.PVF_XPILOT_NATIVE || "").trim()) {
+  throw new Error("Controlled write mode refuses PVF_XPILOT_NATIVE; use the pinned bundled native backend.");
+}
 
 const selectedBackend = loadPvfBackend();
 const native = selectedBackend.api;
+const effectiveReadOnly = selectedBackend.readOnly || serverMode !== CONTROLLED_WRITE_MODE;
+const semanticFallback = !selectedBackend.readOnly
+  ? loadTypescriptReadonlyBackend()
+  : null;
 
 const sessions = new Map();
+const semanticFallbackSessions = new Map();
+const sessionTextOverlays = new Map();
 let currentSessionId;
 const READ_ONLY_TOOL_NAMES = new Set([
   "pvf_open",
@@ -26,17 +52,27 @@ const READ_ONLY_TOOL_NAMES = new Set([
 ]);
 
 function assertWritableBackend(operation) {
-  if (!selectedBackend.readOnly) return;
-  const error = new Error(
-    `The active PVF backend is the TypeScript read-only fallback; ${operation} is blocked. ` +
-    "Install the Microsoft Visual C++ v14 x64 runtime and rerun workbench.bat check before preparing or applying PVF writes.",
-  );
-  error.code = "READ_ONLY_FALLBACK";
-  throw error;
+  if (selectedBackend.readOnly) {
+    const error = new Error(
+      `The active PVF backend is the TypeScript read-only fallback; ${operation} is blocked. ` +
+      "Install the Microsoft Visual C++ v14 x64 runtime and rerun workbench.bat check before preparing or applying PVF writes.",
+    );
+    error.code = "READ_ONLY_FALLBACK";
+    throw error;
+  }
+  if (serverMode !== CONTROLLED_WRITE_MODE) {
+    const error = new Error(
+      `${operation} is available only inside workbench.bat pvf-change apply. ` +
+      `The ordinary backend server starts in read-only mode by default.`,
+    );
+    error.code = "CONTROLLED_WRITE_CAPABILITY_REQUIRED";
+    throw error;
+  }
+  return;
 }
 
 function assertToolAllowedForSelectedBackend(name, args) {
-  if (!selectedBackend.readOnly || READ_ONLY_TOOL_NAMES.has(name)) return;
+  if (READ_ONLY_TOOL_NAMES.has(name)) return;
   if (name === "pvf_replace_text" && args?.dryRun === true) return;
   assertWritableBackend(`tool ${name}`);
 }
@@ -91,6 +127,56 @@ function getSessionState(sessionId) {
   return state;
 }
 
+async function ensureSemanticFallbackSession(sessionId) {
+  if (!semanticFallback) return null;
+  let pending = semanticFallbackSessions.get(sessionId);
+  if (!pending) {
+    const state = getSessionState(sessionId);
+    pending = semanticFallback.openSession(state.sourcePath, state.encoding)
+      .then((opened) => {
+        const fallbackSessionId = opened && (opened.sessionId || opened.session?.sessionId);
+        if (!fallbackSessionId) throw new Error("TypeScript fallback did not return a sessionId.");
+        return fallbackSessionId;
+      })
+      .catch((error) => {
+        semanticFallbackSessions.delete(sessionId);
+        const wrapped = new Error(
+          `Automatic Chinese text safety fallback could not open the PVF: ${error && error.message ? error.message : String(error)}`,
+        );
+        wrapped.code = "SEMANTIC_READ_GUARD_FAILED";
+        throw wrapped;
+      });
+    semanticFallbackSessions.set(sessionId, pending);
+  }
+  return pending;
+}
+
+async function closeSemanticFallbackSession(sessionId) {
+  const pending = semanticFallbackSessions.get(sessionId);
+  semanticFallbackSessions.delete(sessionId);
+  if (!pending || !semanticFallback) return;
+  const fallbackSessionId = await pending;
+  await semanticFallback.closeSession(fallbackSessionId);
+}
+
+function getTextOverlay(sessionId, pvfPath) {
+  return sessionTextOverlays.get(sessionId)?.get(pvfPath) || null;
+}
+
+function setTextOverlay(sessionId, pvfPath, file, textContent) {
+  let overlays = sessionTextOverlays.get(sessionId);
+  if (!overlays) {
+    overlays = new Map();
+    sessionTextOverlays.set(sessionId, overlays);
+  }
+  overlays.set(pvfPath, {
+    ...file,
+    fileName: file?.fileName || pvfPath,
+    textContent,
+    base64Content: undefined,
+  });
+}
+
 function text(value) {
   return {
     content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }],
@@ -108,7 +194,46 @@ function normalizePvfPath(value) {
   if (!value || typeof value !== "string") {
     throw new Error("pvfPath is required.");
   }
-  return value.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+/g, "/");
+  return validatePvfEntryPath(value, "PVF path");
+}
+
+function pathKey(value) {
+  const resolved = path.resolve(value);
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function realPathKey(value) {
+  const resolved = fs.realpathSync.native(path.resolve(value));
+  return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+}
+
+function sameExistingFile(left, right) {
+  if (pathKey(left) === pathKey(right)) return true;
+  if (!fs.existsSync(left) || !fs.existsSync(right)) return false;
+  if (realPathKey(left) === realPathKey(right)) return true;
+  const leftStat = fs.statSync(left, { bigint: true });
+  const rightStat = fs.statSync(right, { bigint: true });
+  return leftStat.ino !== 0n && rightStat.ino !== 0n && leftStat.dev === rightStat.dev && leftStat.ino === rightStat.ino;
+}
+
+function canonicalCandidatePath(value) {
+  const resolved = path.resolve(value);
+  if (fs.existsSync(resolved)) return fs.realpathSync.native(resolved);
+  const parent = fs.realpathSync.native(path.dirname(resolved));
+  return path.join(parent, path.basename(resolved));
+}
+
+function assertDistinctFilesystemTarget(sourcePath, targetPath, operation) {
+  if (sameExistingFile(sourcePath, targetPath)) {
+    const error = new Error(`Refusing ${operation} because its target is the source PVF: ${targetPath}`);
+    error.code = "SOURCE_PVF_OVERWRITE_BLOCKED";
+    throw error;
+  }
+  if (pathKey(canonicalCandidatePath(sourcePath)) === pathKey(canonicalCandidatePath(targetPath))) {
+    const error = new Error(`Refusing ${operation} because its canonical target is the source PVF: ${targetPath}`);
+    error.code = "SOURCE_PVF_OVERWRITE_BLOCKED";
+    throw error;
+  }
 }
 
 function normalizeEncoding(value) {
@@ -186,8 +311,69 @@ function commonReadOptions(args = {}) {
   };
 }
 
+async function readPvfFileWithSemanticGuard(sessionId, pvfPath, args = {}) {
+  const normalizedPath = normalizePvfPath(pvfPath);
+  const options = commonReadOptions(args);
+  const session = getSessionState(sessionId);
+  const overlay = getTextOverlay(sessionId, normalizedPath);
+  if (overlay) {
+    return {
+      file: overlay,
+      semanticReadGuard: {
+        applied: true,
+        reason: "controlled-write-overlay",
+        backend: "native-session-overlay",
+        automatic: true,
+      },
+    };
+  }
+  const directReason = semanticFallback
+    ? directReadReason(normalizedPath, options, session.encoding)
+    : null;
+  if (directReason) {
+    const fallbackSessionId = await ensureSemanticFallbackSession(sessionId);
+    return {
+      file: await semanticFallback.readFile(fallbackSessionId, normalizedPath, options),
+      semanticReadGuard: guardDetails(directReason),
+    };
+  }
+
+  const file = await native.readFile(sessionId, normalizedPath, options);
+  const retryReason = semanticFallback
+    ? retryReadReason(file, options, session.encoding)
+    : null;
+  if (!retryReason) return { file, semanticReadGuard: null };
+
+  const fallbackSessionId = await ensureSemanticFallbackSession(sessionId);
+  return {
+    file: await semanticFallback.readFile(fallbackSessionId, normalizedPath, options),
+    semanticReadGuard: guardDetails(retryReason),
+  };
+}
+
+async function searchPvfWithSemanticGuard(sessionId, args = {}) {
+  const query = makeSearchQuery(args);
+  const session = getSessionState(sessionId);
+  const reason = semanticFallback ? directSearchReason(query, session.encoding) : null;
+  if (reason) {
+    const fallbackSessionId = await ensureSemanticFallbackSession(sessionId);
+    return {
+      result: await semanticFallback.searchFiles(fallbackSessionId, query),
+      semanticReadGuard: guardDetails(reason),
+    };
+  }
+  const result = await native.searchFiles(sessionId, query);
+  const retryReason = semanticFallback ? retrySearchReason(result, query, session.encoding) : null;
+  if (!retryReason) return { result, semanticReadGuard: null };
+  const fallbackSessionId = await ensureSemanticFallbackSession(sessionId);
+  return {
+    result: await semanticFallback.searchFiles(fallbackSessionId, query),
+    semanticReadGuard: guardDetails(retryReason),
+  };
+}
+
 async function readPvfText(sessionId, pvfPath, args = {}) {
-  const file = await native.readFile(sessionId, normalizePvfPath(pvfPath), commonReadOptions(args));
+  const { file } = await readPvfFileWithSemanticGuard(sessionId, pvfPath, args);
   if (typeof file.textContent !== "string") {
     throw new Error(`PVF file is not text-readable: ${pvfPath}`);
   }
@@ -244,10 +430,14 @@ function parseLstEntries(content, lstPath) {
       continue;
     }
     const id = Number(match[1]);
-    const rawPath = match[2].replace(/\\/g, "/").replace(/^\/+/, "");
-    const resolvedPath = normalizePvfPath(
-      !basePrefix || rawPath.toLowerCase().startsWith(basePrefix.toLowerCase()) ? rawPath : `${basePrefix}${rawPath}`,
-    );
+    const rawPath = match[2].replace(/\\/g, "/");
+    if (rawPath.startsWith("/") || /^[A-Za-z]:/.test(rawPath)) {
+      validatePvfEntryPath(rawPath, `Registry ${lstPath} line ${index + 1}`);
+    }
+    const candidate = !basePrefix || rawPath.toLowerCase().startsWith(basePrefix.toLowerCase())
+      ? rawPath
+      : path.posix.join(baseDir, rawPath);
+    const resolvedPath = normalizePvfPath(candidate);
     entries.push({
       id,
       rawPath,
@@ -434,7 +624,13 @@ async function toolOpen(args) {
     fileCount: session.fileCount,
     openedAt: new Date().toISOString(),
     backend: selectedBackend.source,
-    readOnly: selectedBackend.readOnly,
+    readOnly: effectiveReadOnly,
+    capabilityMode: serverMode,
+    semanticReadGuard: {
+      enabled: true,
+      automatic: true,
+      cnFallbackAvailable: selectedBackend.readOnly || Boolean(semanticFallback),
+    },
   });
   return text({
     ok: true,
@@ -464,10 +660,15 @@ async function toolSessionInfo(args) {
 
 async function toolClose(args) {
   const sessionId = resolveSessionId(args);
-  await native.closeSession(sessionId);
-  sessions.delete(sessionId);
-  if (currentSessionId === sessionId) {
-    currentSessionId = sessions.keys().next().value;
+  try {
+    await closeSemanticFallbackSession(sessionId);
+  } finally {
+    await native.closeSession(sessionId);
+    sessions.delete(sessionId);
+    sessionTextOverlays.delete(sessionId);
+    if (currentSessionId === sessionId) {
+      currentSessionId = sessions.keys().next().value;
+    }
   }
   return text({ ok: true, closedSessionId: sessionId, currentSessionId: currentSessionId || null });
 }
@@ -524,7 +725,7 @@ async function toolSearch(args) {
   if (!args.keyword) {
     throw new Error("keyword is required.");
   }
-  const result = await native.searchFiles(sessionId, makeSearchQuery(args));
+  const { result, semanticReadGuard } = await searchPvfWithSemanticGuard(sessionId, args);
   const items = Array.isArray(result.items) ? result.items : [];
   const errors = Array.isArray(result.errors) ? result.errors : [];
   const limit = Math.max(1, Math.min(Number(args.limit || 50), 500));
@@ -540,6 +741,7 @@ async function toolSearch(args) {
     errorsTruncated: Boolean(result.errorsTruncated),
     errors,
     items: items.slice(0, returnedCount),
+    semanticReadGuard: semanticReadGuard || undefined,
   });
 }
 
@@ -554,7 +756,7 @@ async function toolReadFile(args) {
     useCompatibleDecompiler: args.useCompatibleDecompiler !== false,
     convertToSimplifiedChinese: args.convertToSimplifiedChinese !== false,
   };
-  const file = await native.readFile(sessionId, pvfPath, readOptions);
+  const { file, semanticReadGuard } = await readPvfFileWithSemanticGuard(sessionId, pvfPath, readOptions);
   const content = typeof file.textContent === "string" ? sliceLines(file.textContent, args.startLine, args.endLine) : undefined;
   const limited = content === undefined ? {} : limitText(content, Number(args.maxChars ?? 30000));
   return text({
@@ -569,6 +771,7 @@ async function toolReadFile(args) {
     },
     ...limited,
     base64Content: content === undefined && file.base64Content ? file.base64Content : undefined,
+    semanticReadGuard: semanticReadGuard || undefined,
   });
 }
 
@@ -580,6 +783,7 @@ async function toolReadFiles(args) {
   const maxCharsPerFile = Math.max(1, Math.min(Number(args.maxCharsPerFile ?? 30000), 1000000));
   const maxTotalChars = Math.max(1, Math.min(Number(args.maxTotalChars ?? 300000), 5000000));
   const items = [];
+  const semanticGuardReasons = new Set();
   let returnedCharCount = 0;
   let truncatedByTotalLimit = false;
   for (const pvfPath of pvfPaths) {
@@ -589,7 +793,7 @@ async function toolReadFiles(args) {
       continue;
     }
     try {
-      const file = await native.readFile(sessionId, pvfPath, commonReadOptions(args));
+      const { file, semanticReadGuard } = await readPvfFileWithSemanticGuard(sessionId, pvfPath, args);
       const content = typeof file.textContent === "string" ? sliceLines(file.textContent, args.startLine, args.endLine) : undefined;
       const remaining = Math.max(0, maxTotalChars - returnedCharCount);
       const limited = content === undefined ? {} : limitText(content, Math.min(maxCharsPerFile, remaining));
@@ -600,7 +804,9 @@ async function toolReadFiles(args) {
         metadata: { fileName: file.fileName, dataLength: file.dataLength, isScriptFile: file.isScriptFile, isBinaryAniFile: file.isBinaryAniFile },
         ...limited,
         base64Content: content === undefined && file.base64Content ? file.base64Content : undefined,
+        semanticReadGuard: semanticReadGuard || undefined,
       });
+      if (semanticReadGuard?.reason) semanticGuardReasons.add(semanticReadGuard.reason);
       if (remaining === 0 || (limited.truncated && remaining <= maxCharsPerFile)) truncatedByTotalLimit = true;
     } catch (error) {
       items.push({ ok: false, pvfPath, error: error && error.message ? error.message : String(error) });
@@ -615,6 +821,14 @@ async function toolReadFiles(args) {
     returnedCharCount,
     truncatedByTotalLimit,
     items,
+    semanticReadGuard: semanticGuardReasons.size
+      ? {
+        applied: true,
+        fallbackReadCount: items.filter((item) => item.semanticReadGuard?.applied).length,
+        reasons: [...semanticGuardReasons],
+        automatic: true,
+      }
+      : undefined,
   });
 }
 
@@ -635,14 +849,16 @@ async function toolReplaceText(args) {
   if (typeof args.previousText !== "string" || typeof args.newText !== "string") {
     throw new Error("previousText and newText are required strings.");
   }
-  const file = await native.readFile(sessionId, pvfPath, {
+  const readOptions = {
     pvfEncoding: args.pvfEncoding ? normalizeEncoding(args.pvfEncoding) : undefined,
     decompileScript: true,
     decompileBinaryAni: true,
     autoConvertStringLink: Boolean(args.autoConvertStringLink),
     useCompatibleDecompiler: args.useCompatibleDecompiler !== false,
     convertToSimplifiedChinese: args.convertToSimplifiedChinese !== false,
-  });
+  };
+  const guardedRead = await readPvfFileWithSemanticGuard(sessionId, pvfPath, readOptions);
+  const { file, semanticReadGuard } = guardedRead;
   if (typeof file.textContent !== "string") {
     throw new Error("Target file is not text-readable.");
   }
@@ -653,11 +869,59 @@ async function toolReplaceText(args) {
   }
   const after = args.replaceAll === true ? before.split(args.previousText).join(args.newText) : before.replace(args.previousText, args.newText);
   const preview = changedPreview(before, after);
+  const writeSafety = semanticWriteSafety({
+    kind: "replace-text",
+    pvfPath,
+    pvfEncoding: readOptions.pvfEncoding,
+    fallbackEncoding: getSessionState(sessionId).encoding,
+    previousText: args.previousText,
+    newText: args.newText,
+    sourceText: before,
+  });
   if (args.dryRun === true) {
-    return text({ ok: true, dryRun: true, sessionId, pvfPath, occurrences: hits, ...preview });
+    return text({
+      ok: true,
+      dryRun: true,
+      sessionId,
+      pvfPath,
+      occurrences: hits,
+      ...preview,
+      semanticReadGuard: semanticReadGuard || undefined,
+      semanticWriteSafety: writeSafety,
+    });
+  }
+  if (!preview.changed) {
+    return text({
+      ok: true,
+      dryRun: false,
+      skipped: true,
+      reason: "no-op replacement",
+      sessionId,
+      pvfPath,
+      occurrences: hits,
+      ...preview,
+      semanticReadGuard: semanticReadGuard || undefined,
+      semanticWriteSafety: writeSafety,
+    });
+  }
+  if (!writeSafety.allowed) {
+    const error = new Error(`Controlled PVF write blocked: ${writeSafety.reason}`);
+    error.code = writeSafety.code;
+    throw error;
   }
   const writeResult = await writeText(sessionId, pvfPath, after, args);
-  return text({ ok: true, dryRun: false, sessionId, pvfPath, occurrences: hits, writeResult, ...preview });
+  setTextOverlay(sessionId, pvfPath, file, after);
+  return text({
+    ok: true,
+    dryRun: false,
+    sessionId,
+    pvfPath,
+    occurrences: hits,
+    writeResult,
+    ...preview,
+    semanticReadGuard: semanticReadGuard || undefined,
+    semanticWriteSafety: writeSafety,
+  });
 }
 
 async function toolWriteFile(args) {
@@ -667,23 +931,65 @@ async function toolWriteFile(args) {
   if (typeof args.textContent !== "string") {
     throw new Error("textContent is required.");
   }
+  const writeSafety = semanticWriteSafety({
+    kind: "write-file",
+    pvfPath,
+    pvfEncoding: args.pvfEncoding,
+    fallbackEncoding: getSessionState(sessionId).encoding,
+    textContent: args.textContent,
+  });
+  if (!writeSafety.allowed) {
+    const error = new Error(`Controlled PVF write blocked: ${writeSafety.reason}`);
+    error.code = writeSafety.code;
+    throw error;
+  }
   const writeResult = await writeText(sessionId, pvfPath, args.textContent, args);
-  return text({ ok: true, sessionId, pvfPath, writeResult });
+  setTextOverlay(sessionId, pvfPath, {
+    fileName: pvfPath,
+    dataLength: Buffer.byteLength(args.textContent, "utf8"),
+    isScriptFile: args.compileScript !== false,
+    isBinaryAniFile: false,
+  }, args.textContent);
+  return text({ ok: true, sessionId, pvfPath, writeResult, semanticWriteSafety: writeSafety });
 }
 
 async function toolSave(args) {
   assertWritableBackend("PVF save");
   const sessionId = resolveSessionId(args);
-  const session = sessions.get(sessionId);
-  const targetPath = args.targetPath ? path.resolve(String(args.targetPath)) : session && session.sourcePath;
-  if (!targetPath) {
-    throw new Error("targetPath is required when the session source path is unknown.");
+  const session = getSessionState(sessionId);
+  if (!args.targetPath) {
+    throw new Error("targetPath is required. Saving over the source PVF is never allowed.");
   }
-  if (!args.targetPath && args.allowOverwriteSource !== true) {
-    throw new Error("Refusing to overwrite the source PVF. Provide targetPath, or set allowOverwriteSource=true.");
+  if (args.allowOverwriteSource === true) {
+    const error = new Error("allowOverwriteSource is not supported; source PVF overwrite is always blocked.");
+    error.code = "SOURCE_PVF_OVERWRITE_BLOCKED";
+    throw error;
   }
+  const targetPath = path.resolve(String(args.targetPath));
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-  const saveResult = await native.saveSession(sessionId, targetPath);
+  assertDistinctFilesystemTarget(session.sourcePath, targetPath, "PVF save");
+  if (fs.existsSync(targetPath)) {
+    const error = new Error(`Refusing to overwrite an existing output PVF: ${targetPath}`);
+    error.code = "OUTPUT_PVF_ALREADY_EXISTS";
+    throw error;
+  }
+
+  const tempPath = path.join(
+    path.dirname(targetPath),
+    `.${path.basename(targetPath)}.${process.pid}.${crypto.randomUUID()}.tmp`,
+  );
+  let saveResult;
+  try {
+    saveResult = await native.saveSession(sessionId, tempPath);
+    if (fs.existsSync(targetPath)) {
+      const error = new Error(`Output PVF appeared while saving; refusing to overwrite it: ${targetPath}`);
+      error.code = "OUTPUT_PVF_ALREADY_EXISTS";
+      throw error;
+    }
+    fs.renameSync(tempPath, targetPath);
+  } finally {
+    if (fs.existsSync(tempPath)) fs.unlinkSync(tempPath);
+  }
   return text({ ok: true, sessionId, targetPath, saveResult });
 }
 
@@ -698,7 +1004,13 @@ async function toolBackup(args) {
     ? path.resolve(String(args.targetPath))
     : path.join(path.dirname(sourcePath), `${path.basename(sourcePath)}.${stamp}.bak`);
   fs.mkdirSync(path.dirname(targetPath), { recursive: true });
-  fs.copyFileSync(sourcePath, targetPath);
+  assertDistinctFilesystemTarget(sourcePath, targetPath, "PVF backup");
+  if (fs.existsSync(targetPath)) {
+    const error = new Error(`Refusing to overwrite an existing PVF backup: ${targetPath}`);
+    error.code = "BACKUP_ALREADY_EXISTS";
+    throw error;
+  }
+  fs.copyFileSync(sourcePath, targetPath, fs.constants.COPYFILE_EXCL);
   return text({ ok: true, sourcePath, targetPath });
 }
 
@@ -1239,14 +1551,14 @@ const tools = [
   {
     name: "pvf_save",
     title: "Save PVF",
-    description: "Save the open PVF session. By default this refuses to overwrite the original archive; provide targetPath.",
+    description: "Save the open PVF session to a new, non-existing targetPath. Source and existing-output overwrite are always blocked.",
     inputSchema: {
       type: "object",
       properties: {
         sessionId: { type: "string" },
         targetPath: { type: "string" },
-        allowOverwriteSource: { type: "boolean" },
       },
+      required: ["targetPath"],
     },
   },
 ];
@@ -1290,20 +1602,28 @@ async function handle(message) {
           capabilities: { tools: { listChanged: false } },
           serverInfo: {
             name: "pvf-workbench-bundled-backend",
-            version: "2.1.0",
+            version: "2.1.3",
             backend: selectedBackend.source,
-            readOnly: selectedBackend.readOnly,
+            readOnly: effectiveReadOnly,
+            capabilityMode: serverMode,
+            semanticReadGuard: {
+              enabled: true,
+              automatic: true,
+              cnFallbackAvailable: selectedBackend.readOnly || Boolean(semanticFallback),
+            },
           },
           instructions:
             selectedBackend.readOnly
               ? "The native backend could not be loaded, so this process is using the read-only TypeScript fallback. Inspection is available; every PVF write is blocked with READ_ONLY_FALLBACK."
-              : "Use pvf_open first to create a PVF session. Use pvf_list_registries, pvf_resolve_lst_id, pvf_resolve_id, and pvf_summarize_npc_shop for registered PVF data. Use pvf_backup before edits. Use pvf_replace_text with dryRun=true before writing. Use pvf_save with targetPath to avoid overwriting the original PVF.",
+              : effectiveReadOnly
+                ? "This ordinary backend process is read-only even though the native backend is available. Use workbench.bat pvf-change for controlled writes."
+                : "Controlled write capability is active for workbench.bat pvf-change apply. Source and existing-output overwrite remain blocked.",
         },
       });
       return;
     }
     if (message.method === "tools/list") {
-      const advertisedTools = selectedBackend.readOnly
+      const advertisedTools = effectiveReadOnly
         ? tools.filter((tool) => READ_ONLY_TOOL_NAMES.has(tool.name))
         : tools;
       send({ jsonrpc: "2.0", id, result: { tools: advertisedTools } });

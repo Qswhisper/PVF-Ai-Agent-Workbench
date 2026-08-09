@@ -1,0 +1,29 @@
+{
+  "$schema": "../../core/pvf-agent-core/schemas/pvf-change-set.schema.json",
+  "schemaVersion": "1.0",
+  "mode": "dry-run-only",
+  "description": "Safety example: Cn .str writes are expected to be blocked before apply.",
+  "target": {
+    "sourcePvf": "D:\\MyDNFWork\\Script.pvf",
+    "pvfOpenEncoding": "Tw",
+    "pvfReadEncoding": "Cn"
+  },
+  "changes": [
+    {
+      "id": "example-blocked-cn-str",
+      "type": "replace-text",
+      "pvfPath": "itemshop/itemshop.kor.str",
+      "previousText": "message_520>",
+      "newText": "message_520_guarded>",
+      "replaceAll": false,
+      "pvfEncoding": "Cn",
+      "rationale": "This dry-run-only example demonstrates the automatic encoding guard."
+    }
+  ],
+  "safety": {
+    "writeModeEnabled": false,
+    "requiresBackupBeforeApply": true,
+    "requiresExplicitOutputPath": true,
+    "requiresReadback": true
+  }
+}

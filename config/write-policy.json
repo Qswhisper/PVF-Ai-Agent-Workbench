@@ -12,6 +12,17 @@
     "clientWriteAllowed": false
   },
   "controlledWriteRunner": {
+    "serverCapability": {
+      "environmentVariable": "PVF_WORKBENCH_SERVER_MODE",
+      "value": "controlled-write"
+    },
+    "semanticTextSafety": {
+      "automaticCnReadGuardRequired": true,
+      "cnStrWriteAllowed": false,
+      "directNonAsciiTextWriteAllowed": false,
+      "numericOrAsciiMinimalWriteAllowed": true,
+      "clientTextSmokeCheckRequired": true
+    },
     "allowedBridgeTools": [
       "pvf_open",
       "pvf_list_files",
@@ -43,7 +54,9 @@
     "apply-without-explicit-output",
     "apply-without-readback",
     "apply-without-matching-dry-run",
-    "apply-without-explicit-authorization-code"
+    "apply-without-explicit-authorization-code",
+    "direct-cn-str-write",
+    "direct-non-ascii-text-write"
   ],
   "requiredBeforeApply": [
     "explicit-user-authorization",

@@ -6,7 +6,7 @@
 
 本入口用于查询技能 `.skl` 中 `[static data]`、`[level info]`、`[level property]` 的候选列含义。它只帮助定位参数列，不证明运行效果，也不授权直接写 PVF。
 
-知识包内置结构化事实表 `indexes/skill-parameter-facts.compact.json`。它以 `.skl` 路径为主键，保留每个技能的职业目录、技能名、静态/动态列号、列说明和倍率线索；不复制原始全文、完整技能块、来源行号或机器顺序 ID。
+知识包内置结构化事实表 `indexes/skill-parameter-facts.compact.json`。它以 `.skl` 路径为主键，提供职业目录、技能名、静态/动态列号、列说明和倍率线索。这些信息只负责定位；目标版本是否存在该结构、列数是否一致以及运行效果，仍以目标 `.skl` 读回和必要实机验证为准。
 
 ## 查询顺序
 

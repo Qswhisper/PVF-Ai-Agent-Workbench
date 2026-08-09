@@ -36,6 +36,12 @@
       "requiredTools": ["pvf_read_files"]
     },
     {
+      "id": "text.semantic-cn-guard",
+      "level": "required",
+      "summary": "Automatically use the TypeScript semantic result for Cn search, .str, StringLink, and non-ASCII script reads without user backend configuration.",
+      "requiredTools": ["pvf_search", "pvf_read_file", "pvf_read_files"]
+    },
+    {
       "id": "registry.list",
       "level": "required",
       "summary": "List primary .lst registries and, when requested, parse entry counts.",
@@ -81,6 +87,7 @@
     "Default adapter mode is read-only.",
     "Ordinary read-only commands must not expose write tools.",
     "A write smoke test must write to an explicit output path and must not modify the source PVF.",
+    "Direct Cn .str output and direct non-ASCII text changes must fail closed; no-op replacements must execute no PVF text write.",
     "Every numeric ID used by a test must be resolved through the exact .lst registry named by the fixture.",
     "Local indexes are acceleration artifacts only; stale indexes cannot replace target PVF readback."
   ],

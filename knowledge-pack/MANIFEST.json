@@ -54,8 +54,8 @@
     },
     {
       "dest": "dictionaries/client-compatibility-matrix-boundary-quick.zh-CN.md",
-      "bytes": 1812,
-      "sha256": "18327fc040852f7e0b6ef20e80ea7722da3000e0df7ce2d07bb14bbe77e7b754"
+      "bytes": 1794,
+      "sha256": "704d6610749d69a6890687c12b43668cb2d094bb18a76f53a58a82ba48f13298"
     },
     {
       "dest": "dictionaries/client-ui-layout-pos-lay-fields.zh-CN.md",
@@ -74,8 +74,8 @@
     },
     {
       "dest": "dictionaries/dependency-planner-boundary-quick.zh-CN.md",
-      "bytes": 1729,
-      "sha256": "a523c8ac754be62ddaddde23d2079abfc5524be8144b801d9be01ac9a701ab93"
+      "bytes": 1693,
+      "sha256": "247ececc3c6c208c6de98511698b9e758954547ba5f85611af96c4abf3119c6f"
     },
     {
       "dest": "dictionaries/dungeon-difficulty-ultimate-list-fields.zh-CN.md",
@@ -269,8 +269,8 @@
     },
     {
       "dest": "dictionaries/text-stringlink-encoding-fields.zh-CN.md",
-      "bytes": 4251,
-      "sha256": "330aef0325374e5772a3dcbee99382f6168f32014b49435beb3c7ce551adb00a"
+      "bytes": 4634,
+      "sha256": "1692877057c7591b03235ac05cc878c820a90a0e4f6dceb527896f5d4a2a40c1"
     },
     {
       "dest": "dictionaries/unified-knowledge-query-boundary-quick.zh-CN.md",
@@ -379,8 +379,8 @@
     },
     {
       "dest": "encyclopedia/pvf-file-types/pvf-crosscutting-productivity.zh-CN.md",
-      "bytes": 2041,
-      "sha256": "c850ad371c3a976589fea17b457daea0aeb32389a147a02115d1b91f34dcbdfe"
+      "bytes": 3069,
+      "sha256": "abc8da950405aa2422854fc8fcc7fc44d750fc56f24617ae2a0ed79590f4d48e"
     },
     {
       "dest": "encyclopedia/pvf-file-types/README.zh-CN.md",
@@ -404,8 +404,8 @@
     },
     {
       "dest": "encyclopedia/pvf-file-types/text-stringlink-localization.zh-CN.md",
-      "bytes": 1788,
-      "sha256": "2740330d7546a01b226899c1c617eac8aca42b3848134fae76195a397b93617f"
+      "bytes": 2102,
+      "sha256": "f9004b8e68e51e47b300b8fba4491bf38cbcc32eb5bac19ddf3170fc105cec05"
     },
     {
       "dest": "encyclopedia/pvf-file-types/upgrade-reinforce-amplify-enchant-recipe.zh-CN.md",
@@ -419,8 +419,8 @@
     },
     {
       "dest": "EXPORT-POLICY.zh-CN.md",
-      "bytes": 2188,
-      "sha256": "dda032445d153f5628acfe4c5e9c94be6ff802d83d4cceec2b8dd09fe12c5852"
+      "bytes": 2472,
+      "sha256": "c739add1e4809f3c2075bcb7dc8a0bb0d14ec6e420b7f8a4dd46c4534a8ba363"
     },
     {
       "dest": "health-check/README.md",
@@ -511,11 +511,6 @@
       "dest": "indexes/client-ui-layout-pos-lay-boundary.zh-CN.md",
       "bytes": 5392,
       "sha256": "eb61c4cc5563ead5ac27a1078cbd6a3d7b3f9df175f640fbf8e68d65a11272de"
-    },
-    {
-      "dest": "indexes/commercial-tool-capability-boundary.zh-CN.md",
-      "bytes": 3958,
-      "sha256": "548848d76c57da2a78a9d32b51932ebb5bd092f4d6d40879a252a3df07f9299e"
     },
     {
       "dest": "indexes/content-lifecycle-dungeon-full-lifecycle-boundary.zh-CN.md",
@@ -624,8 +619,8 @@
     },
     {
       "dest": "indexes/extraction-capability-router.zh-CN.md",
-      "bytes": 2941,
-      "sha256": "b138daf87cc3ea59009b5948198564844ff1f2f8478eb703069f68fc73e0cb72"
+      "bytes": 2908,
+      "sha256": "6e87e29a37f118a8f62da6b21026c3a0d5554ec47aaf3b9d536142c4fab88a9c"
     },
     {
       "dest": "indexes/formal-region-town-worldmap-area-entry-boundary.zh-CN.md",
@@ -639,13 +634,13 @@
     },
     {
       "dest": "indexes/knowledge-index.json",
-      "bytes": 27095,
-      "sha256": "6303cdcb0e5b22bedd3c55e6f2c5d836d0ca49d5111c845740a9bed733a6118f"
+      "bytes": 25584,
+      "sha256": "9228a2530aa490aea6a42d7707fdc5d58f05c77227d508f8a98ddbfec91846db"
     },
     {
       "dest": "indexes/knowledge-topic-routes.full.json",
-      "bytes": 157105,
-      "sha256": "4ed6ab92f135bdad29cdbf81c2628dd4b42f4c4da14e5ee0906e0442101993a9"
+      "bytes": 156023,
+      "sha256": "ef62c65c1dc8b8b52b95156b93a90c5577aaf2d69c770ab11228a94cafa20967"
     },
     {
       "dest": "indexes/monster-action-animation-act-observed-tag-router.zh-CN.md",
@@ -723,19 +718,14 @@
       "sha256": "24c2b1c7dda4afa668434d5d56af9f09e87414303d6dd2c474cc7385a0c12802"
     },
     {
-      "dest": "indexes/pvf-productized-capability-router.zh-CN.md",
-      "bytes": 8319,
-      "sha256": "f742299047e4507616e6c021299084d7fcf0c4d92abb263fdecfe6b2585762e7"
-    },
-    {
       "dest": "indexes/pvf-registry-lst-topology-orphan-boundary.zh-CN.md",
       "bytes": 7045,
       "sha256": "c0978f28763e6910c08634a5ddba2184ebfea4a323da377dc53822847a103b65"
     },
     {
       "dest": "indexes/pvf-tag-facts.compact.json",
-      "bytes": 2283240,
-      "sha256": "b762970b8d660154e023c1611379a80872c3181a2f458565c4816eb61e573d0c"
+      "bytes": 858885,
+      "sha256": "30a3b3ff0937ce79b30a2ede7fccc2ccc4b9c33216973471621aa7e71a07f0af"
     },
     {
       "dest": "indexes/pvf-tag-router-equipment-avatar-visual.zh-CN.md",
@@ -909,18 +899,18 @@
     },
     {
       "dest": "indexes/skill-parameter-facts.compact.json",
-      "bytes": 1812967,
-      "sha256": "13a8dd4b0353494f4685612098a5cfb657ea0e91b684463612db5d0aa3bbf3fc"
+      "bytes": 1812855,
+      "sha256": "e8428666583750a2ade77621c76f404b7a4579296455f7dab71d48e0992242c9"
     },
     {
       "dest": "indexes/skill-parameter-index.zh-CN.md",
-      "bytes": 2675,
-      "sha256": "7f915cc24cb3e5c0556e4d472ea1813f123035fecfabc38dc05b888919b05b1d"
+      "bytes": 2746,
+      "sha256": "c2ec2f0b40a4b824a37ab3331230e42663db497aa43c546551bd24d0b594e0ef"
     },
     {
       "dest": "indexes/skill-parameter-routes.json",
-      "bytes": 1732,
-      "sha256": "e41929f2187b29aefec8fa93f5e8a764288a78a4e09331bc4bfdec4e766e4074"
+      "bytes": 1477,
+      "sha256": "523514d99d171077d1fd24d6e99cd13fc6f296d606c57fba845e20ff8c8ed389"
     },
     {
       "dest": "indexes/skill-registry-routing.zh-CN.md",
@@ -969,13 +959,13 @@
     },
     {
       "dest": "README.zh-CN.md",
-      "bytes": 2678,
-      "sha256": "fa9f34e90261264dffb0162b49436a65bb06663b42bdc076d719325c2b950957"
+      "bytes": 2602,
+      "sha256": "33f38d061dc6743d793a9220589237dc85add4e35c979a8cb3120acedb4cf063"
     },
     {
       "dest": "safety/README.zh-CN.md",
-      "bytes": 2722,
-      "sha256": "c31b33061dc73cdda53726524aaa91d72bb4a345fcc7000db41fa177e0ce9a5e"
+      "bytes": 3079,
+      "sha256": "0dd28a05ede10204d99d5a10265a31645f50105d169caf54f64687f0b15a92bf"
     },
     {
       "dest": "task-cards/action-combat-cross-version-porting.zh-CN.md",
@@ -989,8 +979,8 @@
     },
     {
       "dest": "task-cards/apc-extraction-preview.zh-CN.md",
-      "bytes": 1063,
-      "sha256": "943884b7d67c20df4b540be48dec12ad78c7eabd76b0f9cc032f7baec468f5be"
+      "bytes": 1064,
+      "sha256": "345e91a3d9491cf76fc5db42f1bb485cd9179d4205c441d999d267c363974f3a"
     },
     {
       "dest": "task-cards/apc-fair-duel-level-equipment-standardization.zh-CN.md",
@@ -1044,8 +1034,8 @@
     },
     {
       "dest": "task-cards/client-pvf-compatibility-matrix-readonly.zh-CN.md",
-      "bytes": 926,
-      "sha256": "d9e9ac35de85d51fbf3e294ff14bbd1ced04f422148ee27b830c2db667ac8291"
+      "bytes": 923,
+      "sha256": "6ba6584841b69ba7f05f4dabd21d4cb4129aae581b9a21f3fa3873b36d2b832f"
     },
     {
       "dest": "task-cards/client-ui-layout-pos-lay-readonly-audit.zh-CN.md",
@@ -1069,8 +1059,8 @@
     },
     {
       "dest": "task-cards/dungeon-extraction-preview.zh-CN.md",
-      "bytes": 861,
-      "sha256": "09d391c821a1f8a6bf7b451ffa20498d151cb7eb9d7a9f368dddfb0b5323e942"
+      "bytes": 852,
+      "sha256": "557a59be975610b01af75b496a73d047741fd102810babea518bbe72b76df961"
     },
     {
       "dest": "task-cards/dungeon-map-spawn-entry-clear-resource-readonly-audit.zh-CN.md",
@@ -1259,13 +1249,13 @@
     },
     {
       "dest": "task-cards/text-stringlink-encoding-readonly-audit.zh-CN.md",
-      "bytes": 1948,
-      "sha256": "7b6a897a7ba371f328061bfa500953473e2ee59facdff606cb4aab491d43d611"
+      "bytes": 2226,
+      "sha256": "ee9e2cbd00c2e3672ee38ab04e39d31975907baa4c9af21b21e62516b11d6131"
     },
     {
       "dest": "task-cards/unified-dependency-planner-readonly-preview.zh-CN.md",
-      "bytes": 853,
-      "sha256": "ceb583e1516e5c563b5709d1ba6be1471abb500fa6e327fc42d395caedadb562"
+      "bytes": 862,
+      "sha256": "b7e56c5cd04305da5ab1e303da591dc265af6de4b4f31b3947026cda0679983c"
     },
     {
       "dest": "task-cards/unified-knowledge-query-readonly.zh-CN.md",
@@ -1309,8 +1299,8 @@
     },
     {
       "dest": "workflows/client-pvf-compatibility-matrix.zh-CN.md",
-      "bytes": 2220,
-      "sha256": "e9a2655715f33db9de38b87aeff52cd9a10d4293634dc89d61270b5161f8f00d"
+      "bytes": 2226,
+      "sha256": "f315edea7cedd98cfc0105aadf85d5b740151500991979e2a76b8d8d7c780d60"
     },
     {
       "dest": "workflows/dungeon-difficulty-and-ultimate-list-audit.zh-CN.md",
@@ -1434,7 +1424,7 @@
     }
   ],
   "summary": {
-    "entryCount": 286,
-    "totalBytes": 6934029
+    "entryCount": 284,
+    "totalBytes": 5496993
   }
 }

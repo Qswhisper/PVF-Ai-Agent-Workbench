@@ -4,9 +4,9 @@
 
 三个角色必须分开：
 
-- 低噪声 85 功能基线不证明字节级官服原版。
-- 动作化基座只对指定 PVF SHA 负责；归档 PVF 与当前客户端资源的时间对齐单独标记。
-- 内容兼容上界只用于兼容压力检查；`custom-only` 仅表示本矩阵相对独有，不是官方字段或官方内容。
+- 稳定功能基线不证明字节级官服原版。
+- SHA 研究基线只对指定 PVF SHA 负责；归档 PVF 与当前客户端资源的时间对齐单独标记。
+- 兼容压力上界只用于兼容压力检查；`custom-only` 仅表示本矩阵相对独有，不是官方字段或官方内容。
 
 ```bat
 workbench.bat client-matrix build --profile "D:\research\PRIVATE-CLIENT-MATRIX-PROFILE.json" --out "D:\research\client-matrix"

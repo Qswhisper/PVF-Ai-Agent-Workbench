@@ -21,6 +21,10 @@ function option(name, fallback) {
   return index >= 0 && args[index + 1] ? args[index + 1] : fallback;
 }
 
+function flag(name) {
+  return args.includes(name);
+}
+
 function addCheck(checks, errors, id, run, predicate) {
   const ok = run.ok && predicate(run.parsed, run.stdout);
   checks.push({
@@ -35,7 +39,7 @@ function addCheck(checks, errors, id, run, predicate) {
 }
 
 function main() {
-  if (command !== "check") throw new Error("Usage: workbench.bat release gate3 [--out <dir>]");
+  if (command !== "check") throw new Error("Usage: workbench.bat release gate3 [--out <dir>] [--details]");
   const outRoot = path.resolve(option("--out", runtimePath(workbenchRoot, "release-runs", timestamp(), "gate3")));
   const errors = [];
   const warnings = [];
@@ -150,7 +154,17 @@ function main() {
     warnings,
   };
   writeJson(reportPath, report);
-  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  const visible = flag("--details") ? report : {
+    schemaVersion: report.schemaVersion,
+    phase: report.phase,
+    stageDir,
+    reportPath,
+    summary: report.summary,
+    failedChecks: checks.filter((check) => !check.ok),
+    errors,
+    warnings,
+  };
+  process.stdout.write(`${JSON.stringify(visible, null, 2)}\n`);
   if (!report.summary.ok) process.exitCode = 1;
 }
 

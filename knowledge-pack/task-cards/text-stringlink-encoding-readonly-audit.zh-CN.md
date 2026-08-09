@@ -14,6 +14,7 @@
 2. 需要术语和字段口径时，读 `dictionaries/text-stringlink-encoding-fields.zh-CN.md`。
 3. 需要分布矩阵、namespace、标签和辅助差异时，读 `indexes/text-stringlink-encoding-localization-boundary.zh-CN.md`。
 4. 需要文件类型说明时，读 `encyclopedia/pvf-file-types/text-stringlink-localization.zh-CN.md`。
+5. `workbench.bat` 会自动保护 `Cn` 搜索、`.str`、StringLink 和非 ASCII 脚本读取；不让用户额外选择 backend。
 
 ## 不能直接下结论
 
@@ -35,3 +36,5 @@
 6. 实机检查 UI 是否显示、换行是否正常、是否有乱码和控件溢出。
 
 如果只是含中文/StringLink 文件中的数字字段最小替换，优先使用已验证安全路线：`pvfEncoding=Cn`、不做简繁转换、不自动转换 StringLink，并在客户端检查相关道具名、说明或副本文本。
+
+当前 `Cn .str` 和直接非 ASCII 文本写入会在 dry-run 阶段被自动阻止。不要通过手工调用 bridge 或关闭保护绕过。
