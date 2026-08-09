@@ -6,7 +6,7 @@
   "controlledApplyEnabled": true,
   "permissionModel": {
     "readOnlyAdapter": "config/pvf-adapter.json launches only the Workbench-bundled read backend for ordinary inspection.",
-    "controlledWriteRunner": "core/pvf-agent-core/cli/pvf-change-set.js is the only local write lane; it may call bundled backend write operations only inside apply, only with explicit output, backup, and readback.",
+    "controlledWriteRunner": "core/pvf-agent-core/cli/pvf-change-set.js is the only local PVF-generation lane; it may call bundled backend write operations only inside apply, only with explicit output, backup, readback, and final-output SHA256 binding. Client installation remains a separate client-pvf lane.",
     "hostExposedWriteToolsEnabled": false,
     "sourceOverwriteAllowed": false,
     "clientWriteAllowed": false
@@ -65,6 +65,10 @@
     "timestamped-backup",
     "explicit-output-path",
     "readback-after-save"
+  ],
+  "requiredAfterApply": [
+    "full-output-sha256-binding",
+    "output-byte-size-binding"
   ],
   "outputs": {
     "dryRunRoot": "workspaces/dry-runs",

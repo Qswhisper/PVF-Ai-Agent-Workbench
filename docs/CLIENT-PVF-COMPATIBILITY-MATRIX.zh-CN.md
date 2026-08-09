@@ -17,3 +17,5 @@ workbench.bat client-matrix verify --matrix "D:\research\client-matrix\CLIENT-CO
 默认只扫描客户端资源文件的路径、大小和时间元数据，不读取几十 GB 内容。NPK 内部索引只在 profile 明确选择 `scoped` 或带 `explicitCompleteIndexScan=true` 的 `complete` 模式时读取；缓存按路径、大小、mtime 和目标资源 fingerprint 绑定，并支持中断后保留 checkpoint。
 
 工具不写 PVF、客户端、NPK 或 IMG。资源路径 `present` 不证明图层、帧序列、UI、动画或音频运行正确；矩阵也不是实机 PASS。
+
+矩阵仍然不会生成部署计划。若用户另行授权把已经通过受控写出和读回的独立 PVF 安装到某个 profile 测试客户端，改走 [CLIENT-PVF-DEPLOYMENT.zh-CN.md](CLIENT-PVF-DEPLOYMENT.zh-CN.md) 的 `workbench.bat client-pvf` 路线；矩阵结果不能代替该路线的输出与目标哈希核对。

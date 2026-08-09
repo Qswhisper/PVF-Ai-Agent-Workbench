@@ -78,6 +78,7 @@
           ]
         },
         "client": {
+          "description": "Optional client root containing Script.pvf. One test client per profile; deployment still requires the separate client-pvf preview and authorization lane.",
           "oneOf": [
             {
               "$ref": "#/$defs/pathString"
@@ -170,6 +171,7 @@
               "additionalProperties": false,
               "properties": {
                 "enabled": {
+                  "description": "Default or implicit client writes. This remains false; the separate client-pvf lane uses one-time bound authorization instead.",
                   "type": "boolean",
                   "default": false
                 },

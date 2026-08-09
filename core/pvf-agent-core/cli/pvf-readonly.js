@@ -27,9 +27,11 @@ function usage() {
   workbench.bat pvf-read list-files [--profile <name> | --pvf <Script.pvf>] [--prefix itemshop] [--contains shp] [--limit 20]
   workbench.bat pvf-read list-files-page [--profile <name> | --pvf <Script.pvf>] [--prefix itemshop] [--contains shp] [--offset 0] [--limit 2000]
   workbench.bat pvf-read search [--profile <name> | --pvf <Script.pvf>] --keyword <text> [--search-type SearchFileName] [--search-path itemshop] [--pvf-encoding Cn] [--limit 20] [--raw]
+  workbench.bat pvf-read search-script [--profile <name> | --pvf <Script.pvf>] --keyword <symbol> [--search-path script] [--limit 50] [--raw]
   workbench.bat pvf-read read [--profile <name> | --pvf <Script.pvf>] --path <pvf/path.ext> [--start-line 1] [--end-line 20] [--max-chars 30000] [--raw]
   workbench.bat pvf-read read-batch [--profile <name> | --pvf <Script.pvf>] --path <pvf/path.ext> --path <...> [--max-chars-per-file 30000] [--max-total-chars 300000] [--raw]
   workbench.bat pvf-read resolve-lst [--profile <name> | --pvf <Script.pvf>] --lst <registry.lst> --id <number> [--no-summary] [--raw]
+  workbench.bat pvf-read resolve-skill [--profile <name> | --pvf <Script.pvf>] (--job <job-token> | --character-id <number>) --id <skill-id> [--raw]
   workbench.bat pvf-read resolve-path [--profile <name> | --pvf <Script.pvf>] --path <pvf/path.ext> [--registry <registry.lst>]... [--include-secondary] [--include-errors] [--raw]
 
 Raw text:
@@ -83,6 +85,46 @@ function output(value) {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
 }
 
+function normalizePvfPath(value) {
+  return String(value || "").replace(/\\/g, "/").replace(/^\/+/, "");
+}
+
+function parseLstEntries(content, lstPath) {
+  const entries = [];
+  const normalizedLstPath = normalizePvfPath(lstPath);
+  const baseDir = path.posix.dirname(normalizedLstPath);
+  const basePrefix = baseDir === "." ? "" : `${baseDir}/`;
+  const lines = String(content || "").split(/\r?\n/);
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(/^\s*(\d+)\s+`([^`]+)`/);
+    if (!match) continue;
+    const rawPath = normalizePvfPath(match[2]);
+    const pvfPath = !basePrefix || rawPath.toLowerCase().startsWith(basePrefix.toLowerCase())
+      ? rawPath
+      : path.posix.join(baseDir, rawPath);
+    entries.push({ id: Number(match[1]), rawPath, pvfPath: normalizePvfPath(pvfPath), line: index + 1 });
+  }
+  return entries;
+}
+
+function normalizeJobSelector(value) {
+  return String(value || "")
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/[`\[\]{}()_\-\s]+/g, "");
+}
+
+function extractJobToken(content) {
+  const match = String(content || "").match(/\[job\]\s*(?:\r?\n)+\s*`?\[([^\]\r\n]+)\]`?/i);
+  return match ? String(match[1]).trim() : "";
+}
+
+function normalizedTextContains(content, selector) {
+  const needle = normalizeJobSelector(selector);
+  if (!needle) return false;
+  return normalizeJobSelector(content).includes(needle);
+}
+
 function toolArgsFor(commandName, config, sessionId) {
   if (commandName === "list-registries") {
     return {
@@ -110,14 +152,14 @@ function toolArgsFor(commandName, config, sessionId) {
       limit: numberOption("--limit", 2000),
     };
   }
-  if (commandName === "search") {
+  if (commandName === "search" || commandName === "search-script") {
     return {
       sessionId,
       keyword: requireOption("--keyword"),
       searchPath: option("--search-path", ""),
       isStartMatch: flag("--start-match"),
       isUseLikeSearchPath: flag("--like-search-path"),
-      searchType: option("--search-type", "SearchName"),
+      searchType: commandName === "search-script" ? "SearchScript" : option("--search-type", "SearchName"),
       matchMode: option("--match-mode", "Like"),
       pvfEncoding: option("--pvf-encoding", config.defaults.pvfReadEncoding),
       convertToSimplifiedChinese: !(flag("--no-simplified") || rawDisplayMode()),
@@ -216,6 +258,163 @@ async function withOpenSession(config, client, action) {
   }
 }
 
+async function resolveSkillRoute(client, config, sessionId) {
+  const jobSelector = option("--job", "");
+  const characterIdRaw = option("--character-id");
+  const hasJobSelector = Boolean(jobSelector);
+  const hasCharacterId = characterIdRaw !== undefined;
+  if (Number(hasJobSelector) + Number(hasCharacterId) !== 1) {
+    throw new Error("resolve-skill requires exactly one branch selector: --job or --character-id.");
+  }
+  const skillId = numberOption("--id");
+  if (!Number.isSafeInteger(skillId) || skillId < 0) {
+    throw new Error("--id must be a non-negative safe integer.");
+  }
+  const commonReadArgs = {
+    sessionId,
+    pvfEncoding: option("--pvf-encoding", config.defaults.pvfReadEncoding),
+    convertToSimplifiedChinese: !(flag("--no-simplified") || rawDisplayMode()),
+  };
+
+  const characterRegistryFile = await callAndParse(client, "pvf_read_file", {
+    ...commonReadArgs,
+    pvfPath: "character/character.lst",
+    decompileScript: true,
+    useCompatibleDecompiler: true,
+    maxChars: 50000,
+  });
+  const characterEntries = parseLstEntries(characterRegistryFile.textContent, "character/character.lst");
+  if (!characterEntries.length) {
+    throw new Error("character/character.lst did not contain any parseable registry entries.");
+  }
+
+  const characterReads = await callAndParse(client, "pvf_read_files", {
+    ...commonReadArgs,
+    pvfPaths: characterEntries.map((entry) => entry.pvfPath),
+    decompileScript: true,
+    useCompatibleDecompiler: true,
+    maxCharsPerFile: 2500,
+    maxTotalChars: Math.max(30000, characterEntries.length * 2500),
+  });
+  const readByPath = new Map(
+    (characterReads.items || [])
+      .filter((item) => item && item.ok !== false)
+      .map((item) => [normalizePvfPath(item.pvfPath).toLowerCase(), item]),
+  );
+  const profiles = characterEntries.map((entry) => {
+    const read = readByPath.get(entry.pvfPath.toLowerCase());
+    const jobToken = extractJobToken(read?.textContent);
+    const fileStem = path.posix.basename(entry.pvfPath, path.posix.extname(entry.pvfPath));
+    return { entry, read, jobToken, fileStem };
+  });
+
+  let selectedProfiles;
+  let matchBasis;
+  if (hasCharacterId) {
+    const characterId = Number(characterIdRaw);
+    if (!Number.isSafeInteger(characterId) || characterId < 0) {
+      throw new Error("--character-id must be a non-negative safe integer.");
+    }
+    selectedProfiles = profiles.filter((profile) => profile.entry.id === characterId);
+    matchBasis = "character-id";
+  } else {
+    const normalizedSelector = normalizeJobSelector(jobSelector);
+    const tokenMatches = profiles.filter((profile) => normalizeJobSelector(profile.jobToken) === normalizedSelector);
+    const pathMatches = profiles.filter((profile) => normalizeJobSelector(profile.fileStem) === normalizedSelector);
+    const displayMatches = profiles.filter((profile) => normalizedTextContains(profile.read?.textContent, jobSelector));
+    selectedProfiles = tokenMatches.length ? tokenMatches : pathMatches.length ? pathMatches : displayMatches;
+    matchBasis = tokenMatches.length ? "chr-job-token" : pathMatches.length ? "character-path" : "chr-display-text";
+  }
+
+  if (selectedProfiles.length === 0) {
+    throw new Error(
+      `No target character branch matched ${hasJobSelector ? `--job ${jobSelector}` : `--character-id ${characterIdRaw}`}. ` +
+      `Available target job tokens: ${profiles.map((profile) => profile.jobToken || `id:${profile.entry.id}`).join(", ")}`,
+    );
+  }
+  if (selectedProfiles.length > 1) {
+    throw new Error(
+      `Character branch selector is ambiguous: ${selectedProfiles.map((profile) => `${profile.entry.id}:${profile.jobToken || profile.entry.pvfPath}`).join(", ")}. ` +
+      "Use the exact target .chr [job] token or --character-id.",
+    );
+  }
+
+  const selected = selectedProfiles[0];
+  const characterEvidence = await callAndParse(client, "pvf_resolve_lst_id", {
+    ...commonReadArgs,
+    lstPath: "character/character.lst",
+    id: selected.entry.id,
+    includeFileSummary: false,
+  });
+  const skillListEvidence = await callAndParse(client, "pvf_resolve_lst_id", {
+    ...commonReadArgs,
+    lstPath: "skill/skilllist.lst",
+    id: selected.entry.id,
+    includeFileSummary: false,
+  });
+  if (!skillListEvidence.found || !skillListEvidence.entry?.pvfPath) {
+    throw new Error(`skill/skilllist.lst has no entry for target character ID ${selected.entry.id}.`);
+  }
+  const skillRegistryPath = normalizePvfPath(skillListEvidence.entry.pvfPath);
+  const skillEvidence = await callAndParse(client, "pvf_resolve_lst_id", {
+    ...commonReadArgs,
+    lstPath: skillRegistryPath,
+    id: skillId,
+    includeFileSummary: true,
+  });
+
+  return {
+    ok: true,
+    sessionId,
+    found: Boolean(skillEvidence.found),
+    selector: {
+      requestedJob: hasJobSelector ? jobSelector : null,
+      requestedCharacterId: hasCharacterId ? Number(characterIdRaw) : null,
+      skillId,
+      matchBasis,
+    },
+    route: {
+      characterRegistry: characterEvidence.registry,
+      character: {
+        id: selected.entry.id,
+        entry: characterEvidence.entry,
+        jobToken: selected.jobToken,
+        readback: selected.read
+          ? {
+              pvfPath: selected.entry.pvfPath,
+              dataLength: selected.read.metadata?.dataLength,
+              semanticReadGuard: selected.read.semanticReadGuard,
+            }
+          : null,
+      },
+      skillListRegistry: skillListEvidence.registry,
+      skillListEntry: skillListEvidence.entry,
+      skillRegistryPath,
+    },
+    skill: {
+      id: skillId,
+      registry: skillEvidence.registry,
+      entry: skillEvidence.entry,
+      fileSummary: skillEvidence.fileSummary,
+    },
+    recommendedReadback: skillEvidence.found
+      ? { pvfPath: skillEvidence.entry.pvfPath, command: "pvf-read read", maxChars: 5000 }
+      : null,
+    agentHandoff: {
+      targetSkillRouteClosed: Boolean(skillEvidence.found),
+      nextCommandOnly: skillEvidence.found ? "workbench.bat pvf-read read --path <resolved .skl path> --max-chars 5000" : null,
+      additionalDiscoveryRequired: false,
+      helpProbeRequired: false,
+      prohibitedFollowUp: ["list-files path guessing", "bookmark lookup", "generic search", "cross-registry ID guessing"],
+    },
+    boundaries: {
+      skillIdIsGlobal: false,
+      targetRegistryAndCharacterReadbackRequired: true,
+      staticSkillFileProvesRuntimeLearnabilityOrCooldown: false,
+    },
+  };
+}
+
 async function main() {
   const config = loadAdapterConfig(workbenchRoot);
   assertReadOnlyAdapter(config);
@@ -259,12 +458,19 @@ async function main() {
       return;
     }
 
+    if (command === "resolve-skill") {
+      const result = await withOpenSession(config, client, async (sessionId) => resolveSkillRoute(client, config, sessionId));
+      output({ ok: true, command, result });
+      return;
+    }
+
     const toolByCommand = {
       open: "pvf_session_info",
       "list-registries": "pvf_list_registries",
       "list-files": "pvf_list_files",
       "list-files-page": "pvf_list_files_page",
       search: "pvf_search",
+      "search-script": "pvf_search",
       read: "pvf_read_file",
       "read-batch": "pvf_read_files",
       "resolve-lst": "pvf_resolve_lst_id",
@@ -306,7 +512,22 @@ async function main() {
       }
       return primary;
     });
-    output({ ok: true, command, result });
+    output({
+      ok: true,
+      command,
+      result,
+      ...(command === "search-script"
+        ? {
+            agentHandoff: {
+              exactScriptSearchComplete: true,
+              additionalGenericSearchRequired: false,
+              helpProbeRequired: false,
+              zeroMatchesProveRuntimeAbsence: false,
+              prohibitedFollowUp: ["Test-Path", "Get-Item", "help probe", "generic filename guessing"],
+            },
+          }
+        : {}),
+    });
   } finally {
     client.stop();
   }

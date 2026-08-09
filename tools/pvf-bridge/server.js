@@ -1602,7 +1602,7 @@ async function handle(message) {
           capabilities: { tools: { listChanged: false } },
           serverInfo: {
             name: "pvf-workbench-bundled-backend",
-            version: "2.1.3",
+            version: "2.2.0",
             backend: selectedBackend.source,
             readOnly: effectiveReadOnly,
             capabilityMode: serverMode,

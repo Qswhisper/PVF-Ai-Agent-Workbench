@@ -77,6 +77,8 @@ const KNOWN_EXTENSIONS = new Set([
 ]);
 
 const EXPAND_VALUES = new Set(["auto", "dungeon", "map", "town", "npc_shop", "equipment", "monster", "passiveobject", "quest", "skill", "attack", "action_script", "file"]);
+const SELECTOR_MODES = new Set(["query", "exact-path", "registry-id"]);
+const REGISTRY_KINDS = new Set(REGISTRY_SPECS.map((item) => item.kind));
 const CONFIDENCE_RANK = { low: 1, medium: 2, high: 3 };
 const ATTACK_PAYLOAD_TAG_GROUPS = {
   damage_amount: ["damage bonus", "damage", "absolute damage", "weapon damage apply"],
@@ -111,10 +113,11 @@ function parseArgs(argv) {
 
 function printUsage() {
   console.log(`Usage:
-  node tools/pvf-bridge/pvf-scope-planner.js --pvf=Script.pvf --query="item or skill name" [--expand=auto] [--out-dir=EXTERNAL_DIR]
+  node tools/pvf-bridge/pvf-scope-planner.js --pvf=Script.pvf --query="item or skill name" [--selector-mode=query|exact-path|registry-id] [--selector-registry=monster] [--expand=auto] [--out-dir=EXTERNAL_DIR]
 
 Rules:
-  --pvf and --query are required. This is a read-only planner and writes preview reports only.
+  --pvf and --query are required. exact-path and registry-id selectors bypass fuzzy filename/content discovery.
+  registry-id also requires --selector-registry. This is a read-only planner and writes preview reports only.
   pvfCourse matching is disabled by default; use --include-pvfcourse --pvfcourse-index=FILE only with an explicit local index.
 `);
 }
@@ -361,6 +364,7 @@ function entityFromPath(ctx, rawPath, baseConfidence, reason, sourceKind, option
     reasons: [reason],
     sources: [{ kind: sourceKind, detail: reason }],
     registryPath: registryHit?.registryPath || null,
+    exists: ctx.pvf.fileSet.has(pvfPath),
   };
 }
 
@@ -521,6 +525,36 @@ async function discoverCandidates(ctx) {
   const query = ctx.args.query.trim();
   const queryKey = normalizeKey(query);
   const limit = ctx.args.limit;
+
+  if (ctx.args.selectorMode === "registry-id") {
+    const id = Number(query);
+    const registry = ctx.registries.get(ctx.args.selectorRegistry);
+    const hit = registry?.byId?.get(id);
+    if (!registry) {
+      ctx.warnings.push(`Selector registry is unavailable: ${ctx.args.selectorRegistry}`);
+    } else if (!hit) {
+      ctx.warnings.push(`${registry.path} does not contain id=${id}.`);
+    } else {
+      const candidate = entityFromPath(ctx, hit.pvfPath, "high", `${registry.kind}.lst id=${id}`, "registry_id");
+      candidate.root = true;
+      addCandidate(ctx, candidate);
+      if (!candidate.exists) ctx.warnings.push(`${registry.path} id=${id} points to a missing PVF path: ${hit.pvfPath}`);
+    }
+    for (const candidate of Array.from(ctx.candidateMap.values()).slice(0, limit)) await readCandidateName(ctx, candidate);
+    return;
+  }
+
+  if (ctx.args.selectorMode === "exact-path") {
+    if (queryKey && ctx.pvf.fileSet.has(queryKey)) {
+      const candidate = entityFromPath(ctx, queryKey, "high", "exact PVF path exists", "exact_path");
+      candidate.root = true;
+      addCandidate(ctx, candidate);
+    } else {
+      ctx.warnings.push(`Exact selector path is missing from the target PVF: ${query}`);
+    }
+    for (const candidate of Array.from(ctx.candidateMap.values()).slice(0, limit)) await readCandidateName(ctx, candidate);
+    return;
+  }
 
   if (hasKnownExtension(queryKey) && ctx.pvf.fileSet.has(queryKey)) {
     addCandidate(ctx, entityFromPath(ctx, queryKey, "high", "exact PVF path exists", "exact_path"));
@@ -1090,6 +1124,8 @@ function finalizeArtifact(ctx) {
     readonly: true,
     inputs: {
       query: ctx.args.query,
+      selectorMode: ctx.args.selectorMode,
+      selectorRegistry: ctx.args.selectorRegistry || "",
       pvf: ctx.args.pvf,
       expand: ctx.args.expand,
       depth: ctx.args.depth,
@@ -1249,6 +1285,9 @@ function validateArgs(args) {
   if (!args.query) throw new Error("--query is required.");
   if (!args.pvf) throw new Error("--pvf=Script.pvf is required. Refusing to read an implicit default PVF.");
   if (!EXPAND_VALUES.has(args.expand)) throw new Error(`--expand must be one of: ${Array.from(EXPAND_VALUES).join(", ")}`);
+  if (!SELECTOR_MODES.has(args.selectorMode)) throw new Error(`--selector-mode must be one of: ${Array.from(SELECTOR_MODES).join(", ")}`);
+  if (args.selectorMode === "registry-id" && !/^\d+$/.test(args.query)) throw new Error("registry-id selector requires a numeric --query.");
+  if (args.selectorMode === "registry-id" && !REGISTRY_KINDS.has(args.selectorRegistry)) throw new Error("registry-id selector requires a supported --selector-registry.");
   if (!fs.existsSync(args.pvf)) throw new Error(`PVF not found: ${args.pvf}`);
   if (args.includePvfCourse && !args.pvfCourseIndex) throw new Error("--pvfcourse-index=FILE is required when --include-pvfcourse is enabled.");
   if (args.pvfCourseIndex && !fs.existsSync(args.pvfCourseIndex)) throw new Error(`pvfCourse index not found: ${args.pvfCourseIndex}`);
@@ -1273,6 +1312,8 @@ async function main() {
     limit: numberArg(rawArgs.limit, 30, 1, 300),
     depth: numberArg(rawArgs.depth, 2, 1, 4),
     expand: String(rawArgs.expand || "auto").toLowerCase(),
+    selectorMode: String(rawArgs["selector-mode"] || "query").toLowerCase(),
+    selectorRegistry: String(rawArgs["selector-registry"] || "").toLowerCase(),
     includePvfCourse: boolArg(rawArgs["include-pvfcourse"], false),
     pvfCourseIndex: rawArgs["pvfcourse-index"] ? path.resolve(rawArgs["pvfcourse-index"]) : "",
     encoding: rawArgs.encoding || "Tw",

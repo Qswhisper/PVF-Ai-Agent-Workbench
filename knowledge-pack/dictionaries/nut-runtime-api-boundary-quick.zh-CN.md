@@ -6,6 +6,7 @@
 
 ## 总规则
 
+- 当目标 PVF 和 API 名称都明确时只用两条命令：先 `workbench.bat knowledge-query nut --name <symbol> --kind <kind> --group dnf --exact`，再 `workbench.bat pvf-read search-script --pvf <Script.pvf> --keyword <symbol>`。两步已覆盖内置声明与目标脚本观察，不再运行 help、`Test-Path`、`Get-Item`、普通 filename search 或目录枚举。
 - API 名称用随包 `workbench.bat nut-api query` 或 `workbench.bat knowledge-query nut` 精确查询；不需要额外目录。内置目录未命中时继续查目标 PVF，不猜函数名。
 - 内置声明版本、函数签名和常量值只说明接口形状，默认 `targetRuntimeVerified: false`；还要查目标 PVF 真实调用点。目录 0 命中不证明运行时不存在。
 - `dnf`、`squirrel`、`frontend`、`tooling` 必须分组理解；Attract-Mode 的 `frontend` 声明不是 DNF 运行时 API。
@@ -29,6 +30,7 @@
 | PassiveObject、AttackInfoPacket、动态攻击包 | 本文 + PassiveObject compact router | 要确认 `sq_SendCreatePassiveObjectPacket`、attack packet、回调参数时 |
 | 回调参数、`onSetState_*`、`onProc_*`、`onAttack_*` | 本文 + 目标脚本实际入口 | 要确认回调参数最低含义时 |
 | 函数、类、常量精确查询 | `nut-api query --exact --kind ... --group dnf` | 有同名冲突、声明版本不明或需看参数时 |
+| 已给目标 PVF 的精确函数核对 | `knowledge-query nut --exact --group dnf` + `pvf-read search-script --keyword <symbol>` | 只有需要解释复杂入口链时才继续读返回的具体脚本 |
 | 两个以上历史 PVF 的调用变化 | `nut-api query --observation ...` 或外部 observation diff | 结论必须同时显示完整 PVF SHA；索引后仍读回相关脚本 |
 
 ## 禁止外推

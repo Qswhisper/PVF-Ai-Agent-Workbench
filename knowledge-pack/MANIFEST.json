@@ -54,8 +54,8 @@
     },
     {
       "dest": "dictionaries/client-compatibility-matrix-boundary-quick.zh-CN.md",
-      "bytes": 1794,
-      "sha256": "704d6610749d69a6890687c12b43668cb2d094bb18a76f53a58a82ba48f13298"
+      "bytes": 2031,
+      "sha256": "67ce2d0cb30a5524a359e20cc63a29f43d88379ca0cbc0799965fb8c2a67c263"
     },
     {
       "dest": "dictionaries/client-ui-layout-pos-lay-fields.zh-CN.md",
@@ -74,8 +74,8 @@
     },
     {
       "dest": "dictionaries/dependency-planner-boundary-quick.zh-CN.md",
-      "bytes": 1693,
-      "sha256": "247ececc3c6c208c6de98511698b9e758954547ba5f85611af96c4abf3119c6f"
+      "bytes": 2773,
+      "sha256": "ff3cdcb0ab7a32c04ce3bbbd2710ee46d9156a89c6572010eb420bb308cebb7d"
     },
     {
       "dest": "dictionaries/dungeon-difficulty-ultimate-list-fields.zh-CN.md",
@@ -164,8 +164,8 @@
     },
     {
       "dest": "dictionaries/nut-runtime-api-boundary-quick.zh-CN.md",
-      "bytes": 3941,
-      "sha256": "820facaf48aa694416ab249fc81a0cd513cceeaf55ec30e3b155ab758e4a7cc0"
+      "bytes": 4524,
+      "sha256": "1c56e0d8e2de1432b0a2bb1a6729fa6b680524c67b57892df8c5a7e01af0a09b"
     },
     {
       "dest": "dictionaries/nut-runtime-api-boundary.zh-CN.md",
@@ -274,8 +274,8 @@
     },
     {
       "dest": "dictionaries/unified-knowledge-query-boundary-quick.zh-CN.md",
-      "bytes": 1710,
-      "sha256": "06334da9c9adacd785668919f1d3154809c43364b939ecbe99276a8aa13cf1e8"
+      "bytes": 2066,
+      "sha256": "b25746ab9a4b4518d59246fd495bc978ebfc3350e1a802f7b01bca93dd429b99"
     },
     {
       "dest": "dictionaries/upgrade-reinforce-amplify-enchant-recipe-fields.zh-CN.md",
@@ -634,8 +634,8 @@
     },
     {
       "dest": "indexes/knowledge-index.json",
-      "bytes": 25584,
-      "sha256": "9228a2530aa490aea6a42d7707fdc5d58f05c77227d508f8a98ddbfec91846db"
+      "bytes": 25788,
+      "sha256": "c6e133a2a2b851bb9caf5af0730b40c1ed11d89be9a855cbf5ec84fd9862c24e"
     },
     {
       "dest": "indexes/knowledge-topic-routes.full.json",
@@ -904,8 +904,8 @@
     },
     {
       "dest": "indexes/skill-parameter-index.zh-CN.md",
-      "bytes": 2746,
-      "sha256": "c2ec2f0b40a4b824a37ab3331230e42663db497aa43c546551bd24d0b594e0ef"
+      "bytes": 2837,
+      "sha256": "261f2aa056a017b99e97c0f126f4a56cc2abc2cf23fd8fdcd46841895bb83197"
     },
     {
       "dest": "indexes/skill-parameter-routes.json",
@@ -914,8 +914,8 @@
     },
     {
       "dest": "indexes/skill-registry-routing.zh-CN.md",
-      "bytes": 2153,
-      "sha256": "954b699e7e222b0f64382acc5880e30c54babc1f991a1571808309099bd25f75"
+      "bytes": 2913,
+      "sha256": "028c5c02479578048a77847ff9a87507c9fa7a8959ed961827fe9381ea623ce3"
     },
     {
       "dest": "indexes/skill-state-nut-runtime-api-group-boundary.zh-CN.md",
@@ -959,13 +959,13 @@
     },
     {
       "dest": "README.zh-CN.md",
-      "bytes": 2602,
-      "sha256": "33f38d061dc6743d793a9220589237dc85add4e35c979a8cb3120acedb4cf063"
+      "bytes": 2849,
+      "sha256": "7744794a8f04808f1c9a76d81f82e664e4985beb01f5d9fcd06d7d0cef1bb85b"
     },
     {
       "dest": "safety/README.zh-CN.md",
-      "bytes": 3079,
-      "sha256": "0dd28a05ede10204d99d5a10265a31645f50105d169caf54f64687f0b15a92bf"
+      "bytes": 5101,
+      "sha256": "dfbea7b81a3e4e4929bc78577f5187d1b376439375a76384d16db33f22df6db8"
     },
     {
       "dest": "task-cards/action-combat-cross-version-porting.zh-CN.md",
@@ -1179,8 +1179,8 @@
     },
     {
       "dest": "task-cards/pvf-registry-lst-topology-readonly-audit.zh-CN.md",
-      "bytes": 1547,
-      "sha256": "e128132ab04dc79cadc3a63401b20844501069d9913c58e9e9273179c17c61fc"
+      "bytes": 2637,
+      "sha256": "696332019a425ae75dcc021c582e7467a4f67b0bffeb2a4b858efb52179d9b90"
     },
     {
       "dest": "task-cards/pvf-semantic-compare-workset-readonly.zh-CN.md",
@@ -1219,18 +1219,18 @@
     },
     {
       "dest": "task-cards/skill-learnability-tree-command-cooldown-readonly-audit.zh-CN.md",
-      "bytes": 3670,
-      "sha256": "6da8f3b3291277c43602661a637e873ffc4995f88e6d5559d8eaacc308f74528"
+      "bytes": 3846,
+      "sha256": "1c35ae3ef8b87c0b4c6d03bcd94495df97ddeb978b03012df39287349793b6b0"
     },
     {
       "dest": "task-cards/skill-parameter-current-value-readonly-query.zh-CN.md",
-      "bytes": 2004,
-      "sha256": "e8bd5c2ec1616d6b6a801ef8f879d028dbed856efb2e6f8ea6c644c79975f59d"
+      "bytes": 2205,
+      "sha256": "c5bc7e33c4290410554f577431fb9ff3ea8362af348c278e0546aa3ed722c4d4"
     },
     {
       "dest": "task-cards/skill-state-nut-runtime-readonly-audit.zh-CN.md",
-      "bytes": 4668,
-      "sha256": "25eea8337bd5f537116261a50083e5c21eb0134a9a4d280925360a5da27d67b6"
+      "bytes": 5228,
+      "sha256": "5534c1704ab7086177e4609ce83326122d0d33cb9b52185416c8d09302219bba"
     },
     {
       "dest": "task-cards/skill-tree-layout-merge-readonly-plan.zh-CN.md",
@@ -1254,8 +1254,8 @@
     },
     {
       "dest": "task-cards/unified-dependency-planner-readonly-preview.zh-CN.md",
-      "bytes": 862,
-      "sha256": "b7e56c5cd04305da5ab1e303da591dc265af6de4b4f31b3947026cda0679983c"
+      "bytes": 1873,
+      "sha256": "c84d7ee71eb3b31b0bbf0a7b0e19f7bc16b32dec1f4597c3b7818a8130aca4cf"
     },
     {
       "dest": "task-cards/unified-knowledge-query-readonly.zh-CN.md",
@@ -1299,8 +1299,13 @@
     },
     {
       "dest": "workflows/client-pvf-compatibility-matrix.zh-CN.md",
-      "bytes": 2226,
-      "sha256": "f315edea7cedd98cfc0105aadf85d5b740151500991979e2a76b8d8d7c780d60"
+      "bytes": 2390,
+      "sha256": "488d8d711a3940d041f9a46ccc4eba8dd8bd8d5ff313ad999a8d91a48daca9c0"
+    },
+    {
+      "dest": "workflows/client-pvf-controlled-deployment.zh-CN.md",
+      "bytes": 1656,
+      "sha256": "dae2f09de7222f98c8517390756ce092d0741ad715bfe6346c49ab9e0dfe05c1"
     },
     {
       "dest": "workflows/dungeon-difficulty-and-ultimate-list-audit.zh-CN.md",
@@ -1369,8 +1374,8 @@
     },
     {
       "dest": "workflows/pvf-tag-joint-query.zh-CN.md",
-      "bytes": 1162,
-      "sha256": "6929da3acf0eeffc3fb82c3e17c84427ca73f163476c24555623bc9ecc9e2f4f"
+      "bytes": 1791,
+      "sha256": "bb93e914836a8f2fcffd08ff260dc4a113b8153cdddaf3559f5649b9aa00e4dd"
     },
     {
       "dest": "workflows/quest-drop-reward-ticket-edit.zh-CN.md",
@@ -1409,13 +1414,13 @@
     },
     {
       "dest": "workflows/unified-dependency-planner.zh-CN.md",
-      "bytes": 2420,
-      "sha256": "e0830dca623c320dccbf5bede2711df3e0b2a6d06a96877da16f9575f2a7ed77"
+      "bytes": 3289,
+      "sha256": "fd5dd9b3350adfaa66c5b91359256c065e66bd5497fdc6b7638a18a9ec7ec7fd"
     },
     {
       "dest": "workflows/unified-knowledge-query.zh-CN.md",
-      "bytes": 1629,
-      "sha256": "4381c00ce0c9e81f61056023c1d60249fb28de3d12bcd89d64a374cf40285e02"
+      "bytes": 1908,
+      "sha256": "e9e3197605e47d9abc61fac3d0d99f9a1793a18f38e8908ca342b12046889ef8"
     },
     {
       "dest": "workflows/worldmap-dungeon-interface-layout.zh-CN.md",
@@ -1424,7 +1429,7 @@
     }
   ],
   "summary": {
-    "entryCount": 284,
-    "totalBytes": 5496993
+    "entryCount": 285,
+    "totalBytes": 5509208
   }
 }

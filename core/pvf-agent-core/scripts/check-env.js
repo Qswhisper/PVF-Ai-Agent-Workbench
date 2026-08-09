@@ -182,6 +182,7 @@ function checkRequiredPaths(errors) {
       "docs/PVF-SEMANTIC-LINEAGE.zh-CN.md",
       "docs/CLEAN-ROOM-DEPENDENCY-PLANNER.zh-CN.md",
       "docs/CLIENT-PVF-COMPATIBILITY-MATRIX.zh-CN.md",
+      "docs/CLIENT-PVF-DEPLOYMENT.zh-CN.md",
       "docs/UNIFIED-KNOWLEDGE-QUERY.zh-CN.md",
       "docs/THIRD-PARTY-NOTICES.md",
       "VERSION",
@@ -214,6 +215,7 @@ function checkRequiredPaths(errors) {
       "commands/pvf-lineage.bat",
       "commands/dependency-planner.bat",
       "commands/client-compat-matrix.bat",
+      "commands/client-pvf-deploy.bat",
       "commands/unified-knowledge-query.bat",
       "commands/workbench-doctor.bat",
       "runtime/node/node.exe",
@@ -239,6 +241,7 @@ function checkRequiredPaths(errors) {
       "tools/pvf-bridge/materialize-dungeon-preset.js",
       "config/pvf-adapter.json",
       "config/write-policy.json",
+      "config/client-pvf-deploy-policy.json",
       "config/workspace-profiles.json",
       "agents/dnf-pvf-agent.md",
       "agents/pvf-safety-rules.md",
@@ -274,6 +277,7 @@ function checkRequiredPaths(errors) {
       "core/pvf-agent-core/cli/pvf-lineage.js",
       "core/pvf-agent-core/cli/dependency-planner.js",
       "core/pvf-agent-core/cli/client-compat-matrix.js",
+      "core/pvf-agent-core/cli/client-pvf-deploy.js",
       "core/pvf-agent-core/cli/unified-knowledge-query.js",
       "core/pvf-agent-core/lib/backend-stdio-client.js",
       "core/pvf-agent-core/lib/adapter-config.js",
@@ -288,6 +292,7 @@ function checkRequiredPaths(errors) {
       "core/pvf-agent-core/contracts/typescript-readonly-backend-contract.v1.json",
       "core/pvf-agent-core/contracts/dependency-planner.v1.json",
       "core/pvf-agent-core/contracts/client-compatibility-matrix.v1.json",
+      "core/pvf-agent-core/contracts/client-pvf-deployment.v1.json",
       "core/pvf-agent-core/contracts/unified-knowledge-query.v1.json",
       "core/pvf-agent-core/contracts/fixtures/README.zh-CN.md",
       "core/pvf-agent-core/contracts/fixtures/apc-swordman-gsd.fixture.json",
@@ -318,6 +323,7 @@ function checkRequiredPaths(errors) {
       "core/pvf-agent-core/schemas/pvf-lineage-catalog.schema.json",
       "core/pvf-agent-core/schemas/dependency-plan.schema.json",
       "core/pvf-agent-core/schemas/client-compatibility-matrix.schema.json",
+      "core/pvf-agent-core/schemas/client-pvf-deployment.schema.json",
       "core/pvf-agent-core/schemas/unified-knowledge-query.schema.json",
       "knowledge-pack/README.zh-CN.md",
       "knowledge-pack/EXPORT-POLICY.zh-CN.md",
@@ -330,6 +336,7 @@ function checkRequiredPaths(errors) {
       "knowledge-pack/encyclopedia/README.zh-CN.md",
       "knowledge-pack/dictionaries/README.zh-CN.md",
       "knowledge-pack/workflows/README.zh-CN.md",
+      "knowledge-pack/workflows/client-pvf-controlled-deployment.zh-CN.md",
       "knowledge-pack/task-cards/README.zh-CN.md",
       "workspaces/README.zh-CN.md",
       "workspaces/absorption-checklists/README.zh-CN.md",
@@ -808,6 +815,78 @@ function checkWritePolicy(writePolicy, errors) {
       errors.push(`write-policy.json missing apply gate: ${gate}`);
     }
   }
+  const requiredAfter = new Set(writePolicy.requiredAfterApply || []);
+  for (const gate of ["full-output-sha256-binding", "output-byte-size-binding"]) {
+    if (!requiredAfter.has(gate)) {
+      errors.push(`write-policy.json missing post-apply gate: ${gate}`);
+    }
+  }
+}
+
+function checkClientPvfDeployPolicy(policy, errors) {
+  if (!policy) return;
+  if (policy.schemaVersion !== "1.0" || policy.phase !== "controlled-client-pvf-deployment") {
+    errors.push("client-pvf-deploy-policy.json must use the controlled-client-pvf-deployment v1 contract.");
+  }
+  if (policy.mode !== "explicit-preview-authorize-deploy-rollback" || policy.controlledDeployEnabled !== true) {
+    errors.push("client-pvf-deploy-policy.json must enable only the explicit preview/authorize/deploy/rollback lane.");
+  }
+  if (policy.defaultClientWriteEnabled !== false || policy.targetFileName !== "Script.pvf") {
+    errors.push("client-pvf deployment must remain off by default and target only Script.pvf.");
+  }
+  const permission = policy.permissionModel || {};
+  if (
+    permission.profileClientRootRequired !== true ||
+    permission.directClientPathAllowed !== false ||
+    permission.sourcePvfOverwriteAllowed !== false ||
+    permission.applyOutputMutationAllowed !== false ||
+    permission.nonPvfClientResourceWriteAllowed !== false
+  ) {
+    errors.push("client-pvf deployment permission boundaries are incomplete.");
+  }
+  const deployGates = new Set(policy.requiredBeforeDeploy || []);
+  for (const gate of [
+    "verified-apply-manifest",
+    "apply-output-sha256-binding",
+    "profile-source-matches-apply-manifest",
+    "source-pvf-sha256-unchanged",
+    "profile-client-target",
+    "current-client-pvf-sha256-binding",
+    "explicit-deploy-authorization-code",
+    "client-and-launcher-confirmed-closed",
+    "content-addressed-client-backup",
+    "same-directory-staged-replacement",
+    "post-deploy-sha256-readback",
+  ]) {
+    if (!deployGates.has(gate)) errors.push("client-pvf deploy policy missing gate: " + gate);
+  }
+  const rollbackGates = new Set(policy.requiredBeforeRollback || []);
+  for (const gate of [
+    "verified-deployment-manifest",
+    "current-deployed-pvf-sha256-binding",
+    "verified-backup-sha256",
+    "explicit-rollback-authorization-code",
+    "client-and-launcher-confirmed-closed",
+    "same-directory-staged-replacement",
+    "post-rollback-sha256-readback",
+  ]) {
+    if (!rollbackGates.has(gate)) errors.push("client-pvf rollback policy missing gate: " + gate);
+  }
+  const forbidden = new Set(policy.forbiddenOperations || []);
+  for (const operation of [
+    "deploy-without-preview",
+    "deploy-profile-source-mismatch",
+    "deploy-changed-source-pvf",
+    "deploy-stale-client-target",
+    "deploy-over-source-pvf",
+    "deploy-to-direct-unprofiled-path",
+    "overwrite-client-without-backup",
+    "rollback-without-preview",
+    "rollback-over-divergent-client-target",
+    "npk-img-ui-or-other-client-resource-write",
+  ]) {
+    if (!forbidden.has(operation)) errors.push("client-pvf deploy policy must explicitly forbid: " + operation);
+  }
 }
 
 function checkWorkspaceProfiles(profilesConfig, errors, warnings, localProfilesConfig, info) {
@@ -925,6 +1004,7 @@ function main() {
   const opencodeConfig = agentWorkspaceMode ? null : readJson("config/opencode.json", errors);
   const adapterConfig = readJson("config/pvf-adapter.json", errors);
   const writePolicy = readJson("config/write-policy.json", errors);
+  const clientPvfDeployPolicy = readJson("config/client-pvf-deploy-policy.json", errors);
   const profilesConfig = readJson("config/workspace-profiles.json", errors);
   const localProfilesPath = join("config/workspace-profiles.local.json");
   const localProfilesConfig = fs.existsSync(localProfilesPath) ? readJson("config/workspace-profiles.local.json", errors) : null;
@@ -964,6 +1044,7 @@ function main() {
   }
   checkPvfAdapter(adapterConfig, errors, warnings);
   checkWritePolicy(writePolicy, errors);
+  checkClientPvfDeployPolicy(clientPvfDeployPolicy, errors);
   checkWorkspaceProfiles(profilesConfig, errors, warnings, localProfilesConfig, info);
 
   for (const line of info) {

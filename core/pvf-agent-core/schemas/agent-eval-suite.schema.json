@@ -3,11 +3,84 @@
   "$id": "agent-eval-suite.schema.json",
   "type": "object",
   "required": ["schemaVersion", "suiteId", "version", "minimumAverageScore", "cases"],
+  "additionalProperties": false,
   "properties": {
+    "$schema": { "type": "string" },
     "schemaVersion": { "const": "1.0" },
     "suiteId": { "type": "string" },
     "version": { "type": "string" },
     "minimumAverageScore": { "type": "number", "minimum": 0, "maximum": 1 },
-    "cases": { "type": "array", "minItems": 1 }
+    "cases": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/case" }
+    }
+  },
+  "$defs": {
+    "patternGroup": {
+      "type": "object",
+      "required": ["id"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "patterns": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "allPatterns": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "beginnerPresentation": {
+      "type": "object",
+      "required": [
+        "leadForbiddenPatterns",
+        "technicalTermPatterns",
+        "technicalDetailsHeadingPatterns",
+        "requireHeadingBeforeTechnicalTerms"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "leadMaxChars": { "type": "integer", "minimum": 40, "maximum": 500 },
+        "leadForbiddenPatterns": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "technicalTermPatterns": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "technicalDetailsHeadingPatterns": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string" }
+        },
+        "requireHeadingBeforeTechnicalTerms": { "const": true }
+      }
+    },
+    "case": {
+      "type": "object",
+      "required": ["id", "title", "responseFile", "prompt", "requiredGroups", "forbiddenPatterns"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "responseFile": { "type": "string", "minLength": 1 },
+        "prompt": { "type": "string", "minLength": 1 },
+        "requiredGroups": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/patternGroup" }
+        },
+        "forbiddenPatterns": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "beginnerPresentation": {
+          "$ref": "#/$defs/beginnerPresentation"
+        }
+      }
+    }
   }
 }

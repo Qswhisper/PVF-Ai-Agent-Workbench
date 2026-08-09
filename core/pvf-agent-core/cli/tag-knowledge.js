@@ -55,7 +55,8 @@ function numberOption(name, fallback, maximum = 1000) {
 function usage() {
   return `Usage:
   workbench.bat tag-knowledge build --community-old <comments.db> --community-new <comments.db> --official-original <directory> [--tool-extension <directory>] [--registry-hints <file>] [--claim-store <CLAIM-STORE.json>] [--replace-claims] [--out <external-dir>] [--force]
-  workbench.bat tag-knowledge query --tag <section> [--layer community|official-original|tool-extension] [--observation <PVF-TAG-OBSERVATIONS.json>]... [--exact] [--limit 20]
+  workbench.bat tag-knowledge query --tag <section> [--layer community|official-original|tool-extension] [--observation <PVF-TAG-OBSERVATIONS.json|observe-output-dir>]... [--exact] [--limit 20]
+  workbench.bat tag-knowledge query-observation --report <PVF-TAG-OBSERVATIONS.json|observe-output-dir> [--tag <section>] [--exact] [--limit 20]
   workbench.bat tag-knowledge search --keyword <text> [--limit 20]
   workbench.bat tag-knowledge stats
   workbench.bat tag-knowledge observe-pvf --pvf <Script.pvf> --tag <section> [--tag <section>]... [--samples 3] [--encoding Cn] [--out <external-dir>] [--force]
@@ -401,6 +402,67 @@ function publicCatalogPath(file) {
     : file;
 }
 
+function resolveObservationFile(value) {
+  const resolved = path.resolve(value);
+  if (!fs.existsSync(resolved)) throw new Error(`Tag observation does not exist: ${resolved}`);
+  if (fs.statSync(resolved).isDirectory()) {
+    const nested = path.join(resolved, "PVF-TAG-OBSERVATIONS.json");
+    if (!fs.existsSync(nested) || !fs.statSync(nested).isFile()) throw new Error(`Tag observation directory is missing PVF-TAG-OBSERVATIONS.json: ${resolved}`);
+    return nested;
+  }
+  if (!fs.statSync(resolved).isFile()) throw new Error(`Tag observation is not a file: ${resolved}`);
+  return resolved;
+}
+
+function observationQueryResult(value, requestedTag = "", exact = false, limit = 20) {
+  const observationFile = resolveObservationFile(value);
+  const observation = readJson(observationFile);
+  if (observation.phase !== "pvf-tag-observation" || !Array.isArray(observation.tags)) {
+    throw new Error(`Not a PVF tag observation report: ${observationFile}`);
+  }
+  const needle = normalizeTag(requestedTag);
+  const allMatches = observation.tags.filter((item) => {
+    if (!needle) return true;
+    const candidate = normalizeTag(item.normalizedTag || item.displayTag);
+    return exact ? candidate === needle : candidate.includes(needle);
+  });
+  const matches = allMatches.slice(0, limit);
+  return {
+    ok: true,
+    command: "query-observation",
+    observation: {
+      path: observationFile,
+      sha256: sha256File(observationFile),
+      pvf: observation.pvf || null,
+      reportSummary: observation.summary || null,
+      reportSafety: observation.safety || null,
+    },
+    query: { tag: needle || null, exact: Boolean(exact), limit },
+    summary: { matchCount: allMatches.length, returnedCount: matches.length, truncated: allMatches.length > matches.length },
+    matches,
+    boundaries: {
+      readOnly: true,
+      generatedIndexIsFinalEvidence: false,
+      zeroMatchesProveTagUnavailable: false,
+      targetSampleReadbackRequired: true,
+      directWriteAllowed: false,
+    },
+    agentHandoff: {
+      observationQueryComplete: true,
+      additionalObservationQueryRequired: false,
+      nextReadOnlyStep: "read returned sample paths with workbench.bat pvf-read read-batch",
+      helpProbeRequired: false,
+    },
+  };
+}
+
+function queryObservation() {
+  const report = option("--report", option("--observation"));
+  if (!report) throw new Error("query-observation requires --report <PVF-TAG-OBSERVATIONS.json|observe-output-dir>.");
+  const result = observationQueryResult(report, option("--tag", ""), flag("--exact"), numberOption("--limit", 20, 200));
+  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+}
+
 function query() {
   const { file, catalog } = loadCatalog();
   const needle = normalizeTag(required("--tag"));
@@ -418,7 +480,7 @@ function query() {
     spellingCandidates: (catalog.registryHints.suspiciousRegistryCandidates || []).filter((item) => match(normalizeTag(item.context?.SectionName || "")) || match(item.observed)).slice(0, limit),
   };
   const observationMatches = options("--observation").map((value) => {
-    const observationFile = path.resolve(value);
+    const observationFile = resolveObservationFile(value);
     const observation = readJson(observationFile);
     return { observationFile, pvf: observation.pvf, matches: (observation.tags || []).filter((item) => match(item.normalizedTag)) };
   });
@@ -548,6 +610,26 @@ function selfTest() {
     createFixtureDatabase(newFile, [{ id: 1, section: "alpha", comment: "标题：A" }, { id: 2, section: "beta", comment: "标题：Changed\n\nB extra" }, { id: 3, section: "gamma", comment: "C" }]);
     fs.writeFileSync(path.join(officialRoot, "sample.skl"), "[alpha] // official\n", "utf8");
     fs.writeFileSync(path.join(toolRoot, "sample.skl"), "[alpha]\n[beta]\n", "utf8");
+    const observationDir = path.join(tempRoot, "observation");
+    fs.mkdirSync(observationDir);
+    const observationFile = path.join(observationDir, "PVF-TAG-OBSERVATIONS.json");
+    fs.writeFileSync(observationFile, JSON.stringify({
+      phase: "pvf-tag-observation",
+      pvf: { sha256: "a".repeat(64) },
+      safety: { readOnly: true, generatedIndexIsFinalEvidence: false },
+      summary: { requestedTagCount: 1, observedTagCount: 1, totalSampleCount: 1 },
+      tags: [{ normalizedTag: "cool time", displayTag: "[cool time]", searchMatchedCount: 1, samples: [{ pvfPath: "equipment/fixture.equ", line: 1 }] }],
+    }) + "\n", "utf8");
+    checks.push({ id: "observation-directory-resolves", ok: resolveObservationFile(observationDir) === observationFile });
+    const observationQuery = observationQueryResult(observationDir, "cool time", true, 20);
+    checks.push({
+      id: "query-observation-report-alias",
+      ok:
+        observationQuery.summary.matchCount === 1 &&
+        observationQuery.matches[0]?.samples?.[0]?.pvfPath === "equipment/fixture.equ" &&
+        observationQuery.boundaries.generatedIndexIsFinalEvidence === false &&
+        observationQuery.agentHandoff.additionalObservationQueryRequired === false,
+    });
     const catalog = catalogFromSources(oldFile, newFile, officialRoot, toolRoot, null);
     checks.push({ id: "community-added", ok: catalog.summary.addedIdCount === 1 && catalog.community.diff.addedIds[0] === 3 });
     checks.push({ id: "community-format-only", ok: catalog.summary.formatOnlyChangedCount === 1 });
@@ -568,6 +650,7 @@ async function main() {
   if (["help", "--help", "-h"].includes(command)) process.stdout.write(usage());
   else if (command === "build") build();
   else if (command === "query") query();
+  else if (command === "query-observation") queryObservation();
   else if (command === "search") search();
   else if (command === "stats") stats();
   else if (command === "observe-pvf") await observePvf();

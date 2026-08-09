@@ -4,9 +4,14 @@
   "domains": ["dungeon", "town", "monster", "passiveobject", "apc", "ani", "equipment", "stackable", "package", "orb", "quest", "set"],
   "inputs": {
     "required": ["target Script.pvf", "domain", "exactly one ID/path/query/supported-sample selector"],
-    "optional": ["depth", "limit", "encoding", "external output directory", "SHA-bound private batch profile"]
+    "optional": ["depth", "limit", "encoding", "external output directory", "SHA-bound private batch profile"],
+    "selectorSemantics": {
+      "id": "resolve only through the registry bound to the requested domain; do not run fuzzy filename or content discovery",
+      "path": "use the exact target PVF path as the sole root candidate",
+      "query": "fuzzy discovery is allowed and may require narrowing before handoff"
+    }
   },
-  "outputs": ["root and dependency nodes", "registry-resolved edges", "unresolved references", "client asset candidates", "risk levels", "controlled-write handoff requirements"],
+  "outputs": ["root and dependency nodes", "registry-resolved edges", "unresolved references", "client asset candidates", "risk levels", "machine-readable agent handoff", "controlled-write handoff requirements"],
   "safety": {
     "readOnly": true,
     "sourcePvfOverwriteAllowed": false,
@@ -19,6 +24,7 @@
   "evidence": {
     "implementationBasis": ["Workbench clean knowledge", "target PVF raw readback", "public PVF structure", "independent fixtures"],
     "commercialToolRole": "capability categories only",
-    "cacheReuseBinding": ["full PVF SHA256", "canonical request fingerprint", "underlying planner lane"]
+    "cacheReuseBinding": ["full PVF SHA256", "canonical request fingerprint", "underlying planner lane"],
+    "agentCompletionBoundary": "The returned DEPENDENCY-PLAN.json is the complete generated report for the preview. It is not final runtime evidence or an apply plan. Agents use the returned path directly and do not probe it with Test-Path/Get-Item or write another Markdown/JSON summary."
   }
 }

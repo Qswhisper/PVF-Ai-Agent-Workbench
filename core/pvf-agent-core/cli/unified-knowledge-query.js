@@ -47,7 +47,7 @@ function usage() {
   workbench.bat knowledge-query tag --tag <tag> [--layer <layer>] [--exact]
   workbench.bat knowledge-query bookmark (--text <text> | --path <pvf-path>) [--limit 50]
   workbench.bat knowledge-query lineage --catalog <PVF-LINEAGE-CATALOG.json> (--path <path> | --symbol <name> | --golden <id>) [--limit 50]
-  workbench.bat knowledge-query planner --report <DEPENDENCY-PLAN.json|DEPENDENCY-PLAN-BATCH.json> [--text <text>] [--domain <domain>] [--unresolved-only] [--limit 50]
+  workbench.bat knowledge-query planner --report <DEPENDENCY-PLAN.json|DEPENDENCY-PLAN-BATCH.json> [--text <text>] [--domain <domain>] [--unresolved-only] [--limit 20]
   workbench.bat knowledge-query client --matrix <CLIENT-COMPATIBILITY-MATRIX.json> [--id <id>] [--status <status>] [--target <target>] [--limit 50]
   workbench.bat knowledge-query profile-check --profile <PRIVATE-UNIFIED-QUERY-REGRESSION.json> [--out <external-dir>]
   workbench.bat knowledge-query self-test
@@ -61,7 +61,7 @@ function bool(value) {
 }
 
 function queryFromArgs(kind) {
-  const common = { text: option("--text", ""), limit: numberOption("--limit", 50) };
+  const common = { text: option("--text", ""), limit: numberOption("--limit", kind === "planner" ? 20 : 50) };
   if (kind === "source") return { ...common, file: path.resolve(required("--manifest")), topic: option("--topic", ""), extension: option("--extension", ""), fileKind: option("--file-kind", "") };
   if (kind === "claims") return { ...common, file: path.resolve(required("--store")), domain: option("--domain", ""), status: option("--status", ""), distributionStatus: option("--distribution-status", "") };
   if (kind === "nut") return { ...common, file: path.resolve(option("--catalog", path.join(workbenchRoot, BUILTIN_NUT))), name: required("--name"), declarationKind: option("--kind", ""), group: option("--group", ""), exact: flag("--exact") };
@@ -158,7 +158,15 @@ function queryNut(query) {
   if (query.group) forwarded.push("--group", query.group);
   if (query.exact) forwarded.push("--exact");
   const delegated = invokeJson("core/pvf-agent-core/cli/nut-api.js", forwarded);
-  return envelope("nut", query, delegated.value.matches || [], { command: "nut-api query", declaredRuntimeVersion: delegated.value.declaredRuntimeVersion, targetRuntimeVerified: delegated.value.targetRuntimeVerified, notFoundProvesUnavailable: delegated.value.notFoundProvesUnavailable, stderr: delegated.stderr });
+  const result = envelope("nut", query, delegated.value.matches || [], { command: "nut-api query", declaredRuntimeVersion: delegated.value.declaredRuntimeVersion, targetRuntimeVerified: delegated.value.targetRuntimeVerified, notFoundProvesUnavailable: delegated.value.notFoundProvesUnavailable, stderr: delegated.stderr });
+  result.agentHandoff = {
+    exactDeclarationQueryComplete: Boolean(query.exact),
+    nextTargetStep: `workbench.bat pvf-read search-script --pvf <target Script.pvf> --keyword ${query.name}`,
+    additionalCatalogQueryRequired: false,
+    helpProbeRequired: false,
+    prohibitedFollowUp: ["Test-Path", "Get-Item", "help probe", "guess another API name"],
+  };
+  return result;
 }
 
 function queryTag(query) {
@@ -216,7 +224,7 @@ function queryPlanner(query) {
     if (query.unresolvedOnly) results = (report.unresolved || []).map((item) => ({ type: "unresolved", ...item }));
     else results = [
       ...(report.nodes || []).map((item) => ({ type: "node", ...item })),
-      ...(report.edges || []).map((item) => ({ type: "edge", ...item })),
+      ...(report.edges || []).filter((item) => item.resolved !== false).map((item) => ({ type: "edge", ...item })),
       ...(report.unresolved || []).map((item) => ({ type: "unresolved", ...item })),
       ...(report.clientAssetCandidates || []).map((item) => ({ type: "client-asset-candidate", ...item })),
       ...(report.risks || []).map((item) => ({ type: "risk", ...item })),
@@ -224,9 +232,30 @@ function queryPlanner(query) {
   } else throw new Error(`Unsupported dependency planner report phase: ${report.phase}`);
   if (query.domain) results = results.filter((item) => String(item.domain || report.planner?.domain || "").toLowerCase() === query.domain.toLowerCase());
   if (query.text) results = results.filter((item) => contains(item, query.text));
-  const result = envelope("planner", query, results, { command: "direct dependency report query", reportPhase: report.phase, controlledWriteHandoff: report.controlledWriteHandoff || null });
+  const result = envelope("planner", query, results, {
+    command: "direct dependency report query",
+    reportPhase: report.phase,
+    reportSummary: report.summary || null,
+    reportSafety: report.safety || null,
+    selector: report.input ? { domain: report.input.domain, idValue: report.input.idValue, path: report.input.path, query: report.input.query } : null,
+    roots: report.phase === "clean-room-dependency-plan" ? (report.nodes || []).filter((item) => item.root).slice(0, 5) : [],
+    agentHandoff: report.agentHandoff || null,
+    controlledWriteHandoff: report.controlledWriteHandoff || null,
+  });
   result.boundaries.plannerOutputIsImportPlan = false;
   result.boundaries.unresolvedMayBeSilentlyIgnored = false;
+  result.boundaries.plannerReportJsonIsCompleteDeliverable = report.agentHandoff?.reportJsonIsCompleteDeliverable === true;
+  result.boundaries.plannerReportIsFinalRuntimeEvidence = false;
+  result.boundaries.additionalSummaryFileRequired = false;
+  result.boundaries.outputDirectoryProbeRequired = false;
+  result.agentHandoff = report.agentHandoff || {
+    reportJsonIsCompleteDeliverable: true,
+    reportJsonIsFinalRuntimeEvidence: false,
+    additionalSummaryFileRequired: false,
+    outputDirectoryProbeRequired: false,
+    useReturnedReportPathDirectly: true,
+    prohibitedFollowUp: ["Test-Path", "Get-Item", "Set-Content", "Out-File", "write another Markdown or JSON summary"],
+  };
   return result;
 }
 
@@ -297,10 +326,52 @@ function selfTest() {
   checks.push({ id: "zero-is-not-absence-proof", ok: empty.summary.matchCount === 0 && empty.boundaries.zeroMatchesProveAbsence === false });
   const builtinNut = queryNut({ file: path.join(workbenchRoot, BUILTIN_NUT), name: "sq_GetSkillLevel", declarationKind: "function", group: "dnf", exact: true, text: "", limit: 10 });
   checks.push({ id: "builtin-nut-default", ok: builtinNut.summary.matchCount > 0 && builtinNut.artifact.scope === "portable-workbench" });
+  checks.push({
+    id: "builtin-nut-two-command-handoff",
+    ok:
+      builtinNut.agentHandoff.exactDeclarationQueryComplete === true &&
+      builtinNut.agentHandoff.nextTargetStep.includes("pvf-read search-script") &&
+      builtinNut.agentHandoff.additionalCatalogQueryRequired === false &&
+      builtinNut.agentHandoff.helpProbeRequired === false,
+  });
   const builtinTag = queryTag({ file: path.join(workbenchRoot, BUILTIN_TAG), tag: "duration", layer: "", exact: true, text: "", limit: 10 });
   checks.push({ id: "builtin-tag-default", ok: builtinTag.summary.matchCount > 0 && builtinTag.artifact.scope === "portable-workbench" });
   const builtinBookmark = queryBookmark({ file: path.join(workbenchRoot, BUILTIN_BOOKMARKS), text: "商城", path: "", status: "", limit: 10 });
   checks.push({ id: "builtin-bookmark-default", ok: builtinBookmark.summary.matchCount > 0 && builtinBookmark.results.some((item) => item.path === "etc/newcashshop.etc") });
+  const plannerFixturePath = path.join(runtimePath(workbenchRoot, "unified-query-self-test"), "DEPENDENCY-PLAN.json");
+  fs.mkdirSync(path.dirname(plannerFixturePath), { recursive: true });
+  writeJsonAtomic(plannerFixturePath, {
+    schemaVersion: "1.0",
+    phase: "clean-room-dependency-plan",
+    planner: { domain: "dungeon" },
+    input: { domain: "dungeon", idValue: 1, path: "", query: "" },
+    safety: { readOnly: true },
+    summary: { rootCount: 1, readErrorCount: 0 },
+    nodes: [{ root: true, pvfPath: "dungeon/fixture.dgn" }],
+    edges: [],
+    unresolved: [],
+    clientAssetCandidates: [],
+    risks: [],
+    agentHandoff: {
+      reportJsonIsCompleteDeliverable: true,
+      reportJsonIsFinalRuntimeEvidence: false,
+      additionalSummaryFileRequired: false,
+      outputDirectoryProbeRequired: false,
+      useReturnedReportPathDirectly: true,
+      prohibitedFollowUp: ["Test-Path", "Get-Item", "Set-Content", "Out-File", "write another Markdown or JSON summary"],
+    },
+    controlledWriteHandoff: { allowedDirectly: false },
+  });
+  const planner = queryPlanner({ file: plannerFixturePath, text: "", domain: "", unresolvedOnly: false, limit: 20 });
+  checks.push({
+    id: "planner-handoff-stops-extra-probes",
+    ok:
+      planner.boundaries.plannerReportJsonIsCompleteDeliverable === true &&
+      planner.boundaries.plannerReportIsFinalRuntimeEvidence === false &&
+      planner.boundaries.additionalSummaryFileRequired === false &&
+      planner.boundaries.outputDirectoryProbeRequired === false &&
+      ["Test-Path", "Get-Item", "Set-Content"].every((name) => planner.agentHandoff.prohibitedFollowUp.includes(name)),
+  });
   const report = { schemaVersion: "1.0", phase: "unified-workbench-query-self-test", summary: { ok: checks.every((item) => item.ok), checkCount: checks.length, failedChecks: checks.filter((item) => !item.ok).length, kindCount: KINDS.length }, checks };
   process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   if (!report.summary.ok) process.exitCode = 1;

@@ -24,6 +24,8 @@ function usage() {
 Notes:
   Local profiles are written to config/workspace-profiles.local.json.
   That file is machine-specific and ignored by git/packages.
+  Use one profile per test client. The client field records the client root containing Script.pvf.
+  Client writes remain off by default; workbench.bat client-pvf requires a separate preview and confirmation.
 `;
 }
 
@@ -242,6 +244,7 @@ function commandInit() {
     notes: [
       "Machine-local profile. Keep config/workspace-profiles.local.json private.",
       "Default write mode remains disabled; use controlled-output change-set apply only after explicit authorization.",
+      "The client root is used only by the separately previewed and authorized client-pvf deployment lane.",
     ],
   };
 

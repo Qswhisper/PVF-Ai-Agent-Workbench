@@ -1,4 +1,4 @@
-# GitHub 2.1.3 发布清单
+# GitHub 2.2.0 发布清单
 
 本清单用于把当前干净目录同步到 GitHub。Gate 报告、真实 PVF、客户端、
 本机 profile 和研究目录都不进入仓库。
@@ -28,8 +28,8 @@
 6. 检查 `git status --short`，确认没有真实 `.pvf/.npk/.img`、本机路径、
    secret、数据库、压缩包、缓存目录或 Gate 输出。
 7. 提交并推送后，在远端 tag 对应的 Source code zip 中再次运行
-   `workbench.bat check`、`workbench.bat fallback-self-test` 和
-   `workbench.bat release gate3`，再创建 `v2.1.3`
+   `workbench.bat check`、`workbench.bat client-pvf self-test`、
+   `workbench.bat fallback-self-test` 和 `workbench.bat release gate3`，再创建 `v2.2.0`
    Release。
 
 ## 发布措辞边界
@@ -47,3 +47,6 @@
 - 可以声明 `Cn` 搜索、`.str`、StringLink 与非 ASCII 脚本读取会自动进行
   语义保护；不能声明直接中文文本写入已经安全。`Cn .str` 与直接非 ASCII
   文本写入当前必须失败关闭。
+- 可以声明已复查的独立输出 PVF 可在单独预览和确认后部署到 profile 指定
+  的测试客户端，并可恢复部署前版本；不能把这项权限扩大为 NPK、IMG、UI
+  或其他客户端资源写入，也不能把文件部署成功宣传为实机功能通过。

@@ -38,6 +38,13 @@
         "safety/README.zh-CN.md"
       ]
     },
+    "client-pvf-controlled-deployment": {
+      "status": "默认可用",
+      "entries": [
+        "workflows/client-pvf-controlled-deployment.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
     "runtime-absorption": {
       "status": "默认可用",
       "entries": [

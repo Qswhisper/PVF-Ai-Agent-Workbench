@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local.pvf-agent-workbench/schemas/client-pvf-deployment.schema.json",
+  "title": "Controlled client Script.pvf deployment artifacts",
+  "oneOf": [
+    {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "phase",
+        "mode",
+        "ready",
+        "profileName",
+        "clientPvf",
+        "safety",
+        "summary"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1.0" },
+        "phase": {
+          "enum": [
+            "client-pvf-deploy-preview",
+            "client-pvf-rollback-preview"
+          ]
+        },
+        "mode": { "const": "preview-only" },
+        "ready": { "type": "boolean" },
+        "noChange": { "type": "boolean" },
+        "profileName": { "type": "string", "minLength": 1 },
+        "clientPvf": { "type": "string", "minLength": 1 },
+        "binding": {
+          "type": ["object", "null"]
+        },
+        "safety": { "type": "object" },
+        "summary": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    {
+      "type": "object",
+      "required": [
+        "schemaVersion",
+        "phase",
+        "status",
+        "manifestPath",
+        "profileName",
+        "clientPvf",
+        "safety",
+        "history"
+      ],
+      "properties": {
+        "schemaVersion": { "const": "1.0" },
+        "phase": {
+          "enum": [
+            "client-pvf-deployment",
+            "client-pvf-rollback"
+          ]
+        },
+        "status": {
+          "enum": [
+            "initializing",
+            "prepared",
+            "backup-ready",
+            "deployed",
+            "rolled-back",
+            "failed-restored",
+            "recovery-required"
+          ]
+        },
+        "manifestPath": { "type": "string", "minLength": 1 },
+        "profileName": { "type": "string", "minLength": 1 },
+        "clientPvf": { "type": "string", "minLength": 1 },
+        "completionBinding": {
+          "type": ["object", "null"]
+        },
+        "safety": { "type": "object" },
+        "history": { "type": "array" }
+      },
+      "additionalProperties": true
+    }
+  ]
+}

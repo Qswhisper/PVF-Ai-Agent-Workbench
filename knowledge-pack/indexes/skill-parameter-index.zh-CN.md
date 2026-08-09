@@ -11,7 +11,7 @@
 ## 查询顺序
 
 1. 确认目标 PVF 和目标职业。
-2. 通过目标职业的 skill registry 解析技能 ID 和 `.skl` 路径。
+2. 已给技能 ID 时用 `pvf-read resolve-skill` 通过目标 `.chr` 与职业 skill registry 一次解析 `.skl` 路径；成功后不再猜路径或枚举目录。
 3. 用技能名、职业目录或 `.skl` 路径查内置结构化事实表。
 4. 读取目标 PVF 中对应 `.skl`，核对 `[static data]`、`[level info]` 或 `[level property]` 是否存在。
 5. 核对列数、列顺序和技能上下文；列数不一致时只记录为线索。

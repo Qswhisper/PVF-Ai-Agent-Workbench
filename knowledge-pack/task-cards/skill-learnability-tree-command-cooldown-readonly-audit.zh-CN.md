@@ -17,7 +17,7 @@
 ## 只读步骤
 
 1. 确认父入口：问题来自 `.skl`、装备技能加成、技能树、`.chr` 默认技能、AutoSkill、PVP 表，还是 NUT。
-2. 选择正确 skill registry：先看职业 token、父文件族和上下文，再解析技能 ID。
+2. 明确目标职业和技能 ID 时运行 `pvf-read resolve-skill`，再读取返回的 `.skl`；这一步已经从目标 `.chr` 和 `skill/skilllist.lst` 选择正确职业 registry，不再猜路径或枚举目录。
 3. 读取目标 `.skl`：记录 `[name]`、`[name2]`、`[type]`、`[required level]`、`[purchase cost]`、`[maximum level]`、`[growtype maximum level]`、`[skill fitness growtype]`。
 4. 若问技能树：读取对应 SP/TP 技能树，记录 `[character job]`、`[index]`、`[icon pos]`、`[next skill]`。
 5. 若问默认学会：读取对应 `.chr` 的基础、growtype 和 awakening 技能字段；必要时再查 AutoSkill。
@@ -28,7 +28,7 @@
 10. 若问学习扣点：普通技能读 `.skl [purchase cost]`；TP/EX 强化技能读强化 `.skl [special purchase cost]`；不要从 SP/TP 树图标列表推断扣点。
 11. 若问前置技能：分开记录技能树 `[next skill]` 和 `.skl [pre required skill]`，不要互相替代。
 12. 若问装备加技能等级：走装备侧 `[skill levelup]` 三列组和外层装备上下文，不写成学习来源。
-13. 若问动态冷却 API：只做最小 NUT 搜索；没有命中时，不沿用旧 Runtime 样本当目标事实。
+13. 若问动态冷却 API：使用一次精确 `knowledge-query nut` 加一次目标 `pvf-read search-script`；没有命中时，不沿用旧 Runtime 样本当目标事实。
 
 ## 输出格式
 

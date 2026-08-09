@@ -1,0 +1,36 @@
+{
+  "schemaVersion": "1.0",
+  "capability": "controlled-client-script-pvf-deployment",
+  "entry": "workbench.bat client-pvf",
+  "scope": {
+    "allowedTarget": "The single Script.pvf at the root of a client directory recorded by an enabled local profile.",
+    "forbiddenTargets": [
+      "source PVF",
+      "apply output PVF",
+      "direct unprofiled path",
+      "NPK",
+      "IMG",
+      "UI",
+      "any other client resource"
+    ]
+  },
+  "commands": {
+    "preview": "Verify a successful apply manifest, bind its output SHA256 and the current client Script.pvf SHA256, then emit a deployment approval code without touching the client.",
+    "deploy": "Require the bound approval code and explicit client-closed confirmation, preserve a content-addressed backup, perform a same-directory staged replacement, and verify the deployed SHA256.",
+    "rollback-preview": "Bind a completed deployment manifest, the current deployed SHA256, and the exact backup SHA256 without touching the client.",
+    "rollback": "Require the bound rollback code and explicit client-closed confirmation, back up the current deployed version, restore through same-directory staging, and verify the restored SHA256.",
+    "self-test": "Exercise preview, stale-target rejection, authorization rejection, backup deduplication, deployment, rollback, and non-PVF preservation with temporary fixtures only."
+  },
+  "invariants": [
+    "Default client writes remain disabled.",
+    "Preview never writes the client.",
+    "An apply output is deployable only when APPLY-MANIFEST.json binds its full SHA256 after successful readback.",
+    "The profile sourcePvf must match the apply manifest and retain its bound SHA256.",
+    "The source PVF, apply output PVF, and client target must be distinct.",
+    "The current client SHA256 is rechecked immediately before replacement.",
+    "A verified backup exists before the client target is replaced.",
+    "Backups are content-addressed and never overwritten.",
+    "Rollback refuses a client target that diverged after deployment.",
+    "NPK, IMG, UI, and every non-Script.pvf client file remain outside this capability."
+  ]
+}

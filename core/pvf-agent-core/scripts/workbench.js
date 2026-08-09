@@ -26,6 +26,7 @@ const commands = {
   "pvf-read": "core/pvf-agent-core/cli/pvf-readonly.js",
   "pvf-index": "core/pvf-agent-core/cli/pvf-index.js",
   "pvf-change": "core/pvf-agent-core/cli/pvf-change-set.js",
+  "client-pvf": "core/pvf-agent-core/cli/client-pvf-deploy.js",
   research: "core/pvf-agent-core/cli/research-intake.js",
   "nut-api": "core/pvf-agent-core/cli/nut-api.js",
   "tag-knowledge": "core/pvf-agent-core/cli/tag-knowledge.js",
@@ -55,6 +56,7 @@ Everyday:
   pvf-read              Inspect PVF content through the read-only lane
   pvf-index             Build or query a local read-only index
   pvf-change            Validate, dry-run, or apply a controlled change set
+  client-pvf            Preview, deploy, or roll back a verified Script.pvf in a profiled test client
   research              Inventory external sources and manage the external claim store
   nut-api               Query bundled NUT API facts or rebuild maintenance catalogs
   tag-knowledge         Query bundled layered tag facts or rebuild maintenance catalogs

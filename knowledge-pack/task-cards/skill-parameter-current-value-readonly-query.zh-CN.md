@@ -19,10 +19,10 @@
 
 ## 执行
 
-1. 用 `lookup.bySkillName[技能名]` 找 `.skl` 路径；重名时用职业目录或用户上下文过滤。
-2. 也可直接遍历 `entriesByPath`，按职业目录和字段关键词检索 `static.meanings` / `level.meanings`。
+1. 已知目标职业和技能 ID 时，运行一次 `pvf-read resolve-skill`，再对返回的 `.skl` 路径运行一次 `pvf-read read`；不要猜路径、列目录或跨职业尝试同号 ID。
+2. 只有技能名或要查候选列义时，才用 `lookup.bySkillName[技能名]` 找路径；重名时用职业目录或用户上下文过滤。也可按职业目录和字段关键词查询 `static.meanings` / `level.meanings`。
 3. 输出字段定位时，说明表名、列号、含义、单位和倍率线索。
-4. 如果需要当前值，打开用户确认的目标 PVF，只读对应 `.skl`。
+4. 如果需要当前值，必须读取用户确认的目标 PVF 中对应 `.skl`。
 5. `[static data]` 按列号直接取同一行数值。
 6. `[level info]` 第一个数通常是列数；后续按列数分组，每组是一等级的数据。
 7. `transforms` 中同一列的 `scale` 可用于显示换算，例如毫秒转秒、整数转百分比。

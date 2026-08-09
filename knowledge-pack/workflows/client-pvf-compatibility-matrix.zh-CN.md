@@ -38,3 +38,4 @@ workbench.bat client-matrix verify --matrix "D:\research\client-matrix\CLIENT-CO
 - registry、raw 文件、资源条目与编码/UI 风险分层。
 - `custom-only` 明示为矩阵相对状态；`unknown` 不被静默改成 missing。
 - 报告明确未写 PVF、客户端、NPK 或 IMG，且不是实机 PASS。
+- 需要安装已复查的独立输出 PVF 时，转到 `workflows/client-pvf-controlled-deployment.zh-CN.md`；兼容矩阵本身不提供部署授权或补丁。

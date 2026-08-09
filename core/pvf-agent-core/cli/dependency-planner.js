@@ -23,6 +23,14 @@ const ROOT_TYPES = {
   quest: ["quest"],
   set: ["equipment"],
 };
+const DOMAIN_REGISTRY = {
+  dungeon: "dungeon",
+  town: "town",
+  monster: "monster",
+  passiveobject: "passiveobject",
+  apc: "aicharacter",
+  quest: "quest",
+};
 const rawArgs = process.argv.slice(2);
 const rootIndex = rawArgs.indexOf("--root");
 const workbenchRoot = rootIndex >= 0 ? path.resolve(rawArgs[rootIndex + 1]) : path.resolve(__dirname, "../../..");
@@ -93,6 +101,9 @@ function validateRequest(request) {
   const selectorCount = [request.idValue !== null, Boolean(request.path), Boolean(request.query), Boolean(request.sampleKind)].filter(Boolean).length;
   if (selectorCount !== 1) throw new Error("Provide exactly one selector: --id, --path, --query, or --sample-kind.");
   if (request.idValue !== null && (!Number.isSafeInteger(request.idValue) || request.idValue < 0)) throw new Error("--id must be a non-negative safe integer.");
+  if (request.idValue !== null && !ITEM_DOMAINS.has(request.domain) && !DOMAIN_REGISTRY[request.domain]) {
+    throw new Error(`--id is not registry-backed for domain ${request.domain}; use --path or --query.`);
+  }
   if (request.sampleKind && !["equipment", "stackable"].includes(request.sampleKind)) throw new Error("--sample-kind must be equipment or stackable.");
   if (request.sampleKind && !ITEM_DOMAINS.has(request.domain)) throw new Error("--sample-kind is only available for item planner domains.");
   if (request.sampleKind && domainType(request.domain) !== request.sampleKind) throw new Error(`--sample-kind=${request.sampleKind} does not match domain ${request.domain}.`);
@@ -145,6 +156,11 @@ function rawPlannerArgs(request, rawPath, rawMdPath) {
     return { script: "tools/pvf-bridge/plan-item-stackable-dependencies.js", args: result, lane: "item-stackable-clean-room" };
   }
   const query = request.path || (request.idValue !== null ? String(request.idValue) : request.query);
+  const selectorArgs = request.idValue !== null
+    ? ["--selector-mode=registry-id", `--selector-registry=${DOMAIN_REGISTRY[request.domain]}`]
+    : request.path
+      ? ["--selector-mode=exact-path"]
+      : ["--selector-mode=query"];
   return {
     script: "tools/pvf-bridge/pvf-scope-planner.js",
     args: [
@@ -156,6 +172,7 @@ function rawPlannerArgs(request, rawPath, rawMdPath) {
       `--limit=${request.limit}`,
       `--out=${rawPath}`,
       `--md-out=${rawMdPath}`,
+      ...selectorArgs,
     ],
     lane: "scope-clean-room",
   };
@@ -205,19 +222,21 @@ function normalizeArtifact(domain, request, raw, sourcePvfSha256, lane) {
   }
   const clientAssets = raw.externalAssetRefs || edges.filter((item) => item.target?.type === "external_img").map((item) => ({ imgPath: item.target.pvfPath, sources: [item.source] }));
   const registryEvidence = nodes.filter((item) => item.registryPath && item.id !== null).map((item) => ({ registryPath: item.registryPath, id: item.id, pvfPath: item.pvfPath, exists: item.exists }));
+  const roots = nodes.filter((item) => item.root);
   const risks = [];
   if (unresolved.length) risks.push({ level: "high", code: "unresolved-dependency", count: unresolved.length, action: "Read back the source and correct registry before any change-set." });
   if (clientAssets.length) risks.push({ level: "high", code: "client-assets-unverified", count: clientAssets.length, action: "Use a separate authorized read-only ImagePacks2/NPK preview." });
   if ((raw.readErrors || []).length) risks.push({ level: "high", code: "read-error", count: raw.readErrors.length, action: "Planner is incomplete until the read error is resolved." });
-  if (!nodes.some((item) => item.root)) risks.push({ level: "medium", code: "root-not-unique", count: 1, action: "Use an exact ID or PVF path." });
+  if (roots.length !== 1) risks.push({ level: "medium", code: "root-not-unique", count: roots.length, action: "Use an exact domain-backed ID or PVF path." });
+  if (roots.some((item) => item.exists === false)) risks.push({ level: "high", code: "root-path-missing", count: roots.filter((item) => item.exists === false).length, action: "The selected registry row does not resolve to a readable target PVF file." });
   return {
     schemaVersion: "1.0",
     phase: "clean-room-dependency-plan",
     generatedAt: new Date().toISOString(),
-    planner: { id: "workbench-unified-dependency-planner", version: "1.0.0", domain, lane, commercialSourceMethodsCopied: false, sourceInstructionsExecuted: false },
+    planner: { id: "workbench-unified-dependency-planner", version: "1.2.0", domain, lane, commercialSourceMethodsCopied: false, sourceInstructionsExecuted: false },
     input: { ...request, pvfSha256: sourcePvfSha256 },
     safety: { readOnly: true, sourcePvfModified: false, pvfWritten: false, clientWritten: false, npkWritten: false, generatedApplyPatch: false, outputExternalOnly: true, rawNoSimplifiedReadback: true },
-    summary: { rootCount: nodes.filter((item) => item.root).length, nodeCount: nodes.length, edgeCount: edges.length, unresolvedCount: unresolved.length, clientAssetCandidateCount: clientAssets.length, registryEvidenceCount: registryEvidence.length, readErrorCount: (raw.readErrors || []).length, riskCount: risks.length },
+    summary: { rootCount: roots.length, nodeCount: nodes.length, edgeCount: edges.length, unresolvedCount: unresolved.length, clientAssetCandidateCount: clientAssets.length, registryEvidenceCount: registryEvidence.length, readErrorCount: (raw.readErrors || []).length, riskCount: risks.length },
     nodes,
     edges,
     unresolved,
@@ -226,6 +245,25 @@ function normalizeArtifact(domain, request, raw, sourcePvfSha256, lane) {
     equipmentPartSetBlocks: raw.equipmentPartSetBlocks || [],
     attackPayloads: raw.attackPayloads || [],
     risks,
+    agentHandoff: {
+      reportJsonIsCompleteDeliverable: true,
+      reportJsonIsFinalRuntimeEvidence: false,
+      additionalSummaryFileRequired: false,
+      outputDirectoryProbeRequired: false,
+      useReturnedReportPathDirectly: true,
+      prohibitedFollowUp: [
+        "Test-Path",
+        "Get-Item",
+        "Set-Content",
+        "Out-File",
+        "write another Markdown or JSON summary",
+      ],
+      nextReadOnlySteps: [
+        "query the returned reportPath with workbench.bat knowledge-query planner",
+        "resolve a numeric root through its domain registry",
+        "read back the root and one direct dependency with workbench.bat pvf-read read-batch",
+      ],
+    },
     controlledWriteHandoff: { allowedDirectly: false, requiredLane: "workbench.bat pvf-change", requirements: ["target PVF raw text", "nearest-neighbor shape", "matching unblocked dry-run manifest", "approval code", "explicit output", "backup", "readback", "manifest"] },
     underlyingSummary: raw.summary || {},
     underlyingWarnings: raw.warnings || [],
@@ -270,7 +308,7 @@ async function runPlan(request, outRoot, force, reuseRaw = false) {
   const report = normalizeArtifact(request.domain, request, raw, beforeSha256, lane.lane);
   report.underlying = { script: lane.script, rawArtifactPath: rawPath, rawArtifactSha256: sha256File(rawPath), rawBindingPath: rawMetaPath, rawBindingSha256: sha256File(rawMetaPath), reusedRaw, markdownPath: rawMdPath, stdout: invocation.stdout.trim(), stderr: invocation.stderr.trim() };
   writeJsonAtomic(reportPath, report);
-  return { id: request.id, domain: request.domain, reportPath, reportSha256: sha256File(reportPath), summary: report.summary };
+  return { id: request.id, domain: request.domain, reportPath, reportSha256: sha256File(reportPath), summary: report.summary, agentHandoff: report.agentHandoff };
 }
 
 async function plan() {
@@ -306,11 +344,19 @@ async function batch() {
     pvf: { path: pvf, sha256: profilePvfSha256 },
     safety: { readOnly: true, pvfWritten: false, clientWritten: false, outputExternalOnly: true },
     summary: { ok: results.length === (profile.plans || []).length && invalidRootCount === 0 && readErrorCount === 0, planCount: results.length, domainCount: new Set(results.map((item) => item.domain)).size, unresolvedPlanCount: results.filter((item) => item.summary.unresolvedCount > 0).length, invalidRootCount, readErrorCount },
+    agentHandoff: {
+      reportJsonIsCompleteDeliverable: true,
+      reportJsonIsFinalRuntimeEvidence: false,
+      additionalSummaryFileRequired: false,
+      outputDirectoryProbeRequired: false,
+      useReturnedReportPathDirectly: true,
+      prohibitedFollowUp: ["Test-Path", "Get-Item", "Set-Content", "Out-File", "write another Markdown or JSON summary"],
+    },
     results,
   };
   const reportPath = path.join(outRoot, "DEPENDENCY-PLAN-BATCH.json");
   writeJsonAtomic(reportPath, report);
-  process.stdout.write(`${JSON.stringify({ ok: report.summary.ok, command: "batch", reportPath, reportSha256: sha256File(reportPath), summary: report.summary, results }, null, 2)}\n`);
+  process.stdout.write(`${JSON.stringify({ ok: report.summary.ok, command: "batch", reportPath, reportSha256: sha256File(reportPath), summary: report.summary, agentHandoff: report.agentHandoff, results }, null, 2)}\n`);
 }
 
 function selfTest() {
@@ -329,6 +375,15 @@ function selfTest() {
     };
     const report = normalizeArtifact(domain, { pvf: "fixture.pvf", domain }, raw, "a".repeat(64), "fixture");
     checks.push({ id: `${domain}-contract`, ok: report.safety.readOnly && !report.safety.pvfWritten && report.summary.unresolvedCount === 1 && report.summary.clientAssetCandidateCount === 1 && report.controlledWriteHandoff.allowedDirectly === false });
+    checks.push({
+      id: `${domain}-agent-handoff-stops-extra-probes`,
+      ok:
+        report.agentHandoff.reportJsonIsCompleteDeliverable === true &&
+        report.agentHandoff.reportJsonIsFinalRuntimeEvidence === false &&
+        report.agentHandoff.additionalSummaryFileRequired === false &&
+        report.agentHandoff.outputDirectoryProbeRequired === false &&
+        ["Test-Path", "Get-Item", "Set-Content"].every((name) => report.agentHandoff.prohibitedFollowUp.includes(name)),
+    });
   }
   const numericRoot = normalizeArtifact("dungeon", { pvf: "fixture.pvf", domain: "dungeon", idValue: 1, path: "", query: "" }, {
     candidates: [
@@ -338,6 +393,12 @@ function selfTest() {
     relations: [], unresolvedReferences: [], externalAssetRefs: [], readErrors: [], summary: {},
   }, "a".repeat(64), "fixture");
   checks.push({ id: "registry-aware-numeric-root", ok: numericRoot.nodes.find((item) => item.root)?.pvfPath === "dungeon/right.dgn" });
+  const numericLane = rawPlannerArgs({ domain: "monster", idValue: 1, path: "", query: "", depth: 2, limit: 40, encoding: "Cn" }, "raw.json", "raw.md");
+  checks.push({ id: "registry-id-selector-is-exact", ok: numericLane.args.includes("--selector-mode=registry-id") && numericLane.args.includes("--selector-registry=monster") });
+  const apcLane = rawPlannerArgs({ domain: "apc", idValue: 1, path: "", query: "", depth: 2, limit: 40, encoding: "Cn" }, "raw.json", "raw.md");
+  checks.push({ id: "apc-id-uses-aicharacter-registry", ok: apcLane.args.includes("--selector-registry=aicharacter") });
+  const pathLane = rawPlannerArgs({ domain: "monster", idValue: null, path: "monster/goblin/goblin.mob", query: "", depth: 2, limit: 40, encoding: "Cn" }, "raw.json", "raw.md");
+  checks.push({ id: "path-selector-is-exact", ok: pathLane.args.includes("--selector-mode=exact-path") });
   const fingerprintA = requestFingerprint({ domain: "dungeon", idValue: 1, path: "", query: "", sampleKind: "", sampleKeyword: "", depth: 2, limit: 40, maxNodes: 800, encoding: "Cn" }, "a".repeat(64));
   const fingerprintB = requestFingerprint({ domain: "dungeon", idValue: 2, path: "", query: "", sampleKind: "", sampleKeyword: "", depth: 2, limit: 40, maxNodes: 800, encoding: "Cn" }, "a".repeat(64));
   checks.push({ id: "raw-cache-request-binding", ok: fingerprintA !== fingerprintB });

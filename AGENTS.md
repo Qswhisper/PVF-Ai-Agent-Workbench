@@ -4,14 +4,12 @@ This folder is a PVF task workspace for command-capable desktop Agents such as C
 
 ## Start Here
 
-Read these first:
+For a concrete PVF task with a specified target and goal, read `knowledge-pack/safety/README.zh-CN.md` first. Then choose one lane:
 
-1. `README.zh-CN.md`
-2. `knowledge-pack/README.zh-CN.md`
-3. `knowledge-pack/safety/README.zh-CN.md`
-4. `knowledge-pack/indexes/knowledge-index.json`
+- If the request exactly matches one of the read-only fast paths below, use that recipe and its named short route. Do not reopen the general README or root index merely to rediscover the same route.
+- Otherwise read `knowledge-pack/README.zh-CN.md`, then `knowledge-pack/indexes/knowledge-index.json`, and open only the routed clean entry.
 
-Then read only the routed clean encyclopedia, dictionary, or workflow file.
+For missing-target and rules-only questions, use the fast lane below before opening more files.
 
 ## Bundled Agent Skill
 
@@ -31,7 +29,24 @@ Default clean entries live under:
 
 Do not read evidence files, source maps, candidate artifacts, legacy reports, or old source paths inside a clean task run.
 
-## First Contact / Missing Target
+## Beginner-Facing Responses
+
+Assume the user is new to code unless they clearly ask for implementation details. Keep every safety check and machine-readable artifact, but use progressive disclosure in the user-facing answer:
+
+1. Lead in plain Chinese with the outcome: whether the task can proceed, what will change, the main risk, and what the user needs to do next.
+2. Translate internal terms in the main answer: `dry-run` → “预演（只检查，不改文件）”; `apply` → “生成独立的修改版 PVF”; `readback` → “生成后重新检查”; ASCII-only → “只包含数字、英文和常见符号”; non-ASCII → “中文等文字”; manifest → “核验记录”.
+3. Do not put unexplained terms such as ASCII, non-ASCII, backend, binding, SHA-bound, manifest, approval code, readback, or smoke check in the opening paragraph.
+4. When exact terminology, paths, error codes, hashes, or commands help an advanced user or are required for the next action, place them after a heading such as `技术详情（通常不用看）`. Do not hide a blocker or omit a value the user must confirm.
+5. A safe beginner answer is not a shorter safety process. Simplify the explanation, never the checks.
+
+Preferred shape:
+
+> 这个数字可以安全修改。工作台会先检查，再生成一份独立 PVF，并自动备份和复查。
+> 旁边的中文暂时不能直接修改，否则可能乱码。
+
+Only then add optional technical details.
+
+## Fast Lane / First Contact / Rules-Only
 
 If the user has not specified a target PVF or exact change request, briefly explain that this is a DNF PVF modification workbench and ask for the minimum required inputs:
 
@@ -40,17 +55,43 @@ If the user has not specified a target PVF or exact change request, briefly expl
 - whether output PVF generation is allowed
 - whether in-game validation is available
 
-Do not require the user to know PVF internals. After the user provides the target and goal, classify the task through the knowledge index and routed workflows.
+Do not inspect profiles, config files, placeholder paths, or unrelated drives to discover a missing target. Never probe examples such as `D:\MyDNFWork\Script.pvf`, and do not guess likely internal PVF paths before target readback. Do not require the user to know PVF internals. After the user provides the target and goal, classify the task through the knowledge index and routed workflows.
+
+For a rules-only question already answered in this file, answer directly and concisely. Do not run `check`, query catalogs, or scan knowledge merely to restate a rule. These quick answers remain mandatory:
+
+- `readOnly: true`: apply, backup, and every PVF write stop with `READ_ONLY_FALLBACK`; read-only inspection and dry-run still work. Repair the Microsoft Visual C++ v14 runtime, rerun `.\workbench.bat check`, and require native `readOnly: false` before apply.
+- Authorized write: resolve the correct registry, build exact raw no-simplified text, and bind the unblocked dry-run manifest and approval code to the same source-PVF and change-set hashes. Use an independent output, backup, readback, and manifest; never overwrite the source PVF.
+- Bare numeric ID: first confirm task/domain context, then resolve the correct `.lst` against the target PVF and read back the target file. Do not query unrelated NUT or bookmark facts just to answer this principle.
+- Tag attribution: `official-original` stores original material only. Keep community, a separately labeled Chinese translation with method/version, and `tool-extension` in their own layers; none may be presented as official-original. Use one narrow tag query when facts are needed, do not open the compact JSON directly, and retain target-PVF sample readback.
+- Chinese/StringLink: backend selection and semantic protection are automatic; a targeted numeric/ASCII change does not require a full-package rescan because SHA-bound indexes are reused. Direct `Cn .str` and non-ASCII writes remain blocked, with a client UI text smoke check for touched text-bearing files.
+- Authorized test-client deployment: never manually copy over a client PVF. Use the separate `workbench.bat client-pvf` preview/deploy/rollback lane. It accepts only a readback-successful apply manifest whose output SHA256 is bound, requires the profile source to match that manifest and remain unchanged, targets only the profiled client-root `Script.pvf`, requires separate authorization and client-closed confirmation, backs up the current client PVF, verifies the installed hash, and blocks source/output/client path collisions. NPK, IMG, UI, and other client resources remain outside this permission.
+
+On Windows command hosts, run one bare `.\workbench.bat ...` command per tool call from the Workbench root. Do not append pipes, redirections, semicolons, or chained shell commands; Workbench commands already return concise output.
+
+For every exact read-only fast path, the first shell action must be the first listed `workbench.bat` command. Never preflight the already resolved Workbench, an explicitly supplied `Script.pvf`, or a supplied report/output directory with `Test-Path`, `Get-Item`, `Get-ChildItem`, `Resolve-Path`, or another general shell command. Do not combine path checks with semicolons. The bundled command validates its own inputs and creates its documented external output directory; if it fails, diagnose that returned failure.
+
+## Exact Read-Only Fast Paths
+
+Use these only when the target PVF and selector are already explicit. They retain target readback and safety checks while avoiding discovery work that cannot change the route.
+
+- Registry ID or registered path: run `pvf-read resolve-lst` first, then `pvf-read read`; use `pvf-read resolve-path` only when reverse confirmation is requested. Common domain bindings are: NPC shop → `itemshop/itemshop.lst`, monster → `monster/monster.lst`, dungeon → `dungeon/dungeon.lst`, map → `map/map.lst`, APC → `aicharacter/aicharacter.lst`, equipment → `equipment/equipment.lst`, stackable → `stackable/stackable.lst`, quest → `n_quest/quest.lst`, town → `town/town.lst`. These are routing bindings, not target facts; the target resolve/readback remains authoritative. `resolve-lst` already returns registry evidence, file existence metadata, and a short summary, so do not precede it with `open`, `list-files`, `check`, bookmark queries, or a full index read unless the direct command fails. Short route: `knowledge-pack/task-cards/pvf-registry-lst-topology-readonly-audit.zh-CN.md`.
+- Exact character skill ID: start immediately with `pvf-read resolve-skill --job <target .chr job token or user-supplied Chinese job name> --id <skill-id>`, then one `pvf-read read` for its returned `.skl` path. Do not run `Test-Path` on `workbench.bat` or the supplied PVF first. `resolve-skill` closes `character/character.lst -> .chr [job] -> skill/skilllist.lst -> profession skill registry -> .skl` against the target PVF. Do not guess paths, enumerate skill files, query bookmarks, or try other profession registries while it succeeds. Short route: `knowledge-pack/indexes/skill-registry-routing.zh-CN.md`.
+- Exact NUT/API symbol: run one exact `knowledge-query nut --name <symbol> [--kind ...] --group dnf --exact`, then one target `pvf-read search-script --keyword <symbol>`. This two-command shape is complete for declaration plus target-call observation; do not probe help, paths, or run generic filename searches. A target zero match still does not prove runtime absence. Short route: `knowledge-pack/dictionaries/nut-runtime-api-boundary-quick.zh-CN.md`.
+- Exact Section/tag: start immediately with one `tag-knowledge query --exact`, then `tag-knowledge observe-pvf --samples 3 --out <external-dir>`, run `tag-knowledge query-observation --report <returned reportPath>`, and read back only the returned samples with `pvf-read read-batch`. `observe-pvf` creates the supplied external output directory, so do not run `Test-Path`, `Get-Item`, or create the directory first. The canonical observation command is `query-observation --report`; do not invent another subcommand or rerun `query` without its required `--tag`. Do not substitute generic `pvf-read search`, help probing, or `check` while this lane succeeds. Short route: `knowledge-pack/workflows/pvf-tag-joint-query.zh-CN.md`.
+- One dependency root: run `dependency-plan plan` once with one domain and one selector, then use `knowledge-query planner --report ... --limit 20`, `pvf-read resolve-lst` for a numeric root, and one `pvf-read read-batch` for the root plus direct dependency (`--max-chars-per-file 3000 --max-total-chars 6000 --raw`). Planner domain tokens are fixed; for an APC use `--domain apc`, while `aicharacter/aicharacter.lst` is its registry name only and `--domain aicharacter` is invalid. This four-command shape is complete; do not probe help. The returned `DEPENDENCY-PLAN.json` is already the complete generated report for this preview: use its returned path directly, do not run `Test-Path` / `Get-Item`, and do not create another Markdown or JSON summary with `Set-Content` / `Out-File`. It remains a preview, not final runtime evidence or an apply plan. The planner creates its external output directory, so do not probe or create it first. `--id` and `--path` are exact selectors; only `--query` is fuzzy discovery. Do not rerun with `--force` or inspect planner source during an ordinary preview; report a contradictory result as a Workbench defect. Short route: `knowledge-pack/dictionaries/dependency-planner-boundary-quick.zh-CN.md`.
+
+Do not run `check` as a routine preflight inside a successful read-only task. Use it only when a bundled command is unavailable, native write capability must be diagnosed, or the user explicitly asks for environment health.
 
 ## Capability Detection
 
 The ordinary task lane is always self-contained:
 
-1. Use `workbench.bat pvf-read`, `workbench.bat pvf-index`, and `workbench.bat pvf-change`. They prefer the Workbench-bundled native backend and automatically fall back to the bundled TypeScript read-only backend when native loading fails. Even when native is available, `Cn` semantic search, `.str`, StringLink, and non-ASCII script reads are automatically guarded by the TypeScript semantic result; users do not configure or select this route. Read-only inspection and dry-run remain available in fallback mode; every backup, apply, and PVF write is blocked with `READ_ONLY_FALLBACK`.
-2. Use `workbench.bat nut-api query` or `workbench.bat knowledge-query nut` for NUT/API/symbol questions. The compact facts are bundled; corroborate declarations against target PVF scripts, never guess API names, and never treat a zero result as proof that a runtime symbol is unavailable.
-3. Use `workbench.bat tag-knowledge query` or `workbench.bat knowledge-query tag` for Section/tag questions. The compact community, official-original, and tool-extension layers are bundled; read back target PVF samples, resolve registries, and never silently correct source spellings.
-4. Use `workbench.bat knowledge-query bookmark` for task navigation such as shops, drops, registries, jobs, maps, APC, and UI paths. A bookmark is a candidate path, so confirm it exists in the target PVF and read it before concluding.
-5. If the bundled command entry is unavailable, or if a write is requested while the backend reports `readOnly: true`, stop and ask the user to run `workbench.bat check`. Do not bypass fallback write blocking or prepare an apply run as if native were available.
+1. Use `.\workbench.bat pvf-read`, `.\workbench.bat pvf-index`, and `.\workbench.bat pvf-change`. They prefer the Workbench-bundled native backend and automatically fall back to the bundled TypeScript read-only backend when native loading fails. Even when native is available, `Cn` semantic search, `.str`, StringLink, and non-ASCII script reads are automatically guarded by the TypeScript semantic result; users do not configure or select this route. Read-only inspection and dry-run remain available in fallback mode; every backup, apply, and PVF write is blocked with `READ_ONLY_FALLBACK`.
+2. Use `.\workbench.bat nut-api query` or `.\workbench.bat knowledge-query nut` for NUT/API/symbol questions, followed by `.\workbench.bat pvf-read search-script` for the exact target symbol. The compact facts are bundled; corroborate declarations against target PVF scripts, never guess API names, and never treat a zero result as proof that a runtime symbol is unavailable.
+3. Use `.\workbench.bat tag-knowledge query` or `.\workbench.bat knowledge-query tag` for Section/tag questions. The compact community, official-original, and tool-extension layers are bundled; read back target PVF samples, resolve registries, and never silently correct source spellings.
+4. Use `.\workbench.bat knowledge-query bookmark` for task navigation such as shops, drops, registries, jobs, maps, APC, and UI paths. A bookmark is a candidate path, so confirm it exists in the target PVF and read it before concluding.
+5. If the bundled command entry is unavailable, or if a write is requested while the backend reports `readOnly: true`, stop and ask the user to run `.\workbench.bat check`. Do not bypass fallback write blocking or prepare an apply run as if native were available.
+6. After a successful controlled apply, an explicitly authorized test-client installation uses `.\workbench.bat client-pvf`. Run `preview` first with one enabled local profile and the matching `APPLY-MANIFEST.json`. When those inputs and the output directory are explicit, make that exact preview the first shell action; do not probe help or preflight the paths. Only after the user identifies the client, closes the client and launcher, and confirms may `deploy` use the returned authorization code. Use `rollback-preview` and a second explicit confirmation before `rollback`; the same direct-first/no-preflight rule applies when its deployment manifest and output directory are explicit. This lane only replaces the profiled client-root `Script.pvf`; it never inherits permission for NPK, IMG, UI, or other client files.
 
 For cross-version questions, an explicitly configured external `pvf-lineage` catalog may compare file manifests, registries, selected Section/tag content, and NUT symbols. Identify every version by full PVF SHA256, keep document statements separate from behavior evidence, and read back target files before concluding. Size equality is not content equality.
 
@@ -78,6 +119,7 @@ For task-specific source manifests, claim stores, lineage, dependency reports, o
 - Do not put API keys, real PVFs, clients, indexes, or run outputs into this workspace.
 - Read-only PVF inspection uses the Workbench-bundled backend configured by `config/pvf-adapter.json`.
 - PVF writes must use the separate controlled write runner: `workbench.bat pvf-change apply` with a matching unblocked dry-run manifest, its explicit approval code, explicit output, backup, readback, and manifest.
+- Test-client `Script.pvf` deployment is a separate permission after controlled output generation. It must use `workbench.bat client-pvf`, bind the apply output SHA256 and current client SHA256, keep source/output/client as distinct files, require a profiled client root plus separate confirmation, preserve a verified client backup, and offer controlled rollback. Never deploy by ad-hoc copy or direct `pvf-change` output to the client.
 - For change-set writes, build exact `previousText`/`newText` from raw no-simplified PVF text. Do not write simplified display text or `&#number;` HTML entities back into PVF files.
 - Direct `Cn .str` output and direct non-ASCII text changes are blocked until a portable writer preserves their encoding. Numeric or ASCII-only minimal replacements may proceed through the controlled lifecycle; when the touched source contains StringLink or non-ASCII text, retain the required client UI text smoke check.
 - Machine paths belong in `config/workspace-profiles.local.json`, created by `workbench.bat profile`; do not put them in clean knowledge files.
@@ -96,36 +138,42 @@ For task-specific source manifests, claim stores, lineage, dependency reports, o
 Use direct `--pvf` commands when no local profile exists:
 
 ```bat
-workbench.bat check
-workbench.bat profile status
-workbench.bat pvf-read list-files --pvf "D:\MyDNFWork\Script.pvf" --prefix itemshop --limit 5
-workbench.bat pvf-read read --pvf "D:\MyDNFWork\Script.pvf" --path itemshop/itemshop.lst --max-chars 1200
-workbench.bat pvf-read read-batch --pvf "D:\MyDNFWork\Script.pvf" --path etc/newcashshop.etc --path etc/worlddrop.etc --max-chars-per-file 1200
-workbench.bat pvf-read resolve-lst --pvf "D:\MyDNFWork\Script.pvf" --lst itemshop/itemshop.lst --id 1
-workbench.bat pvf-read resolve-path --pvf "D:\MyDNFWork\Script.pvf" --path itemshop/birken.shp --registry itemshop/itemshop.lst
-workbench.bat pvf-index build --pvf "D:\MyDNFWork\Script.pvf" --scope itemshop --prefix itemshop --limit 1000
-workbench.bat pvf-change validate --file workspaces\examples\change-set.replace-text.example.json
-workbench.bat pvf-change dry-run --file workspaces\examples\change-set.replace-text.example.json --pvf "D:\MyDNFWork\Script.pvf"
-workbench.bat dependency-plan plan --pvf "D:\MyDNFWork\Script.pvf" --domain dungeon --id 11 --out "D:\MyDNFWork\research\dependency-plans"
-workbench.bat client-matrix query --matrix "D:\MyDNFWork\research\client-matrix\CLIENT-COMPATIBILITY-MATRIX.json" --status divergent
-workbench.bat knowledge-query nut --name sq_GetSkillLevel --kind function --group dnf --exact
-workbench.bat knowledge-query tag --tag duration --exact
-workbench.bat knowledge-query bookmark --text 商城
+.\workbench.bat check
+.\workbench.bat profile status
+.\workbench.bat pvf-read list-files --pvf "D:\MyDNFWork\Script.pvf" --prefix itemshop --limit 5
+.\workbench.bat pvf-read read --pvf "D:\MyDNFWork\Script.pvf" --path itemshop/itemshop.lst --max-chars 1200
+.\workbench.bat pvf-read read-batch --pvf "D:\MyDNFWork\Script.pvf" --path etc/newcashshop.etc --path etc/worlddrop.etc --max-chars-per-file 1200
+.\workbench.bat pvf-read resolve-lst --pvf "D:\MyDNFWork\Script.pvf" --lst itemshop/itemshop.lst --id 1
+.\workbench.bat pvf-read resolve-skill --pvf "D:\MyDNFWork\Script.pvf" --job swordman --id 97
+.\workbench.bat pvf-read search-script --pvf "D:\MyDNFWork\Script.pvf" --keyword sq_GetSkillLevel
+.\workbench.bat pvf-read resolve-path --pvf "D:\MyDNFWork\Script.pvf" --path itemshop/birken.shp --registry itemshop/itemshop.lst
+.\workbench.bat pvf-index build --pvf "D:\MyDNFWork\Script.pvf" --scope itemshop --prefix itemshop --limit 1000
+.\workbench.bat pvf-change validate --file workspaces\examples\change-set.replace-text.example.json
+.\workbench.bat pvf-change dry-run --file workspaces\examples\change-set.replace-text.example.json --pvf "D:\MyDNFWork\Script.pvf"
+.\workbench.bat dependency-plan plan --pvf "D:\MyDNFWork\Script.pvf" --domain dungeon --id 11 --out "D:\MyDNFWork\research\dependency-plans"
+.\workbench.bat client-matrix query --matrix "D:\MyDNFWork\research\client-matrix\CLIENT-COMPATIBILITY-MATRIX.json" --status divergent
+.\workbench.bat knowledge-query nut --name sq_GetSkillLevel --kind function --group dnf --exact
+.\workbench.bat knowledge-query tag --tag duration --exact
+.\workbench.bat knowledge-query bookmark --text 商城
 ```
 
 Use profile commands only after a local profile has been created:
 
 ```bat
-workbench.bat profile init --name main-local --workspace "D:\MyDNFWork" --source-pvf "D:\MyDNFWork\Script.pvf" --output "D:\MyDNFWork\pvf-lab" --client "D:\MyDNFWork\client" --set-active
-workbench.bat profile show
-workbench.bat doctor check --profile <profile> --scope itemshop
-workbench.bat fixture-check check --profile <profile>
+.\workbench.bat profile init --name main-local --workspace "D:\MyDNFWork" --source-pvf "D:\MyDNFWork\Script.pvf" --output "D:\MyDNFWork\pvf-lab" --client "D:\MyDNFWork\client" --set-active
+.\workbench.bat profile show
+.\workbench.bat doctor check --profile <profile> --scope itemshop
+.\workbench.bat fixture-check check --profile <profile>
+.\workbench.bat client-pvf preview --profile <profile> --apply-manifest "D:\MyDNFWork\pvf-lab\APPLY-MANIFEST.json"
+.\workbench.bat client-pvf deploy --preview-manifest "D:\MyDNFWork\pvf-lab\CLIENT-PVF-DEPLOY-PREVIEW.json" --authorize-deploy <code> --confirm-client-closed
+.\workbench.bat client-pvf rollback-preview --deployment-manifest "D:\MyDNFWork\pvf-lab\CLIENT-PVF-DEPLOYMENT-MANIFEST.json"
+.\workbench.bat client-pvf rollback --preview-manifest "D:\MyDNFWork\pvf-lab\CLIENT-PVF-ROLLBACK-PREVIEW.json" --authorize-rollback <code> --confirm-client-closed
 ```
 
 After an in-game validation pass, create a local absorption checklist before editing the clean knowledge pack:
 
 ```bat
-workbench.bat absorb new --id <run-id> --title "<title>" --domain <domain> --status PASS
+.\workbench.bat absorb new --id <run-id> --title "<title>" --domain <domain> --status PASS
 ```
 
 ## Release And Agent Evaluation
@@ -137,6 +185,7 @@ workbench.bat absorb new --id <run-id> --title "<title>" --domain <domain> --sta
 - Run `workbench.bat pvf-lineage self-test` after changing SHA versioning, registry/Section/NUT semantic diffs, golden cases, or private regression profiles.
 - Run `workbench.bat dependency-plan self-test` after changing unified dependency domains, registry root selection, cache binding, unresolved reporting, or controlled-write handoff.
 - Run `workbench.bat client-matrix self-test` after changing evidence roles, compatibility statuses, resource scan/cache boundaries, or dynamic asset handling.
+- Run `workbench.bat client-pvf self-test` after changing apply-output SHA binding, client deployment targeting, backup deduplication, staged replacement, or rollback behavior.
 - Run `workbench.bat knowledge-query self-test` after changing unified kinds, envelopes, evidence boundaries, delegation, or private unified regression profiles.
 - Run `workbench.bat fallback-self-test` after changing backend selection, PVF codec/decompilation, stdio exposure, or write blocking.
 - Run `workbench.bat release gate1` after changing the portable file set.

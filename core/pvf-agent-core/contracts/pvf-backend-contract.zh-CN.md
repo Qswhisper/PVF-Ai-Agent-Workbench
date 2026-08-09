@@ -31,7 +31,7 @@ workbench.bat backend-contract show-readonly
 | registry resolve | 数字 ID 必须通过明确 `.lst` 解析成 PVF 路径，不允许直接猜。 |
 | reverse registry resolve | 能按精确 PVF 路径反查登记它的 `.lst` 与数字 ID。 |
 | local index | 能建立或读取 path / registry / `.lst` 索引，并能判断索引是否和源 PVF 匹配。 |
-| controlled write | 写入必须经过 change-set、备份、显式 output、重新打开 output readback。 |
+| controlled write | 写入必须经过 change-set、备份、显式 output、重新打开 output readback，并绑定最终输出的完整 SHA256 与字节数。 |
 
 TypeScript 备用模式中的搜索还必须显式返回 `truncated`、`errorCount`、有限错误样本与 `errorsTruncated`；损坏文件不能被静默计作普通未命中。
 
@@ -57,7 +57,7 @@ workbench.bat backend-contract check --profile <profile> --scope itemshop
 workbench.bat backend-contract check --profile <profile> --scope itemshop --include-write-smoke
 ```
 
-这个写出烟测使用 fixture 里的 no-op replace，仍然会走备份、显式 output、保存、重新打开 output、readback manifest。它不会覆盖源 PVF，也不会写客户端资源。
+这个写出烟测使用 fixture 里的 no-op replace，仍然会走备份、显式 output、保存、重新打开 output、readback manifest，并核对 manifest 记录的最终输出 SHA256 与字节数。它不会覆盖源 PVF，也不会写客户端资源。
 
 ## Fixture 策略
 
@@ -79,5 +79,5 @@ workbench.bat backend-contract check --profile <profile> --scope itemshop --incl
 - 只读检查通过。
 - 所需索引 fresh，或者已重建。
 - `.lst` 解析结果和 fixture 期望一致。
-- optional write smoke 通过，manifest 显示 `sourceOverwritten=false`、`backupCreated=true`、`explicitOutputPath=true`、`readbackOk=true`。
+- optional write smoke 通过，manifest 显示 `sourceOverwritten=false`、`backupCreated=true`、`explicitOutputPath=true`、`readbackOk=true`、`outputSha256Bound=true`，且实际输出与 `outputPvfSha256` 一致。
 - 源 PVF 文件大小和 mtime 未被写出测试改变。

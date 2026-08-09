@@ -82,6 +82,13 @@ function main() {
     const changeSetRun = runNode(stageDir, "core/pvf-agent-core/cli/pvf-change-set.js", ["self-test"]);
     addCheck(checks, errors, "stage.pvf-change-authorization-self-test", changeSetRun, (parsed) => parsed?.summary?.ok === true);
 
+    const clientPvfRun = runNode(
+      stageDir,
+      "core/pvf-agent-core/cli/client-pvf-deploy.js",
+      ["self-test", "--out", path.join(stageRuntimeRoot, "client-pvf-deployment")],
+    );
+    addCheck(checks, errors, "stage.client-pvf-deployment-self-test", clientPvfRun, (parsed) => parsed?.summary?.ok === true);
+
     const researchOut = path.join(stageRuntimeRoot, "research-intake-fixture");
     const researchRun = runNode(stageDir, "core/pvf-agent-core/cli/research-intake.js", [
       "inventory",
@@ -140,6 +147,7 @@ function main() {
       sourcePvfCopied: false,
       sourcePvfOverwritten: false,
       clientResourceWrite: false,
+      clientDeploymentFixtureOnly: true,
       localProfileCreated: false,
     },
     summary: {

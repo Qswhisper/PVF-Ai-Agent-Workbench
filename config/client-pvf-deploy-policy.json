@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "1.0",
+  "phase": "controlled-client-pvf-deployment",
+  "mode": "explicit-preview-authorize-deploy-rollback",
+  "controlledDeployEnabled": true,
+  "defaultClientWriteEnabled": false,
+  "targetFileName": "Script.pvf",
+  "permissionModel": {
+    "profileClientRootRequired": true,
+    "directClientPathAllowed": false,
+    "sourcePvfOverwriteAllowed": false,
+    "applyOutputMutationAllowed": false,
+    "nonPvfClientResourceWriteAllowed": false
+  },
+  "requiredBeforeDeploy": [
+    "verified-apply-manifest",
+    "apply-output-sha256-binding",
+    "profile-source-matches-apply-manifest",
+    "source-pvf-sha256-unchanged",
+    "profile-client-target",
+    "current-client-pvf-sha256-binding",
+    "explicit-deploy-authorization-code",
+    "client-and-launcher-confirmed-closed",
+    "content-addressed-client-backup",
+    "same-directory-staged-replacement",
+    "post-deploy-sha256-readback"
+  ],
+  "requiredBeforeRollback": [
+    "verified-deployment-manifest",
+    "current-deployed-pvf-sha256-binding",
+    "verified-backup-sha256",
+    "explicit-rollback-authorization-code",
+    "client-and-launcher-confirmed-closed",
+    "same-directory-staged-replacement",
+    "post-rollback-sha256-readback"
+  ],
+  "forbiddenOperations": [
+    "deploy-without-preview",
+    "deploy-unverified-output-pvf",
+    "deploy-profile-source-mismatch",
+    "deploy-changed-source-pvf",
+    "deploy-stale-client-target",
+    "deploy-over-source-pvf",
+    "deploy-over-apply-output",
+    "deploy-to-direct-unprofiled-path",
+    "deploy-while-client-not-confirmed-closed",
+    "overwrite-client-without-backup",
+    "overwrite-content-addressed-backup",
+    "rollback-without-preview",
+    "rollback-over-divergent-client-target",
+    "npk-img-ui-or-other-client-resource-write"
+  ],
+  "outputs": {
+    "backupDirectoryName": "client-pvf-backups/sha256",
+    "deployPreviewFileName": "CLIENT-PVF-DEPLOY-PREVIEW.json",
+    "deploymentManifestFileName": "CLIENT-PVF-DEPLOYMENT-MANIFEST.json",
+    "rollbackPreviewFileName": "CLIENT-PVF-ROLLBACK-PREVIEW.json",
+    "rollbackManifestFileName": "CLIENT-PVF-ROLLBACK-MANIFEST.json"
+  }
+}

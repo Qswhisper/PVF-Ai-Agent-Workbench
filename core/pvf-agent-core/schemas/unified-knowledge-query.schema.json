@@ -17,6 +17,10 @@
       "required": ["matchCount", "returnedCount", "truncated"]
     },
     "results": { "type": "array" },
+    "agentHandoff": {
+      "type": "object",
+      "description": "Optional kind-specific completion boundary for command-capable Agents."
+    },
     "boundaries": {
       "type": "object",
       "required": ["readOnly", "generatedArtifactIsFinalEvidence", "targetPvfReadbackRequiredForPvfConclusion", "zeroMatchesProveAbsence", "directWriteAllowed", "clientWriteAllowed", "requiredPvfWriteLane", "outputArtifactsAndMachinePathsExternalOnly"],

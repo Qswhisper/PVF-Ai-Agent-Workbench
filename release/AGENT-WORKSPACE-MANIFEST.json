@@ -1,8 +1,8 @@
 {
   "schemaVersion": "1.0",
   "packageName": "PVF-Agent-Workbench",
-  "packageVersion": "2.1.3",
-  "purpose": "Self-contained clean workspace with automatic Cn semantic read protection, a preferred native PVF backend, a dependency-free TypeScript read-only fallback, SHA-bound indexes, bundled knowledge, and controlled output.",
+  "packageVersion": "2.2.0",
+  "purpose": "Self-contained clean workspace with beginner-first progressive responses, automatic Cn semantic read protection, target-bound skill and script routing, a preferred native PVF backend, a dependency-free TypeScript read-only fallback, SHA-bound indexes, bundled knowledge, controlled output, and separately authorized test-client Script.pvf deployment and rollback.",
   "includes": [
     ".gitattributes",
     ".gitignore",
@@ -20,6 +20,7 @@
     "release/",
     "config/pvf-adapter.json",
     "config/write-policy.json",
+    "config/client-pvf-deploy-policy.json",
     "config/workspace-profiles.json",
     "core/pvf-agent-core/",
     "evals/agent/",
@@ -66,12 +67,16 @@
     "readOnlyFallbackWriteAllowed": false,
     "semanticCnReadGuardAutomatic": true,
     "directNonAsciiTextWriteAllowed": false,
-    "fullIndexSourceSha256Bound": true
+    "fullIndexSourceSha256Bound": true,
+    "controlledClientPvfDeploymentAvailable": true,
+    "clientPvfDeploymentRequiresSeparatePreviewAuthorizationBackupAndRollback": true,
+    "nonPvfClientResourceWriteAllowed": false
   },
   "release": {
     "manifest": "release/PORTABLE-RELEASE-MANIFEST.json",
     "agentSkill": "workbench.bat skill self-test",
     "agentEval": "workbench.bat eval self-test",
+    "clientPvfDeployment": "workbench.bat client-pvf self-test",
     "knowledgeQuery": "workbench.bat knowledge-query self-test",
     "readOnlyFallback": "workbench.bat fallback-self-test",
     "gate1": "workbench.bat release gate1",

@@ -1,5 +1,6 @@
 "use strict";
 
+const childProcess = require("child_process");
 const crypto = require("crypto");
 const fs = require("fs");
 const os = require("os");
@@ -99,6 +100,16 @@ function createFixturePvf(targetPath, options = {}) {
     "[message]",
     "message_1",
     "[/message]",
+    "Swordman/Swordman.chr",
+    "[job]",
+    "[swordman]",
+    "SwordmanSkill.lst",
+    "Swordman/MomentarySlashEx.skl",
+    "fixture skill",
+    "[name2]",
+    "Fixture Skill",
+    "[type]",
+    "[active]",
   ];
   const localizedStringView = options.cnLocalized
     ? Buffer.concat([
@@ -115,6 +126,14 @@ function createFixturePvf(targetPath, options = {}) {
     {
       fileName: "itemshop/test.shp",
       data: createScript([[5, 2], [7, 3], [5, 4], [9, 0], [10, 5], [5, 6]]),
+    },
+    { fileName: "character/character.lst", data: createScript([[2, 0], [7, 7]]) },
+    { fileName: "character/Swordman/Swordman.chr", data: createScript([[5, 8], [7, 9]]) },
+    { fileName: "skill/skilllist.lst", data: createScript([[2, 0], [7, 10]]) },
+    { fileName: "skill/SwordmanSkill.lst", data: createScript([[2, 97], [7, 11]]) },
+    {
+      fileName: "skill/Swordman/MomentarySlashEx.skl",
+      data: createScript([[5, 2], [7, 12], [5, 13], [7, 14], [5, 15], [7, 16]]),
     },
     { fileName: "script/fallback_fixture.nut", data: Buffer.from('function fallback_fixture() { return "needle"; }\r\n', "utf8") },
     { fileName: "sprite/fallback_fixture.ani", data: createBinaryAni() },
@@ -455,6 +474,74 @@ async function main() {
     add("fallback-search-script", scriptSearch.items.some((item) => item.fileName === "itemshop/test.shp"));
     const stringSearch = await fallback.searchFiles(fallbackSessionId, { keyword: "fallback-fixture", searchType: "SearchStrings", matchMode: "Like" });
     add("fallback-search-strings", stringSearch.items.some((item) => item.fileName === "itemshop/test.shp"));
+    const resolveSkillCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "resolve-skill",
+        "--pvf", fixturePath,
+        "--encoding", "Utf8",
+        "--pvf-encoding", "Utf8",
+        "--job", "swordman",
+        "--id", "97",
+        "--raw",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    let resolveSkillResult = null;
+    try {
+      resolveSkillResult = JSON.parse(resolveSkillCli.stdout || "null");
+    } catch {
+      // The assertion below records malformed CLI output without hiding it.
+    }
+    add(
+      "cli-resolve-skill-target-registry-chain",
+      resolveSkillCli.status === 0 &&
+        resolveSkillResult?.result?.route?.character?.jobToken === "swordman" &&
+        resolveSkillResult?.result?.route?.skillRegistryPath?.toLowerCase() === "skill/swordmanskill.lst" &&
+        resolveSkillResult?.result?.skill?.entry?.pvfPath?.toLowerCase() === "skill/swordman/momentaryslashex.skl" &&
+        resolveSkillResult?.result?.agentHandoff?.additionalDiscoveryRequired === false,
+      resolveSkillCli.status === 0 ? undefined : { stderr: resolveSkillCli.stderr },
+    );
+    const searchScriptCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "search-script",
+        "--pvf", fixturePath,
+        "--encoding", "Utf8",
+        "--pvf-encoding", "Utf8",
+        "--keyword", "fallback-fixture",
+        "--raw",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    let searchScriptResult = null;
+    try {
+      searchScriptResult = JSON.parse(searchScriptCli.stdout || "null");
+    } catch {
+      // The assertion below records malformed CLI output without hiding it.
+    }
+    add(
+      "cli-search-script-exact-handoff",
+      searchScriptCli.status === 0 &&
+        searchScriptResult?.result?.items?.some((item) => item.fileName === "itemshop/test.shp") &&
+        searchScriptResult?.agentHandoff?.exactScriptSearchComplete === true &&
+        searchScriptResult?.agentHandoff?.zeroMatchesProveRuntimeAbsence === false,
+      searchScriptCli.status === 0 ? undefined : { stderr: searchScriptCli.stderr },
+    );
     const errorSearch = await fallback.searchFiles(fallbackSessionId, { keyword: "not-present", searchType: "SearchScript", matchMode: "Like", pvfEncoding: "Utf8" });
     add(
       "fallback-search-read-errors-visible",

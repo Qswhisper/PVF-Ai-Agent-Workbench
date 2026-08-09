@@ -1,0 +1,1 @@
+完整路线只有两条命令：先运行 `workbench.bat knowledge-query nut --name sq_GetSkillLevel --kind function --group dnf --exact` 核对声明，再运行 `workbench.bat pvf-read search-script --pvf <Script.pvf> --keyword sq_GetSkillLevel` 观察目标调用。两步已经完整，不运行 help、Test-Path、Get-Item、目录枚举或普通搜索。目标零命中不证明函数不存在或运行时不支持。

@@ -151,6 +151,18 @@ function buildCapabilityLevels() {
         "core/pvf-agent-core/schemas/pvf-change-set.schema.json",
       ],
     },
+    {
+      id: "controlled-client-pvf-deployment",
+      label: "Controlled test-client Script.pvf deployment and rollback",
+      required: true,
+      files: [
+        "workbench.bat",
+        "config/client-pvf-deploy-policy.json",
+        "core/pvf-agent-core/cli/client-pvf-deploy.js",
+        "core/pvf-agent-core/contracts/client-pvf-deployment.v1.json",
+        "core/pvf-agent-core/schemas/client-pvf-deployment.schema.json",
+      ],
+    },
   ];
   const lanes = laneDefs.map((lane) => ({
     ...lane,
@@ -457,6 +469,21 @@ function runFallbackSelfTest() {
   };
 }
 
+function runClientPvfSelfTest(runRoot) {
+  const outDir = path.join(runRoot, "client-pvf-deployment-self-test");
+  const result = runNodeScript("core/pvf-agent-core/cli/client-pvf-deploy.js", ["self-test", "--out", outDir]);
+  const parsed = parseJsonOutput(result.stdout);
+  return {
+    ok: result.ok && parsed?.summary?.ok === true,
+    exitCode: result.exitCode,
+    reportPath: parsed?.reportPath || null,
+    summary: parsed?.summary || null,
+    checks: parsed?.checks || null,
+    stdoutTail: result.ok ? undefined : result.stdout.slice(-2000),
+    stderr: result.stderr || undefined,
+  };
+}
+
 async function runCheck() {
   const runRoot = option("--out")
     ? path.resolve(option("--out"))
@@ -482,6 +509,7 @@ async function runCheck() {
           "README.zh-CN.md",
           "docs/CLEAN-COPY.zh-CN.md",
           "docs/READONLY-FALLBACK.zh-CN.md",
+          "docs/CLIENT-PVF-DEPLOYMENT.zh-CN.md",
           "VERSION",
           "CHANGELOG.zh-CN.md",
           "release/PORTABLE-RELEASE-MANIFEST.json",
@@ -504,8 +532,10 @@ async function runCheck() {
           "commands/pvf-change-set.bat",
           "commands/pvf-index.bat",
           "commands/pvf-backend-contract.bat",
+          "commands/client-pvf-deploy.bat",
           "runtime/node/node.exe",
           "config/pvf-adapter.json",
+          "config/client-pvf-deploy-policy.json",
           "knowledge-pack/indexes/nut-api-facts.compact.json",
           "knowledge-pack/indexes/pvf-tag-facts.compact.json",
           "knowledge-pack/indexes/pvf-task-bookmarks.compact.json",
@@ -533,6 +563,7 @@ async function runCheck() {
           "core/pvf-agent-core/scripts/portable-cold-start-dry-run.js",
           "core/pvf-agent-core/scripts/fallback-backend-self-test.js",
           "core/pvf-agent-core/scripts/fallback-backend-differential.js",
+          "core/pvf-agent-core/cli/client-pvf-deploy.js",
           "core/pvf-agent-core/lib/release-utils.js",
           "core/pvf-agent-core/lib/runtime-state.js",
           "core/pvf-agent-core/lib/agent-skill.js",
@@ -541,12 +572,14 @@ async function runCheck() {
           "core/pvf-agent-core/schemas/backend-fixtures-check-report.schema.json",
           "core/pvf-agent-core/schemas/agent-eval-suite.schema.json",
           "core/pvf-agent-core/schemas/agent-eval-report.schema.json",
+          "core/pvf-agent-core/schemas/client-pvf-deployment.schema.json",
           "core/pvf-agent-core/schemas/portable-release-manifest.schema.json",
           "core/pvf-agent-core/schemas/portable-package-dry-run-report.schema.json",
           "core/pvf-agent-core/schemas/portable-stage-copy-dry-run-report.schema.json",
           "core/pvf-agent-core/schemas/portable-cold-start-dry-run-report.schema.json",
           "core/pvf-agent-core/contracts/pvf-backend-contract.v1.json",
           "core/pvf-agent-core/contracts/typescript-readonly-backend-contract.v1.json",
+          "core/pvf-agent-core/contracts/client-pvf-deployment.v1.json",
           "core/pvf-agent-core/schemas/typescript-readonly-backend-contract.schema.json",
           "core/pvf-agent-core/contracts/fixtures/apc-swordman-gsd.fixture.json",
           "core/pvf-agent-core/contracts/fixtures/itemshop-birken.fixture.json",
@@ -674,6 +707,14 @@ async function runCheck() {
     const result = runAgentEvalSelfTest(runRoot);
     if (!result.ok) {
       throw new Error(`Agent eval self-test failed.\n${result.stderr}\n${result.stdoutTail}`);
+    }
+    return result;
+  });
+
+  await record(checks, "client-pvf.self-test", async () => {
+    const result = runClientPvfSelfTest(runRoot);
+    if (!result.ok) {
+      throw new Error("Client PVF deployment self-test failed.\n" + (result.stderr || "") + "\n" + (result.stdoutTail || ""));
     }
     return result;
   });

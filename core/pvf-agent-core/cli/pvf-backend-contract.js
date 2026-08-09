@@ -13,6 +13,7 @@ const {
 } = require("../lib/adapter-config");
 const indexStore = require("../lib/pvf-index-store");
 const { runtimePath } = require("../lib/runtime-state");
+const { sha256File } = require("../lib/release-utils");
 
 const rawArgs = process.argv.slice(2);
 const workbenchRoot = resolveWorkbenchRoot(rawArgs, path.resolve(__dirname, "../../.."));
@@ -272,6 +273,16 @@ function runWriteSmoke(fixtureFile, fixture, runRoot, resolvedSource) {
   assertCondition(safety.backupCreated === true, "write smoke must create a backup.");
   assertCondition(safety.explicitOutputPath === true, "write smoke must use explicit output path.");
   assertCondition(safety.readbackOk === true, "write smoke readback must pass.");
+  assertCondition(safety.outputSha256Bound === true, "write smoke must bind the final output PVF SHA256.");
+  assertCondition(/^[a-f0-9]{64}$/i.test(String(manifest.outputPvfSha256 || "")), "write smoke outputPvfSha256 is missing.");
+  assertCondition(
+    sha256File(manifest.outputPvf) === manifest.outputPvfSha256,
+    "write smoke output PVF no longer matches its manifest SHA256.",
+  );
+  assertCondition(
+    fs.statSync(manifest.outputPvf).size === manifest.outputPvfBytes,
+    "write smoke output PVF size no longer matches its manifest.",
+  );
   assertCondition(safety.clientResourceWrite === false, "write smoke must not write client resources.");
   assertCondition(before.size === after.size, "source PVF size changed during write smoke.");
   assertCondition(Math.abs(before.mtimeMs - after.mtimeMs) < 2, "source PVF mtime changed during write smoke.");
@@ -288,6 +299,7 @@ function runWriteSmoke(fixtureFile, fixture, runRoot, resolvedSource) {
     smokeRoot,
     manifestPath: parsed.manifestPath,
     outputPvf: manifest.outputPvf,
+    outputPvfSha256: manifest.outputPvfSha256,
     backupPath: manifest.backupPath,
     sourceUnchanged: true,
     changedCount: manifest.summary?.changedCount,

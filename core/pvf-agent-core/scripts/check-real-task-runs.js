@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { runtimePath } = require("../lib/runtime-state");
+const { sha256File } = require("../lib/release-utils");
 
 const rawArgs = process.argv.slice(2);
 const rootArgIndex = rawArgs.indexOf("--root");
@@ -252,6 +253,17 @@ function validateControlledOutputRun(errors, warnings, summary) {
     }
     if (apply.summary?.outputExists !== true || apply.summary?.backupExists !== true || apply.summary?.readbackOk !== true) {
       errors.push("applyManifest summary must confirm outputExists, backupExists, and readbackOk.");
+    }
+    if (
+      apply.safety?.outputSha256Bound !== true ||
+      apply.summary?.outputSha256Verified !== true ||
+      !/^[a-f0-9]{64}$/i.test(String(apply.outputPvfSha256 || ""))
+    ) {
+      errors.push("applyManifest must bind and verify the final outputPvfSha256.");
+    } else if (apply.outputPvf && fs.existsSync(path.resolve(apply.outputPvf))) {
+      if (sha256File(path.resolve(apply.outputPvf)) !== apply.outputPvfSha256) {
+        errors.push("applyManifest outputPvfSha256 no longer matches the output PVF.");
+      }
     }
   }
 

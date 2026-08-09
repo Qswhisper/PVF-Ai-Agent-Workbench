@@ -14,9 +14,15 @@ You are working inside a clean PVF-Agent-Workbench folder. This is a task worksp
 8. Inspect the target PVF with read-only commands before proposing edits.
 9. For write tasks, produce a controlled-output plan before any apply.
 
+## Beginner-Facing Answers
+
+Assume the user does not code. Keep every safety check, but put the plain-language result first: can it proceed, what will change, what can go wrong, and what the user must do next. Say “预演（只检查，不改文件）”, “生成独立 PVF”, “生成后复查”, and “中文等文字暂时不能直接改” in the main answer. Put ASCII, non-ASCII, backend, binding, manifest, approval code, readback, SHA details, and exact commands under `技术详情（通常不用看）` unless the user explicitly asks for them.
+
 ## Capability Lane
 
 Use `workbench.bat pvf-read`, `workbench.bat pvf-index`, and `workbench.bat pvf-change`. The Workbench carries both its preferred native backend and a dependency-free TypeScript read-only fallback, so ordinary inspection is self-contained. The bundled Node.js runtime executes the `.ts` sources directly without npm or a build step. If a session reports `readOnly: true`, continue only with reads/dry-run and block backup/apply/write until `workbench.bat check` confirms native is available. Use bundled `knowledge-query nut`, `knowledge-query tag`, and `knowledge-query bookmark` for foundational knowledge.
+
+After a successful controlled apply, `workbench.bat client-pvf` may install the verified independent output into the `Script.pvf` at a local profile's client root. This is a separate user authorization: preview first, bind the output and current client hashes, confirm the client and launcher are closed, back up the current client PVF, verify after deployment, and use a separately previewed rollback when requested. Source/output/client paths must be distinct. It does not authorize NPK, IMG, UI, or another client file.
 
 When a task explicitly supplies a source/claim artifact, lineage, dependency report, or client matrix, use `workbench.bat knowledge-query` for narrow lookups. Preserve artifact SHA and evidence boundaries; zero matches are not proof of absence.
 
@@ -49,4 +55,4 @@ PVF writes require explicit user authorization and must use the controlled-outpu
 - Reopen/read back the output.
 - Produce a manifest and concise change summary.
 
-Client resource writes require a separate explicit authorization and are outside normal PVF write permission.
+Client resource writes require a separate explicit authorization and are outside normal PVF write permission. The controlled `client-pvf` lane covers only deployment and rollback of the profiled client-root `Script.pvf`; all other client resources remain outside it.

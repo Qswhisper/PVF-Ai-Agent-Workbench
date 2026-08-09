@@ -10,6 +10,13 @@
 - 不把真实 PVF、客户端、API key、索引缓存或运行产物放进 Workbench。
 - 数字 ID 不是事实，必须按上下文通过正确 `.lst` registry 解析。
 - 教程示例 ID、社区注释、GM 字段、源码字段不能直接作为写 PVF 依据。
+- 目标 PVF、任务选择器和工作台已经明确时，第一条 shell 动作必须是路由给出的 `workbench.bat` 命令。不要用 `Test-Path`、`Get-Item`、`Get-ChildItem`、`Resolve-Path` 预检工作台、目标 PVF 或报告/输出目录，也不要用分号串联检查；工作台命令会自行校验输入并创建其声明的外部输出目录，失败后再按返回错误诊断。
+
+## 面向新手的说明
+
+- 安全检查、哈希绑定和机器清单全部保留，但用户可见回复先用通俗中文说明“能否继续、会改什么、风险是什么、下一步做什么”。
+- 主结论优先说“预演（只检查，不改文件）”“生成独立 PVF”“生成后复查”“中文等文字暂时不能直接改”，不要在开头堆叠 ASCII、non-ASCII、backend、manifest、approval code、readback 或 smoke check。
+- 用户确实需要命令、路径、确认码、错误码或实现细节时，放到“技术详情（通常不用看）”之后。不得为了通俗而省略阻断条件或安全步骤。
 
 ## 写 PVF 必须满足
 
@@ -48,3 +55,13 @@
 Script.pvf 内有资源引用，不代表客户端 ImagePacks2/NPK 资源完整。
 
 修改客户端、写入 NPK、替换 IMG、部署资源包都需要单独授权。
+
+把受控输出 `Script.pvf` 安装到测试客户端也属于单独授权，但可使用专门的 `workbench.bat client-pvf` 路线：
+
+1. 只接受已成功读回并绑定最终输出 SHA256 的 `APPLY-MANIFEST.json`。
+2. `preview` 只生成外部预览，不修改客户端；它绑定输出 PVF、profile 客户端根目录和客户端当前 `Script.pvf`。
+3. `deploy` 必须使用预览确认码，并确认客户端和启动器已关闭。
+4. profile 的 source PVF 必须与 apply 清单一致且未变化；source PVF、独立输出 PVF和客户端 `Script.pvf` 必须是三个不同文件。
+5. 替换前创建并核对客户端当前 PVF 的内容寻址备份；相同 SHA256 只存一份。
+6. 部署后核对客户端目标 SHA256；恢复必须再次预览和确认，且客户端当前版本发生未知变化时停止。
+7. 这项权限只覆盖 profile 客户端根目录的 `Script.pvf`，不包含 NPK、IMG、UI 或其他客户端文件。

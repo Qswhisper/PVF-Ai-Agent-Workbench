@@ -5,10 +5,12 @@
 ## 路由
 
 1. 先从轻量 `knowledge-index.json` 判断任务领域。
-2. NUT、tag、bookmark 直接使用 `workbench.bat knowledge-query <kind>`；source、claims、lineage、planner、client 只在任务明确提供对应 artifact 时查询。
+2. NUT、tag、bookmark 直接使用 `workbench.bat knowledge-query <kind>`；明确 NUT 符号时随后只运行一次目标 `pvf-read search-script`。source、claims、lineage、planner、client 只在任务明确提供对应 artifact 时查询。
 3. 只返回当前任务需要的结果数，记录 artifact SHA 和 query。
 4. 根据 kind 保留专项边界：版本、来源层、registry、unresolved、客户端资源或时间对齐状态。
 5. 作 PVF 结论前读回目标 raw 文件并解析正确 `.lst`；作运行时结论前使用已有 SHA 绑定 PASS 或安排高收益实机验证。
+
+Planner 查询直接使用 `dependency-plan` 返回的 `reportPath`。该 JSON 已是完整生成报告，不运行目录探测，也不另写摘要；“完整报告”仍不等于最终运行证据。
 
 ## 示例
 

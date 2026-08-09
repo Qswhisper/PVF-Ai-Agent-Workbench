@@ -1,0 +1,1 @@
+命令返回的 `DEPENDENCY-PLAN.json` 已是本次预览的完整生成报告，直接使用返回的 reportPath 交给 `knowledge-query planner`。不需要运行 Test-Path，不需要运行 Get-Item，也不用 Set-Content 或 Out-File 另写 Markdown/JSON 摘要。它仍不是最终运行证据、apply 计划或可应用补丁，目标文件读回与实机边界继续保留。

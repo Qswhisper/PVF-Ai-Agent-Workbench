@@ -47,6 +47,14 @@ function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
+function outputPvfIdentity(file) {
+  const resolved = path.resolve(file);
+  return {
+    sha256: sha256File(resolved),
+    bytes: fs.statSync(resolved).size,
+  };
+}
+
 function pvfTokens(value) {
   return String(value || "").match(/`[^`]*`|\[[^\]\r\n]*\]|#[^\r\n]*|[^\s]+/g) || [];
 }
@@ -292,6 +300,15 @@ function changeSetAuthorizationSelfTest() {
       blockedRejected = /manifest is blocked/.test(String(error.message));
     }
     checks.push({ id: "blocked-dry-run-rejected", ok: blockedRejected });
+
+    const outputIdentity = outputPvfIdentity(sourcePvf);
+    checks.push({
+      id: "final-output-sha256-and-size-bound",
+      ok:
+        outputIdentity.sha256 === sha256File(sourcePvf) &&
+        outputIdentity.bytes === fs.statSync(sourcePvf).size &&
+        /^[a-f0-9]{64}$/.test(outputIdentity.sha256),
+    });
 
     const exactComparison = comparePvfTextReadback(
       "[equipment]\r\n100\t0\t0\t\r\n[/equipment]\r\n",
@@ -1130,6 +1147,9 @@ async function runApply(changeSet, changeSetFile) {
   const readbackNormalizedEquivalentCount = readback.filter((item) => item.ok && item.layoutNormalizationAccepted === true).length;
   const readbackRawBinaryCount = readback.filter((item) => item.ok && item.comparison === "raw-base64-sha256").length;
   const readbackFailedCount = readback.filter((item) => !item.ok).length;
+  const finalOutputIdentity = outputPvfIdentity(paths.outputPvf);
+  const outputPvfSha256 = finalOutputIdentity.sha256;
+  const outputPvfBytes = finalOutputIdentity.bytes;
   const manifest = {
     schemaVersion: "1.0",
     phase: "phase-3-controlled-output-apply",
@@ -1138,6 +1158,8 @@ async function runApply(changeSet, changeSetFile) {
     writeOperationsExecuted: true,
     sourcePvf,
     outputPvf: paths.outputPvf,
+    outputPvfSha256,
+    outputPvfBytes,
     backupPath: paths.backupPath,
     changeSetFile: path.resolve(changeSetFile),
     dryRunManifest: authorization.manifestFile,
@@ -1156,6 +1178,7 @@ async function runApply(changeSet, changeSetFile) {
       explicitOutputPath: true,
       readbackExecuted: true,
       readbackOk,
+      outputSha256Bound: true,
       readbackComparisonPolicy: "exact-text-or-float32-aware-token-equivalence",
       semanticWriteGuardEnabled: true,
       directNonAsciiTextWriteAllowed: false,
@@ -1168,6 +1191,7 @@ async function runApply(changeSet, changeSetFile) {
       outputExists: fs.existsSync(paths.outputPvf),
       backupExists: fs.existsSync(paths.backupPath),
       readbackOk,
+      outputSha256Verified: true,
       readbackExactCount,
       readbackNormalizedEquivalentCount,
       readbackRawBinaryCount,

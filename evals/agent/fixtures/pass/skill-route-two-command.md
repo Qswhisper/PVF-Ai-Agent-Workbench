@@ -1,0 +1,1 @@
+目标、职业和技能 ID 已明确时，第一条 shell 命令就是 `workbench.bat pvf-read resolve-skill --pvf <Script.pvf> --job swordman --id 97`，不以 Test-Path 或 Get-Item 预检 workbench 或目标 PVF。它会按目标 `character/character.lst -> .chr [job] -> skill/skilllist.lst -> 职业 skill registry -> .skl` 闭合路由。随后只对返回的 `.skl` 路径运行一次 `pvf-read read` 读回；不猜目录、不枚举 skill 文件，也不使用 list-files、bookmark 或跨职业 registry 碰运气。
