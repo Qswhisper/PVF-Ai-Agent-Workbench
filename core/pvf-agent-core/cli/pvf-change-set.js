@@ -14,7 +14,15 @@ const {
 } = require("../lib/adapter-config");
 const { runtimePath } = require("../lib/runtime-state");
 const { sha256File } = require("../lib/release-utils");
-const { semanticWriteSafety } = require("../lib/semantic-read-guard");
+const {
+  semanticWriteSafety,
+  VERIFIED_INLINE_TEXT_MODE,
+  VERIFIED_INLINE_CN_TEXT_MODE,
+  isVerifiedInlineTextMode,
+} = require("../lib/semantic-read-guard");
+const {
+  verifiedInlineTextSelfTest,
+} = require("../../../tools/pvf-bridge/verified-inline-cn-text");
 
 const rawArgs = process.argv.slice(2);
 const workbenchRoot = resolveWorkbenchRoot(rawArgs, path.resolve(__dirname, "../../.."));
@@ -165,6 +173,11 @@ function dryRunBinding(results, sourcePvf, sourcePvfSha256, changeSetFile, chang
       applicable: item.applicable,
       changed: item.changed,
       afterSha256: item.diff?.afterSha256 || item.sourceSha256 || null,
+      textWriteMode: item.textWriteMode || null,
+      pvfEncoding: item.pvfEncoding || null,
+      encodingRoundTripProbeSha256: item.encodingRoundTripProbe
+        ? sha256(JSON.stringify(item.encodingRoundTripProbe))
+        : null,
     })),
   };
   const bindingSha256 = sha256(JSON.stringify(payload));
@@ -186,11 +199,35 @@ function verifyDryRunAuthorization(sourcePvf, changeSetFile, explicit = {}) {
     throw new Error("Apply requires a phase-3 dry-run manifest.");
   }
   if (manifest.writeOperationsExecuted !== false || Number(manifest.summary?.blockedCount) !== 0) {
-    throw new Error("Dry-run manifest is blocked or does not prove a read-only dry-run.");
+    throw new Error("Dry-run manifest is blocked or does not prove that no persistent output was written.");
   }
   const binding = manifest.binding;
   if (!binding || binding.schemaVersion !== "1.0" || !binding.bindingSha256 || !binding.approvalCode) {
     throw new Error("Dry-run manifest does not contain a valid apply binding.");
+  }
+  for (const result of manifest.results || []) {
+    if (!isVerifiedInlineTextMode(result.textWriteMode) || result.changed !== true) continue;
+    const probe = result.encodingRoundTripProbe;
+    if (
+      manifest.persistentWriteOperationsExecuted !== false ||
+      manifest.temporaryVerificationWriteOperationsExecuted !== true ||
+      probe?.ok !== true ||
+      String(probe?.sourcePvfSha256 || "").toLowerCase() !== String(binding.sourcePvfSha256 || "").toLowerCase() ||
+      probe?.sourceUnchanged !== true ||
+      probe?.independentSemanticRead !== true ||
+      probe?.semanticReadGuard?.reason !== "verified-text-readback" ||
+      probe?.semanticReadGuard?.backend !== "typescript-readonly-fallback" ||
+      probe?.comparison?.exactTextOk !== true ||
+      !isVerifiedInlineTextMode(probe?.writerProof?.mode) ||
+      probe?.writerProof?.encoding !== result.pvfEncoding ||
+      probe?.writerProof?.existingStringEntriesPreserved !== true ||
+      !/^[a-f0-9]{64}$/i.test(String(probe?.temporaryOutputSha256 || "")) ||
+      probe?.temporaryOutputRetained !== false
+    ) {
+      const error = new Error(`中文文本改动 ${result.id} 缺少成功且完整的临时写出复查证据；请重新预演。`);
+      error.code = "CN_TEXT_ROUNDTRIP_REQUIRED";
+      throw error;
+    }
   }
   if (!samePath(binding.sourcePvf, sourcePvf)) {
     throw new Error("Dry-run source PVF does not match the apply source PVF.");
@@ -218,6 +255,7 @@ function verifyDryRunAuthorization(sourcePvf, changeSetFile, explicit = {}) {
   }
   return {
     manifestFile,
+    manifest,
     binding,
     sourcePvfSha256: currentSourceSha256,
     changeSetFileSha256: currentChangeSetSha256,
@@ -252,6 +290,8 @@ function changeSetAuthorizationSelfTest() {
       phase: "phase-3-dry-run-change-set",
       mode: "dry-run-only",
       writeOperationsExecuted: false,
+      persistentWriteOperationsExecuted: false,
+      temporaryVerificationWriteOperationsExecuted: false,
       summary: { blockedCount: 0 },
       binding,
       results,
@@ -270,6 +310,72 @@ function changeSetAuthorizationSelfTest() {
       wrongCodeRejected = /authorization code does not match/.test(String(error.message));
     }
     checks.push({ id: "wrong-authorization-rejected", ok: wrongCodeRejected });
+
+    const verifiedManifestFile = path.join(tempRoot, "DRY-RUN-VERIFIED-TEXT-MANIFEST.json");
+    const verifiedResults = [{
+      id: "verified-text-fixture",
+      type: "replace-text",
+      pvfPath: "stackable/fixture.stk",
+      textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+      pvfEncoding: "Tw",
+      applicable: true,
+      changed: true,
+      diff: { afterSha256: sha256("verified-text-after") },
+    }];
+    let verifiedBinding = dryRunBinding(verifiedResults, sourcePvf, sha256File(sourcePvf), changeSetFile, sha256File(changeSetFile));
+    fs.writeFileSync(verifiedManifestFile, `${JSON.stringify({
+      schemaVersion: "1.0",
+      phase: "phase-3-dry-run-change-set",
+      mode: "dry-run-only",
+      writeOperationsExecuted: false,
+      persistentWriteOperationsExecuted: false,
+      temporaryVerificationWriteOperationsExecuted: true,
+      summary: { blockedCount: 0 },
+      binding: verifiedBinding,
+      results: verifiedResults,
+    }, null, 2)}\n`, "utf8");
+    let missingVerifiedProbeRejected = false;
+    try {
+      verifyDryRunAuthorization(sourcePvf, changeSetFile, {
+        manifestFile: verifiedManifestFile,
+        authorizationCode: verifiedBinding.approvalCode,
+      });
+    } catch (error) {
+      missingVerifiedProbeRejected = error.code === "CN_TEXT_ROUNDTRIP_REQUIRED";
+    }
+    checks.push({ id: "verified-inline-text-missing-roundtrip-rejected", ok: missingVerifiedProbeRejected });
+
+    verifiedResults[0].encodingRoundTripProbe = {
+      ok: true,
+      sourceUnchanged: true,
+      sourcePvfSha256: sha256File(sourcePvf),
+      independentSemanticRead: true,
+      semanticReadGuard: { reason: "verified-text-readback", backend: "typescript-readonly-fallback" },
+      comparison: { exactTextOk: true },
+      writerProof: { mode: VERIFIED_INLINE_TEXT_MODE, encoding: "Tw", existingStringEntriesPreserved: true },
+      temporaryOutputSha256: sha256("temporary-output"),
+      temporaryOutputRetained: false,
+    };
+    verifiedBinding = dryRunBinding(verifiedResults, sourcePvf, sha256File(sourcePvf), changeSetFile, sha256File(changeSetFile));
+    fs.writeFileSync(verifiedManifestFile, `${JSON.stringify({
+      schemaVersion: "1.0",
+      phase: "phase-3-dry-run-change-set",
+      mode: "dry-run-only",
+      writeOperationsExecuted: false,
+      persistentWriteOperationsExecuted: false,
+      temporaryVerificationWriteOperationsExecuted: true,
+      summary: { blockedCount: 0 },
+      binding: verifiedBinding,
+      results: verifiedResults,
+    }, null, 2)}\n`, "utf8");
+    const verifiedProbeAccepted = verifyDryRunAuthorization(sourcePvf, changeSetFile, {
+      manifestFile: verifiedManifestFile,
+      authorizationCode: verifiedBinding.approvalCode,
+    });
+    checks.push({
+      id: "verified-inline-text-complete-roundtrip-accepted",
+      ok: verifiedProbeAccepted.binding.bindingSha256 === verifiedBinding.bindingSha256,
+    });
 
     fs.writeFileSync(sourcePvf, "pvf-fixture-v2", "utf8");
     let changedSourceRejected = false;
@@ -391,13 +497,54 @@ function changeSetAuthorizationSelfTest() {
       kind: "replace-text",
       pvfPath: "itemshop/birken.shp",
       pvfEncoding: "Cn",
-      previousText: "旧文本",
-      newText: "新文本",
+      previousText: "`旧文本`",
+      newText: "`新文本`",
+      sourceText: "[name]\r\n`旧文本`\r\n",
     });
     checks.push({
-      id: "direct-non-ascii-write-blocked",
+      id: "unverified-direct-non-ascii-write-blocked",
       ok: !directChineseSafety.allowed && directChineseSafety.code === "NON_ASCII_TEXT_WRITE_UNVERIFIED",
     });
+
+    const htmlEntitySafety = semanticWriteSafety({
+      kind: "replace-text",
+      pvfPath: "stackable/fixture.stk",
+      pvfEncoding: "Cn",
+      previousText: "`旧文本`",
+      newText: "`&#20320;好`",
+      sourceText: "[name]\r\n`旧文本`\r\n",
+      replaceAll: false,
+      textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+    });
+    checks.push({
+      id: "html-numeric-entity-write-blocked",
+      ok: !htmlEntitySafety.allowed && htmlEntitySafety.code === "HTML_NUMERIC_ENTITY_WRITE_BLOCKED",
+    });
+
+    const verifiedChineseSafety = semanticWriteSafety({
+      kind: "replace-text",
+      pvfPath: "stackable/fixture.stk",
+      pvfEncoding: "Cn",
+      previousText: "`旧描述`",
+      newText: "`新描述测试`",
+      sourceText: "[name]\r\n`旧描述`\r\n",
+      replaceAll: false,
+      textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+    });
+    checks.push({
+      id: "verified-inline-text-structure-accepted",
+      ok:
+        verifiedChineseSafety.allowed === true &&
+        verifiedChineseSafety.verifiedInlineTextWrite?.mode === VERIFIED_INLINE_TEXT_MODE &&
+        verifiedChineseSafety.verifiedInlineTextWrite?.encoding === "Cn" &&
+        verifiedChineseSafety.verifiedInlineTextWrite?.requiresEncodingRoundTripProbe === true &&
+        verifiedChineseSafety.clientTextSmokeCheckRequired === true,
+    });
+
+    const inlineWriterSelfTest = verifiedInlineTextSelfTest();
+    for (const check of inlineWriterSelfTest.checks) {
+      checks.push({ ...check, id: `verified-inline-text-${check.id}` });
+    }
 
     const numericStringLinkSafety = semanticWriteSafety({
       kind: "replace-text",
@@ -458,9 +605,13 @@ function assertControlledWriteRunnerPolicy(writePolicy) {
   }
   const semanticSafety = runner.semanticTextSafety || {};
   if (
-    semanticSafety.automaticCnReadGuardRequired !== true ||
+    semanticSafety.automaticEncodingConflictGuardRequired !== true ||
     semanticSafety.cnStrWriteAllowed !== false ||
-    semanticSafety.directNonAsciiTextWriteAllowed !== false ||
+    semanticSafety.unverifiedDirectNonAsciiTextWriteAllowed !== false ||
+    semanticSafety.verifiedInlineTextWriteAllowed !== true ||
+    semanticSafety.verifiedInlineTextAppliedBeforeOtherWrites !== true ||
+    semanticSafety.stringLinkTextWriteAllowed !== false ||
+    semanticSafety.cnAndTwRoundTripProbeRequired !== true ||
     semanticSafety.numericOrAsciiMinimalWriteAllowed !== true ||
     semanticSafety.clientTextSmokeCheckRequired !== true
   ) {
@@ -539,11 +690,14 @@ function validateChangeSet(changeSet) {
       if (typeof change.newText !== "string") {
         errors.push(`${prefix}.newText must be a string.`);
       }
-      if (/&#\d+;/.test(change.previousText) || /&#\d+;/.test(change.newText)) {
-        errors.push(`${prefix}.previousText/newText must not contain HTML numeric entities; read exact source text with raw/no-simplified mode before writing.`);
+      if (/&#(?:\d+|x[0-9a-f]+);/i.test(change.newText)) {
+        errors.push(`${prefix}.newText must not contain HTML numeric entities; use real characters from raw/no-simplified target readback.`);
       }
       if (change.replaceAll !== undefined && typeof change.replaceAll !== "boolean") {
         errors.push(`${prefix}.replaceAll must be boolean when present.`);
+      }
+      if (change.textWriteMode !== undefined && !isVerifiedInlineTextMode(change.textWriteMode)) {
+        errors.push(`${prefix}.textWriteMode must be ${VERIFIED_INLINE_TEXT_MODE} (legacy ${VERIFIED_INLINE_CN_TEXT_MODE} is also accepted) when present.`);
       }
     } else if (change.type === "write-file") {
       if (typeof change.sourceFile !== "string" || !change.sourceFile.trim()) {
@@ -692,7 +846,141 @@ async function callAndParse(client, name, toolArgs) {
   return parseBackendTextResult(result);
 }
 
-async function runDryRun(changeSet, changeSetFile, outDirOverride) {
+async function runVerifiedInlineTextRoundTripProbe({
+  sourcePvf,
+  changeSet,
+  adapterConfig,
+  writePolicy,
+  probes,
+}) {
+  const outcomes = new Map();
+  if (!Array.isArray(probes) || probes.length === 0) return outcomes;
+  const probeBase = runtimePath(workbenchRoot, "text-write-probes");
+  const probeRoot = path.join(probeBase, `${timestamp()}-${crypto.randomUUID()}`);
+  const outputPvf = path.join(probeRoot, "Script.pvf");
+  fs.mkdirSync(probeRoot, { recursive: true });
+  const sourceSha256Before = sha256File(sourcePvf);
+  const client = new BackendStdioClient(controlledWriteLaunchOptions(adapterConfig, writePolicy));
+  let sourceSessionId = null;
+  let outputSessionId = null;
+  try {
+    const opened = await callAndParse(client, "pvf_open", {
+      path: sourcePvf,
+      encoding: changeSet.target.pvfOpenEncoding || adapterConfig.defaults.pvfOpenEncoding,
+    });
+    sourceSessionId = opened.session?.sessionId;
+    if (!sourceSessionId) throw new Error("Chinese text probe pvf_open did not return a sessionId.");
+    if (opened.session?.readOnly === true) {
+      const error = new Error("中文文本往返验证需要 native 写入环境；当前只能读取。");
+      error.code = "READ_ONLY_FALLBACK";
+      throw error;
+    }
+    for (const probe of probes) {
+      const probeEncoding = probe.change.pvfEncoding || changeSet.target.pvfReadEncoding || adapterConfig.defaults.pvfReadEncoding;
+      const applied = await callAndParse(client, "pvf_replace_text", {
+        sessionId: sourceSessionId,
+        pvfPath: probe.pvfPath,
+        previousText: probe.change.previousText,
+        newText: probe.change.newText,
+        replaceAll: false,
+        dryRun: false,
+        pvfEncoding: probeEncoding,
+        convertToSimplifiedChinese: false,
+        convertToTraditionalChinese: false,
+        textWriteMode: probe.change.textWriteMode,
+      });
+      outcomes.set(probe.change.id, {
+        ok: false,
+        code: "CN_TEXT_ROUNDTRIP_INCOMPLETE",
+        reason: "中文文本临时写出尚未完成独立读回。",
+        writerProof: applied.writeResult?.proof || null,
+        temporaryOutputRetained: false,
+      });
+    }
+    await callAndParse(client, "pvf_save", {
+      sessionId: sourceSessionId,
+      targetPath: outputPvf,
+      allowOverwriteSource: false,
+    });
+    await callAndParse(client, "pvf_close", { sessionId: sourceSessionId });
+    sourceSessionId = null;
+
+    const reopened = await callAndParse(client, "pvf_open", {
+      path: outputPvf,
+      encoding: changeSet.target.pvfOpenEncoding || adapterConfig.defaults.pvfOpenEncoding,
+    });
+    outputSessionId = reopened.session?.sessionId;
+    if (!outputSessionId) throw new Error("Chinese text probe readback pvf_open did not return a sessionId.");
+    for (const probe of probes) {
+      const probeEncoding = probe.change.pvfEncoding || changeSet.target.pvfReadEncoding || adapterConfig.defaults.pvfReadEncoding;
+      const readback = await callAndParse(client, "pvf_read_file", {
+        sessionId: outputSessionId,
+        pvfPath: probe.pvfPath,
+        pvfEncoding: probeEncoding,
+        convertToSimplifiedChinese: false,
+        autoConvertStringLink: false,
+        semanticVerificationRead: true,
+        maxChars: 0,
+      });
+      const comparison = pvfTextReadbackResult(probe.expectedAfter, readback.textContent);
+      const independentSemanticRead =
+        readback.semanticReadGuard?.applied === true &&
+        readback.semanticReadGuard?.reason === "verified-text-readback" &&
+        readback.semanticReadGuard?.backend === "typescript-readonly-fallback" &&
+        readback.semanticReadGuard?.selectedEncoding === probeEncoding;
+      const writerProof = outcomes.get(probe.change.id)?.writerProof || null;
+      const sourceUnchanged = sha256File(sourcePvf) === sourceSha256Before;
+      const ok =
+        comparison.ok === true &&
+        comparison.exactTextOk === true &&
+        independentSemanticRead &&
+        writerProof?.encoding === probeEncoding &&
+        writerProof?.existingStringEntriesPreserved === true &&
+        sourceUnchanged;
+      outcomes.set(probe.change.id, {
+        ok,
+        code: ok ? null : "CN_TEXT_ROUNDTRIP_FAILED",
+        reason: ok
+          ? "中文文本已通过临时输出、独立解析和既有字符串保持检查。"
+          : "中文文本未通过临时输出的精确往返检查，已阻止生成批准码。",
+        sourceUnchanged,
+        sourcePvfSha256: sourceSha256Before,
+        independentSemanticRead,
+        semanticReadGuard: readback.semanticReadGuard || null,
+        comparison,
+        writerProof,
+        temporaryOutputSha256: sha256File(outputPvf),
+        temporaryOutputRetained: false,
+      });
+    }
+  } catch (error) {
+    for (const probe of probes) {
+      const existing = outcomes.get(probe.change.id) || {};
+      outcomes.set(probe.change.id, {
+        ...existing,
+        ok: false,
+        code: error.code || "CN_TEXT_ROUNDTRIP_FAILED",
+        reason: error.message,
+        sourceUnchanged: sha256File(sourcePvf) === sourceSha256Before,
+        sourcePvfSha256: sourceSha256Before,
+        temporaryOutputRetained: false,
+      });
+    }
+  } finally {
+    if (outputSessionId) {
+      try { await callAndParse(client, "pvf_close", { sessionId: outputSessionId }); } catch { /* best effort */ }
+    }
+    if (sourceSessionId) {
+      try { await callAndParse(client, "pvf_close", { sessionId: sourceSessionId }); } catch { /* best effort */ }
+    }
+    client.stop();
+    if (!pathInside(probeBase, probeRoot)) throw new Error(`Unsafe Chinese text probe path: ${probeRoot}`);
+    fs.rmSync(probeRoot, { recursive: true, force: true });
+  }
+  return outcomes;
+}
+
+async function runDryRun(changeSet, changeSetFile, outDirOverride, loadedChangeSetSha256) {
   const adapterConfig = loadAdapterConfig(workbenchRoot);
   assertReadOnlyAdapter(adapterConfig);
   const writePolicy = loadWritePolicy();
@@ -710,6 +998,13 @@ async function runDryRun(changeSet, changeSetFile, outDirOverride) {
   if (!fs.existsSync(sourcePvf)) {
     throw new Error(`PVF file does not exist: ${sourcePvf}`);
   }
+  const sourcePvfSha256AtStart = sha256File(sourcePvf);
+  const changeSetFileSha256AtStart = sha256File(changeSetFile);
+  if (loadedChangeSetSha256 && loadedChangeSetSha256 !== changeSetFileSha256AtStart) {
+    const error = new Error("Change-set changed while it was being loaded; run dry-run again.");
+    error.code = "CHANGE_SET_CHANGED_DURING_DRY_RUN";
+    throw error;
+  }
 
   const outRoot = outDirOverride
     ? path.resolve(outDirOverride)
@@ -726,6 +1021,7 @@ async function runDryRun(changeSet, changeSetFile, outDirOverride) {
     throw new Error("pvf_open did not return a sessionId.");
   }
   const results = [];
+  const verifiedTextProbes = [];
   const directoryCache = new Map();
   try {
     for (const change of changeSet.changes) {
@@ -774,6 +1070,7 @@ async function runDryRun(changeSet, changeSetFile, outDirOverride) {
         sessionId,
         pvfPath,
         ...rawTextOptions(changeSet, change, adapterConfig),
+        semanticVerificationRead: isVerifiedInlineTextMode(change.textWriteMode),
         maxChars: 0,
       });
       if (typeof read.textContent !== "string") {
@@ -789,14 +1086,18 @@ async function runDryRun(changeSet, changeSetFile, outDirOverride) {
         fallbackEncoding: adapterConfig.defaults.pvfReadEncoding,
         previousText: change.previousText,
         newText: change.newText,
+        replaceAll,
+        textWriteMode: change.textWriteMode,
         sourceText: read.textContent,
       });
       const applicable = occurrenceApplicable && writeSafety.allowed;
       const after = occurrenceApplicable ? replaceText(read.textContent, change.previousText, change.newText, replaceAll) : read.textContent;
-      results.push({
+      const result = {
         id: change.id,
         type: change.type,
         pvfPath,
+        textWriteMode: change.textWriteMode || null,
+        pvfEncoding: change.pvfEncoding || changeSet.target.pvfReadEncoding || adapterConfig.defaults.pvfReadEncoding,
         occurrenceCount,
         replaceAll,
         occurrenceApplicable,
@@ -807,7 +1108,16 @@ async function runDryRun(changeSet, changeSetFile, outDirOverride) {
         semanticReadGuard: read.semanticReadGuard || null,
         semanticWriteSafety: writeSafety,
         rationale: change.rationale || "",
-      });
+      };
+      results.push(result);
+      if (
+        applicable &&
+        result.changed &&
+        isVerifiedInlineTextMode(change.textWriteMode) &&
+        writeSafety.verifiedInlineTextWrite?.requiresEncodingRoundTripProbe === true
+      ) {
+        verifiedTextProbes.push({ change, pvfPath, expectedAfter: after });
+      }
     }
   } finally {
     try {
@@ -817,21 +1127,65 @@ async function runDryRun(changeSet, changeSetFile, outDirOverride) {
     }
   }
 
+  const probeOutcomes = await runVerifiedInlineTextRoundTripProbe({
+    sourcePvf,
+    changeSet,
+    adapterConfig,
+    writePolicy,
+    probes: verifiedTextProbes,
+  });
+  const sourcePvfSha256AtEnd = sha256File(sourcePvf);
+  const changeSetFileSha256AtEnd = sha256File(changeSetFile);
+  if (sourcePvfSha256AtEnd !== sourcePvfSha256AtStart) {
+    const error = new Error("Source PVF changed during dry-run; run dry-run again.");
+    error.code = "SOURCE_PVF_CHANGED_DURING_DRY_RUN";
+    throw error;
+  }
+  if (changeSetFileSha256AtEnd !== changeSetFileSha256AtStart) {
+    const error = new Error("Change-set changed during dry-run; run dry-run again.");
+    error.code = "CHANGE_SET_CHANGED_DURING_DRY_RUN";
+    throw error;
+  }
+  for (const result of results) {
+    if (!isVerifiedInlineTextMode(result.textWriteMode) || !result.changed) continue;
+    const outcome = probeOutcomes.get(result.id) || {
+      ok: false,
+      code: "CN_TEXT_ROUNDTRIP_REQUIRED",
+      reason: "中文文本改动缺少临时写出复查结果。",
+      temporaryOutputRetained: false,
+    };
+    result.encodingRoundTripProbe = outcome;
+    if (!outcome.ok) {
+      result.applicable = false;
+      result.changed = false;
+      result.blockCode = outcome.code;
+      result.blockReason = outcome.reason;
+    }
+  }
+
   const manifest = {
     schemaVersion: "1.0",
     phase: "phase-3-dry-run-change-set",
     generatedAt: new Date().toISOString(),
     mode: "dry-run-only",
     writeOperationsExecuted: false,
+    persistentWriteOperationsExecuted: false,
+    temporaryVerificationWriteOperationsExecuted: verifiedTextProbes.length > 0,
     sourcePvf,
     changeSetFile: path.resolve(changeSetFile),
     safety: {
       writeToolsEnabled: false,
+      publicWriteToolsEnabled: false,
       backupRequiredBeforeFutureApply: true,
       explicitOutputRequiredBeforeFutureApply: true,
       readbackRequiredBeforeFutureApply: true,
       semanticWriteGuardEnabled: true,
-      directNonAsciiTextWriteAllowed: false,
+      verifiedInlineTextWriteAllowed: true,
+      unverifiedDirectNonAsciiTextWriteAllowed: false,
+      cnStrWriteAllowed: false,
+      stringLinkTextWriteAllowed: false,
+      temporaryIsolatedEncodingProbeExecuted: verifiedTextProbes.length > 0,
+      temporaryProbeOutputsRetained: false,
     },
     summary: {
       changeCount: results.length,
@@ -843,9 +1197,9 @@ async function runDryRun(changeSet, changeSetFile, outDirOverride) {
     binding: dryRunBinding(
       results,
       sourcePvf,
-      sha256File(sourcePvf),
+      sourcePvfSha256AtEnd,
       changeSetFile,
-      sha256File(changeSetFile),
+      changeSetFileSha256AtEnd,
     ),
     results,
   };
@@ -876,7 +1230,7 @@ function resolveApplyPaths(writePolicy, sourcePvf) {
   return { runRoot, outputPvf, backupPath, manifestPath };
 }
 
-async function runApply(changeSet, changeSetFile) {
+async function runApply(changeSet, changeSetFile, loadedChangeSetSha256) {
   const adapterConfig = loadAdapterConfig(workbenchRoot);
   assertReadOnlyAdapter(adapterConfig);
   const writePolicy = loadWritePolicy();
@@ -896,6 +1250,11 @@ async function runApply(changeSet, changeSetFile) {
   }
 
   const authorization = verifyDryRunAuthorization(sourcePvf, changeSetFile);
+  if (loadedChangeSetSha256 && authorization.changeSetFileSha256 !== loadedChangeSetSha256) {
+    const error = new Error("Change-set changed while apply was loading it; run dry-run again.");
+    error.code = "CHANGE_SET_CHANGED_DURING_APPLY";
+    throw error;
+  }
 
   const paths = resolveApplyPaths(writePolicy, sourcePvf);
   for (const [label, candidate] of [
@@ -930,13 +1289,19 @@ async function runApply(changeSet, changeSetFile) {
 
   const results = [];
   const expectedAfterByPath = new Map();
+  const authorizedResults = new Map((authorization.manifest.results || []).map((item) => [item.id, item]));
   const directoryCache = new Map();
   let backupResult = null;
   let saveResult = null;
   let readbackSessionId = null;
+  const applyChanges = [...changeSet.changes].sort((left, right) => {
+    const leftPriority = isVerifiedInlineTextMode(left.textWriteMode) ? 0 : 1;
+    const rightPriority = isVerifiedInlineTextMode(right.textWriteMode) ? 0 : 1;
+    return leftPriority - rightPriority;
+  });
 
   try {
-    for (const change of changeSet.changes) {
+    for (const change of applyChanges) {
       const pvfPath = normalizePvfPath(change.pvfPath);
       for (const required of change.requiredResolvedIds || []) {
         const resolved = await callAndParse(client, "pvf_resolve_lst_id", {
@@ -1003,6 +1368,7 @@ async function runApply(changeSet, changeSetFile) {
         sessionId,
         pvfPath,
         ...rawTextOptions(changeSet, change, adapterConfig),
+        semanticVerificationRead: isVerifiedInlineTextMode(change.textWriteMode),
         maxChars: 0,
       });
       if (typeof beforeRead.textContent !== "string") {
@@ -1015,6 +1381,8 @@ async function runApply(changeSet, changeSetFile) {
         fallbackEncoding: adapterConfig.defaults.pvfReadEncoding,
         previousText: change.previousText,
         newText: change.newText,
+        replaceAll: change.replaceAll === true,
+        textWriteMode: change.textWriteMode,
         sourceText: beforeRead.textContent,
       });
       if (!writeSafety.allowed) {
@@ -1038,13 +1406,30 @@ async function runApply(changeSet, changeSetFile) {
           newText: change.newText,
           replaceAll,
           dryRun: false,
+          textWriteMode: change.textWriteMode,
           ...rawTextOptions(changeSet, change, adapterConfig),
         });
-      expectedAfterByPath.set(pvfPath, { kind: "replace-text", expectedText: expectedAfter });
+      const pvfEncoding = change.pvfEncoding || changeSet.target.pvfReadEncoding || adapterConfig.defaults.pvfReadEncoding;
+      const verifiedInlineText = isVerifiedInlineTextMode(change.textWriteMode) && expectedAfter !== beforeRead.textContent;
+      const writerProof = applyResult?.writeResult?.proof || null;
+      if (verifiedInlineText && (writerProof?.existingStringEntriesPreserved !== true || writerProof?.encoding !== pvfEncoding)) {
+        const error = new Error(`中文文本改动 ${change.id} 未能证明既有字符串表条目保持不变。`);
+        error.code = "CN_TEXT_STRING_TABLE_PRESERVATION_FAILED";
+        throw error;
+      }
+      expectedAfterByPath.set(pvfPath, {
+        kind: "replace-text",
+        expectedText: expectedAfter,
+        pvfEncoding,
+        verifiedInlineText,
+        writerProof,
+      });
       results.push({
         id: change.id,
         type: change.type,
         pvfPath,
+        textWriteMode: change.textWriteMode || null,
+        pvfEncoding,
         occurrenceCount,
         replaceAll,
         changed: expectedAfter !== beforeRead.textContent,
@@ -1052,6 +1437,7 @@ async function runApply(changeSet, changeSetFile) {
         expectedAfterSha256: sha256(expectedAfter),
         semanticReadGuard: beforeRead.semanticReadGuard || null,
         semanticWriteSafety: writeSafety,
+        encodingRoundTripProbe: authorizedResults.get(change.id)?.encodingRoundTripProbe || null,
         applyResult,
         rationale: change.rationale || "",
       });
@@ -1089,15 +1475,33 @@ async function runApply(changeSet, changeSetFile) {
       const rb = await callAndParse(client, "pvf_read_file", {
         sessionId: readbackSessionId,
         pvfPath,
-        pvfEncoding: changeSet.target.pvfReadEncoding || adapterConfig.defaults.pvfReadEncoding,
+        pvfEncoding: expected.pvfEncoding || changeSet.target.pvfReadEncoding || adapterConfig.defaults.pvfReadEncoding,
         convertToSimplifiedChinese: false,
+        autoConvertStringLink: false,
+        semanticVerificationRead: expected.verifiedInlineText === true,
         maxChars: 0,
       });
       if (expected.kind === "replace-text") {
+        const comparison = pvfTextReadbackResult(expected.expectedText, rb.textContent);
+        const independentSemanticRead = expected.verifiedInlineText === true
+          ? rb.semanticReadGuard?.applied === true &&
+            rb.semanticReadGuard?.reason === "verified-text-readback" &&
+            rb.semanticReadGuard?.backend === "typescript-readonly-fallback" &&
+            rb.semanticReadGuard?.selectedEncoding === expected.pvfEncoding
+          : null;
+        const verifiedOk = expected.verifiedInlineText === true
+          ? comparison.exactTextOk === true && independentSemanticRead && expected.writerProof?.existingStringEntriesPreserved === true && expected.writerProof?.encoding === expected.pvfEncoding
+          : comparison.ok;
         readback.push({
           pvfPath,
           kind: expected.kind,
-          ...pvfTextReadbackResult(expected.expectedText, rb.textContent),
+          ...comparison,
+          ok: verifiedOk,
+          verifiedInlineText: expected.verifiedInlineText === true,
+          verifiedInlineCn: expected.verifiedInlineText === true && expected.pvfEncoding === "Cn",
+          independentSemanticRead,
+          semanticReadGuard: rb.semanticReadGuard || null,
+          writerProof: expected.writerProof || null,
           metadata: rb.metadata,
         });
       } else {
@@ -1142,7 +1546,9 @@ async function runApply(changeSet, changeSetFile) {
     client.stop();
   }
 
-  const readbackOk = readback.every((item) => item.ok);
+  const sourcePvfSha256AfterApply = sha256File(sourcePvf);
+  const sourceUnchanged = sourcePvfSha256AfterApply.toLowerCase() === authorization.sourcePvfSha256.toLowerCase();
+  const readbackOk = readback.every((item) => item.ok) && sourceUnchanged;
   const readbackExactCount = readback.filter((item) => item.ok && item.exactTextOk === true).length;
   const readbackNormalizedEquivalentCount = readback.filter((item) => item.ok && item.layoutNormalizationAccepted === true).length;
   const readbackRawBinaryCount = readback.filter((item) => item.ok && item.comparison === "raw-base64-sha256").length;
@@ -1165,11 +1571,13 @@ async function runApply(changeSet, changeSetFile) {
     dryRunManifest: authorization.manifestFile,
     dryRunBindingSha256: authorization.binding.bindingSha256,
     sourcePvfSha256: authorization.sourcePvfSha256,
+    sourcePvfSha256AfterApply,
     changeSetFileSha256: authorization.changeSetFileSha256,
     sourceProfile: resolvedSource.profile?.name || null,
     safety: {
       sourceOverwriteAllowed: false,
-      sourceOverwritten: false,
+      sourceOverwritten: !sourceUnchanged,
+      sourceUnchanged,
       backupCreated: Boolean(backupResult?.targetPath && fs.existsSync(backupResult.targetPath)),
       matchingDryRunRequired: true,
       matchingDryRunVerified: true,
@@ -1181,7 +1589,12 @@ async function runApply(changeSet, changeSetFile) {
       outputSha256Bound: true,
       readbackComparisonPolicy: "exact-text-or-float32-aware-token-equivalence",
       semanticWriteGuardEnabled: true,
-      directNonAsciiTextWriteAllowed: false,
+      verifiedInlineTextWriteAllowed: true,
+      verifiedInlineTextRequiresExactIndependentReadback: true,
+      verifiedInlineTextAppliedBeforeOtherWrites: true,
+      unverifiedDirectNonAsciiTextWriteAllowed: false,
+      cnStrWriteAllowed: false,
+      stringLinkTextWriteAllowed: false,
       clientTextSmokeCheckRequired: results.some((item) => item.semanticWriteSafety?.clientTextSmokeCheckRequired),
       clientResourceWrite: false,
     },
@@ -1196,6 +1609,11 @@ async function runApply(changeSet, changeSetFile) {
       readbackNormalizedEquivalentCount,
       readbackRawBinaryCount,
       readbackFailedCount,
+      verifiedInlineTextCount: results.filter((item) => isVerifiedInlineTextMode(item.textWriteMode) && item.changed).length,
+      verifiedInlineTextByEncoding: {
+        Cn: results.filter((item) => isVerifiedInlineTextMode(item.textWriteMode) && item.pvfEncoding === "Cn" && item.changed).length,
+        Tw: results.filter((item) => isVerifiedInlineTextMode(item.textWriteMode) && item.pvfEncoding === "Tw" && item.changed).length,
+      },
       clientTextSmokeCheckRequiredCount: results.filter((item) => item.semanticWriteSafety?.clientTextSmokeCheckRequired).length,
     },
     backupResult,
@@ -1226,7 +1644,9 @@ async function main() {
     return;
   }
   const file = path.resolve(requireOption("--file"));
-  const changeSet = readJson(file);
+  const changeSetRaw = fs.readFileSync(file);
+  const loadedChangeSetSha256 = sha256(changeSetRaw);
+  const changeSet = JSON.parse(changeSetRaw.toString("utf8"));
   const validationErrors = validateChangeSet(changeSet);
   if (validationErrors.length > 0) {
     printJson({ ok: false, command, errors: validationErrors });
@@ -1237,7 +1657,7 @@ async function main() {
     return;
   }
   if (command === "dry-run") {
-    const { manifestPath, manifest } = await runDryRun(changeSet, file, option("--out"));
+    const { manifestPath, manifest } = await runDryRun(changeSet, file, option("--out"), loadedChangeSetSha256);
     const blockedChanges = manifest.results
       .filter((item) => !item.applicable)
       .map((item) => ({
@@ -1245,8 +1665,8 @@ async function main() {
         pvfPath: item.pvfPath,
         occurrenceCount: item.occurrenceCount,
         targetExists: item.targetExists,
-        code: item.semanticWriteSafety?.code || null,
-        reason: item.semanticWriteSafety?.reason || (item.occurrenceApplicable === false ? "Exact source text did not match once." : "Change is not safely applicable."),
+        code: item.blockCode || item.encodingRoundTripProbe?.code || item.semanticWriteSafety?.code || null,
+        reason: item.blockReason || item.encodingRoundTripProbe?.reason || item.semanticWriteSafety?.reason || (item.occurrenceApplicable === false ? "Exact source text did not match once." : "Change is not safely applicable."),
       }));
     printJson({
       ok: true,
@@ -1262,7 +1682,7 @@ async function main() {
     return;
   }
   if (command === "apply") {
-    const { manifestPath, manifest } = await runApply(changeSet, file);
+    const { manifestPath, manifest } = await runApply(changeSet, file, loadedChangeSetSha256);
     printJson({
       ok: true,
       command,
@@ -1282,7 +1702,17 @@ main().catch((error) => {
   if (error?.code === "CN_LOCALIZATION_WRITE_UNVERIFIED") {
     console.error("提示：这是工作台主动阻止可能导致中文乱码的 .str 写入；没有生成或覆盖 PVF。");
   } else if (error?.code === "NON_ASCII_TEXT_WRITE_UNVERIFIED") {
-    console.error("提示：当前只放行数字或 ASCII 最小修改，直接中文文本修改保持只读；没有生成或覆盖 PVF。");
+    console.error("提示：普通脚本中文需要使用已验证的单字段文本模式；未声明模式的中文写入仍会被阻止。");
+  } else if (["CN_TEXT_CHARACTER_UNENCODABLE", "CN_TEXT_ENCODING_ROUNDTRIP_FAILED"].includes(error?.code)) {
+    console.error("提示：新文字含当前编码无法无损保存的字符，请换用常见简体中文、数字或符号后重试。");
+  } else if (error?.code === "HTML_NUMERIC_ENTITY_WRITE_BLOCKED") {
+    console.error("提示：请使用目标 PVF 原始读回中的真实文字，不要把网页里的 &#数字; 形式写进 PVF。");
+  } else if (["CN_TEXT_TOKEN_REQUIRED", "CN_TEXT_PARENT_TAG_UNSUPPORTED", "CN_TEXT_FILE_TYPE_UNSUPPORTED", "CN_TEXT_REPLACE_ALL_BLOCKED"].includes(error?.code)) {
+    console.error("提示：一次只能修改一个完整、明确的名称或描述字段；工作台没有生成或覆盖 PVF。");
+  } else if (error?.code === "STRINGLINK_TEXT_WRITE_UNVERIFIED") {
+    console.error("提示：这是引用到独立文字资源的内容，当前路线仍保持只读，以免产生乱码或改错位置。");
+  } else if (["CN_TEXT_ROUNDTRIP_FAILED", "CN_TEXT_ROUNDTRIP_REQUIRED"].includes(error?.code)) {
+    console.error("提示：临时写出后的独立复查没有通过，因此没有获得正式生成许可；源 PVF 未被覆盖。");
   } else if (error?.code === "READ_ONLY_FALLBACK") {
     console.error("提示：读取仍可使用，但写出环境未就绪。请运行 workbench.bat check 查看修复说明。");
   }

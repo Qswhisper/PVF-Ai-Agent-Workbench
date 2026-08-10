@@ -9,10 +9,17 @@ const {
   directReadReason,
   directSearchReason,
   guardDetails,
+  chooseSemanticReadCandidate,
+  isVerifiedInlineTextMode,
   retryReadReason,
   retrySearchReason,
   semanticWriteSafety,
 } = require("../../core/pvf-agent-core/lib/semantic-read-guard");
+const {
+  VERIFIED_INLINE_TEXT_MODE,
+  VERIFIED_INLINE_CN_TEXT_MODE,
+  buildVerifiedInlineTextPatch,
+} = require("./verified-inline-cn-text");
 
 const SERVER_MODE_ENV = "PVF_WORKBENCH_SERVER_MODE";
 const CONTROLLED_WRITE_MODE = "controlled-write";
@@ -34,6 +41,7 @@ const semanticFallback = !selectedBackend.readOnly
 const sessions = new Map();
 const semanticFallbackSessions = new Map();
 const sessionTextOverlays = new Map();
+const sessionRawOverlays = new Map();
 let currentSessionId;
 const READ_ONLY_TOOL_NAMES = new Set([
   "pvf_open",
@@ -177,6 +185,19 @@ function setTextOverlay(sessionId, pvfPath, file, textContent) {
   });
 }
 
+function getRawOverlay(sessionId, pvfPath) {
+  return sessionRawOverlays.get(sessionId)?.get(normalizePvfPath(pvfPath)) || null;
+}
+
+function setRawOverlay(sessionId, pvfPath, bytes) {
+  let overlays = sessionRawOverlays.get(sessionId);
+  if (!overlays) {
+    overlays = new Map();
+    sessionRawOverlays.set(sessionId, overlays);
+  }
+  overlays.set(normalizePvfPath(pvfPath), Buffer.from(bytes));
+}
+
 function text(value) {
   return {
     content: [{ type: "text", text: typeof value === "string" ? value : JSON.stringify(value, null, 2) }],
@@ -308,6 +329,7 @@ function commonReadOptions(args = {}) {
     autoConvertStringLink: Boolean(args.autoConvertStringLink),
     useCompatibleDecompiler: args.useCompatibleDecompiler !== false,
     convertToSimplifiedChinese: args.convertToSimplifiedChinese !== false,
+    semanticVerificationRead: args.semanticVerificationRead === true,
   };
 }
 
@@ -332,9 +354,13 @@ async function readPvfFileWithSemanticGuard(sessionId, pvfPath, args = {}) {
     : null;
   if (directReason) {
     const fallbackSessionId = await ensureSemanticFallbackSession(sessionId);
+    const selectedEncoding = options.pvfEncoding || session.encoding;
     return {
       file: await semanticFallback.readFile(fallbackSessionId, normalizedPath, options),
-      semanticReadGuard: guardDetails(directReason),
+      semanticReadGuard: guardDetails(directReason, {
+        requestedEncoding: selectedEncoding,
+        selectedEncoding,
+      }),
     };
   }
 
@@ -345,10 +371,8 @@ async function readPvfFileWithSemanticGuard(sessionId, pvfPath, args = {}) {
   if (!retryReason) return { file, semanticReadGuard: null };
 
   const fallbackSessionId = await ensureSemanticFallbackSession(sessionId);
-  return {
-    file: await semanticFallback.readFile(fallbackSessionId, normalizedPath, options),
-    semanticReadGuard: guardDetails(retryReason),
-  };
+  const fallbackFile = await semanticFallback.readFile(fallbackSessionId, normalizedPath, options);
+  return chooseSemanticReadCandidate(file, fallbackFile, options, session.encoding, retryReason);
 }
 
 async function searchPvfWithSemanticGuard(sessionId, args = {}) {
@@ -666,6 +690,7 @@ async function toolClose(args) {
     await native.closeSession(sessionId);
     sessions.delete(sessionId);
     sessionTextOverlays.delete(sessionId);
+    sessionRawOverlays.delete(sessionId);
     if (currentSessionId === sessionId) {
       currentSessionId = sessions.keys().next().value;
     }
@@ -755,6 +780,7 @@ async function toolReadFile(args) {
     autoConvertStringLink: Boolean(args.autoConvertStringLink),
     useCompatibleDecompiler: args.useCompatibleDecompiler !== false,
     convertToSimplifiedChinese: args.convertToSimplifiedChinese !== false,
+    semanticVerificationRead: args.semanticVerificationRead === true,
   };
   const { file, semanticReadGuard } = await readPvfFileWithSemanticGuard(sessionId, pvfPath, readOptions);
   const content = typeof file.textContent === "string" ? sliceLines(file.textContent, args.startLine, args.endLine) : undefined;
@@ -842,6 +868,59 @@ async function writeText(sessionId, pvfPath, textContent, args) {
   return native.upsertTextFileRaw(sessionId, pvfPath, Buffer.from(textContent, "utf8"), options);
 }
 
+async function readRawPvfBytes(sessionId, pvfPath) {
+  const overlay = getRawOverlay(sessionId, pvfPath);
+  if (overlay) return Buffer.from(overlay);
+  const file = await native.readFile(sessionId, pvfPath, {
+    decompileScript: false,
+    decompileBinaryAni: false,
+  });
+  if (typeof file?.base64Content !== "string") {
+    const error = new Error(`PVF file did not return raw Base64 content: ${pvfPath}`);
+    error.code = "CN_TEXT_RAW_READ_FAILED";
+    throw error;
+  }
+  return Buffer.from(file.base64Content, "base64");
+}
+
+async function writeVerifiedInlineText(sessionId, pvfPath, sourceText, args) {
+  const [stringTableBytes, scriptBytes] = await Promise.all([
+    readRawPvfBytes(sessionId, "stringtable.bin"),
+    readRawPvfBytes(sessionId, pvfPath),
+  ]);
+  const patch = buildVerifiedInlineTextPatch({
+    textWriteMode: args.textWriteMode,
+    pvfPath,
+    pvfEncoding: args.pvfEncoding,
+    fallbackEncoding: getSessionState(sessionId).encoding,
+    sourceText,
+    previousText: args.previousText,
+    newText: args.newText,
+    replaceAll: args.replaceAll === true,
+    stringTableBytes,
+    scriptBytes,
+  });
+  if (patch.noOp) {
+    return { ok: true, skipped: true, reason: "no-op verified inline text replacement", proof: patch.proof };
+  }
+  const stringTableResult = await native.upsertFile(sessionId, "stringtable.bin", {
+    base64Content: patch.stringTableBytes.toString("base64"),
+  });
+  const scriptResult = await native.upsertFile(sessionId, pvfPath, {
+    base64Content: patch.scriptBytes.toString("base64"),
+  });
+  setRawOverlay(sessionId, "stringtable.bin", patch.stringTableBytes);
+  setRawOverlay(sessionId, pvfPath, patch.scriptBytes);
+  return {
+    ok: true,
+    mode: patch.analysis.mode,
+    encoding: patch.analysis.encoding,
+    stringTableResult,
+    scriptResult,
+    proof: patch.proof,
+  };
+}
+
 async function toolReplaceText(args) {
   if (args.dryRun !== true) assertWritableBackend("PVF text replacement");
   const sessionId = resolveSessionId(args);
@@ -856,6 +935,7 @@ async function toolReplaceText(args) {
     autoConvertStringLink: Boolean(args.autoConvertStringLink),
     useCompatibleDecompiler: args.useCompatibleDecompiler !== false,
     convertToSimplifiedChinese: args.convertToSimplifiedChinese !== false,
+    semanticVerificationRead: isVerifiedInlineTextMode(args.textWriteMode),
   };
   const guardedRead = await readPvfFileWithSemanticGuard(sessionId, pvfPath, readOptions);
   const { file, semanticReadGuard } = guardedRead;
@@ -876,6 +956,8 @@ async function toolReplaceText(args) {
     fallbackEncoding: getSessionState(sessionId).encoding,
     previousText: args.previousText,
     newText: args.newText,
+    replaceAll: args.replaceAll === true,
+    textWriteMode: args.textWriteMode,
     sourceText: before,
   });
   if (args.dryRun === true) {
@@ -909,7 +991,9 @@ async function toolReplaceText(args) {
     error.code = writeSafety.code;
     throw error;
   }
-  const writeResult = await writeText(sessionId, pvfPath, after, args);
+  const writeResult = isVerifiedInlineTextMode(args.textWriteMode)
+    ? await writeVerifiedInlineText(sessionId, pvfPath, before, args)
+    : await writeText(sessionId, pvfPath, after, args);
   setTextOverlay(sessionId, pvfPath, file, after);
   return text({
     ok: true,
@@ -1476,6 +1560,7 @@ const tools = [
         autoConvertStringLink: { type: "boolean" },
         useCompatibleDecompiler: { type: "boolean" },
         convertToSimplifiedChinese: { type: "boolean" },
+        semanticVerificationRead: { type: "boolean" },
         startLine: { type: "integer", minimum: 1 },
         endLine: { type: "integer", minimum: 1 },
         maxChars: { type: "integer", minimum: 0 },
@@ -1509,7 +1594,7 @@ const tools = [
   {
     name: "pvf_replace_text",
     title: "Replace PVF Text",
-    description: "Read a PVF text file, replace an exact text fragment, and write it back to the open session. Use dryRun=true before risky edits.",
+    description: "Replace exact PVF text inside the controlled write runner. Verified inline Cn/Tw text uses textWriteMode=verified-inline-text (legacy verified-inline-cn is accepted); .str and StringLink display text remain blocked.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1526,6 +1611,7 @@ const tools = [
         compileScript: { type: "boolean" },
         compileBinaryAni: { type: "boolean" },
         convertToTraditionalChinese: { type: "boolean" },
+        textWriteMode: { type: "string", enum: [VERIFIED_INLINE_TEXT_MODE, VERIFIED_INLINE_CN_TEXT_MODE] },
       },
       required: ["pvfPath", "previousText", "newText"],
     },
@@ -1602,7 +1688,7 @@ async function handle(message) {
           capabilities: { tools: { listChanged: false } },
           serverInfo: {
             name: "pvf-workbench-bundled-backend",
-            version: "2.2.0",
+            version: "2.2.1",
             backend: selectedBackend.source,
             readOnly: effectiveReadOnly,
             capabilityMode: serverMode,

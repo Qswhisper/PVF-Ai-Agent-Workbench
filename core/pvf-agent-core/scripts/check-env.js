@@ -222,6 +222,7 @@ function checkRequiredPaths(errors) {
       "runtime/node/LICENSE",
       "tools/pvf-bridge/server.js",
       "tools/pvf-bridge/native-backend.js",
+      "tools/pvf-bridge/verified-inline-cn-text.js",
       "tools/pvf-bridge/native/pvf_rust_core.node",
       "tools/pvf-bridge/fallback/codec.ts",
       "tools/pvf-bridge/fallback/script.ts",
@@ -789,13 +790,17 @@ function checkWritePolicy(writePolicy, errors) {
   }
   const semanticSafety = writePolicy.controlledWriteRunner?.semanticTextSafety || {};
   if (
-    semanticSafety.automaticCnReadGuardRequired !== true ||
+    semanticSafety.automaticEncodingConflictGuardRequired !== true ||
     semanticSafety.cnStrWriteAllowed !== false ||
-    semanticSafety.directNonAsciiTextWriteAllowed !== false ||
+    semanticSafety.unverifiedDirectNonAsciiTextWriteAllowed !== false ||
+    semanticSafety.verifiedInlineTextWriteAllowed !== true ||
+    semanticSafety.verifiedInlineTextAppliedBeforeOtherWrites !== true ||
+    semanticSafety.stringLinkTextWriteAllowed !== false ||
+    semanticSafety.cnAndTwRoundTripProbeRequired !== true ||
     semanticSafety.numericOrAsciiMinimalWriteAllowed !== true ||
     semanticSafety.clientTextSmokeCheckRequired !== true
   ) {
-    errors.push("write-policy.json must keep automatic Cn read protection, block Cn .str/non-ASCII writes, and require client text smoke checks.");
+    errors.push("write-policy.json must allow only matching-encoding round-trip-verified inline Cn/Tw text while blocking .str, StringLink, and unverified non-ASCII writes.");
   }
   const runnerTools = new Set(writePolicy.controlledWriteRunner?.allowedBridgeTools || []);
   for (const tool of ["pvf_open", "pvf_read_file", "pvf_replace_text", "pvf_backup", "pvf_save", "pvf_close"]) {
@@ -804,9 +809,15 @@ function checkWritePolicy(writePolicy, errors) {
     }
   }
   const forbidden = new Set(writePolicy.forbiddenOperations || []);
-  for (const operation of ["overwrite-source-pvf", "client-resource-write", "apply-without-backup", "apply-without-explicit-output", "apply-without-readback", "apply-without-matching-dry-run", "apply-without-explicit-authorization-code", "direct-cn-str-write", "direct-non-ascii-text-write"]) {
+  for (const operation of ["overwrite-source-pvf", "client-resource-write", "apply-without-backup", "apply-without-explicit-output", "apply-without-readback", "apply-without-matching-dry-run", "apply-without-explicit-authorization-code", "direct-cn-str-write", "unverified-direct-non-ascii-text-write", "direct-stringlink-text-write"]) {
     if (!forbidden.has(operation)) {
       errors.push(`write-policy.json must explicitly forbid: ${operation}`);
+    }
+  }
+  const allowed = new Set(writePolicy.allowedOperations || []);
+  for (const operation of ["dry-run-verified-inline-text", "apply-verified-inline-text-to-explicit-output"]) {
+    if (!allowed.has(operation)) {
+      errors.push(`write-policy.json must explicitly allow the controlled operation: ${operation}`);
     }
   }
   const required = new Set(writePolicy.requiredBeforeApply || []);

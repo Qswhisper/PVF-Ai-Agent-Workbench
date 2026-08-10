@@ -17,7 +17,8 @@
 权限边界：
 
 - `config/pvf-adapter.json` 只启动随包内置 backend，不依赖宿主插件或外部服务。
-- 随包 native backend 始终优先；native 无法加载时，固定 Node.js runtime 直接执行 `tools/pvf-bridge/fallback/*.ts`，只允许读取和 dry-run。
+- 随包 native backend 始终优先；native 无法加载时，固定 Node.js runtime 直接执行 `tools/pvf-bridge/fallback/*.ts`，只允许读取和不需要临时写出的普通 dry-run。`verified-inline-text` 的往返预演必须等待 native 可用。
 - `config/write-policy.json` 定义 `pvf-change-set.js` 的受控写入通道；写入只能保存到显式 output，不能覆盖源 PVF，不能写客户端资源。
+- 普通脚本中允许字段下的一个完整中文反引号 token 可使用 `verified-inline-text` 和目标确认的 `Cn` 或 `Tw`。dry-run 会按同一编码做隔离临时写出、旧字符串表保持检查、乱码冲突检查和 TypeScript 精确读回；apply 后再次独立精确读回。`.str`、StringLink 显示文本、部分 token、批量替换和无法无损编码字符保持阻断。
 - `config/client-pvf-deploy-policy.json` 只允许在单独预览和授权后，把已验证的独立输出安装为 profile 客户端根目录的 `Script.pvf`；源文件、输出文件、客户端目标必须互不相同，NPK/IMG/UI 等资源始终禁止。
 - 文本 readback 先要求全文 SHA 一致；若 PVF 编译器只规范化了 Section 外空白、数据换行或 float32 展示，则再做区分大小写的 token 等价校验。反引号字符串、标签、整数、顺序或数量有任何变化仍会失败，manifest 会分别记录 exact 与 normalized-equivalent 数量。

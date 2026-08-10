@@ -42,7 +42,7 @@ workbench.bat client-pvf rollback --preview-manifest "<CLIENT-PVF-ROLLBACK-PREVI
 - 新 PVF 先复制到客户端同目录的临时文件并核对，再进行替换；替换失败时会尝试立即恢复原文件。
 - 部署后再次计算客户端 PVF 的 SHA256；核对失败不会报告成功。
 - 恢复只接受对应部署前的精确备份。如果客户端在部署后又被其他程序修改，恢复会停止，避免覆盖未知版本。
-- 源 PVF和独立输出 PVF始终保持不变。
+- 源 PVF 和独立输出 PVF 始终保持不变。
 
 ## 实机验证
 

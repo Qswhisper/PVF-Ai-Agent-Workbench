@@ -73,13 +73,16 @@
     {
       "id": "write.controlled-output",
       "level": "required-before-production-write",
-      "summary": "Apply a change set only with timestamped backup, explicit output PVF, readback verification, and a full final-output SHA256 binding.",
+      "summary": "Apply a change set only with timestamped backup, explicit output PVF, readback verification, and a full final-output SHA256 binding. Verified inline Cn or Tw text additionally requires a matching-encoding isolated round-trip probe and exact TypeScript readback.",
       "requiredTools": ["pvf_backup", "pvf_replace_text", "pvf_save"],
       "mustNot": [
         "overwrite-source-pvf",
         "write-client-resources",
         "apply-without-readback",
-        "apply-through-public-write-tool"
+        "apply-through-public-write-tool",
+        "write-cn-str",
+        "write-stringlink-display-text",
+        "write-unverified-non-ascii-text"
       ]
     }
   ],
@@ -88,7 +91,7 @@
     "Ordinary read-only commands must not expose write tools.",
     "A write smoke test must write to an explicit output path and must not modify the source PVF.",
     "A successful apply manifest must bind the full SHA256 and byte size of the final output PVF after readback.",
-    "Direct Cn .str output and direct non-ASCII text changes must fail closed; no-op replacements must execute no PVF text write.",
+    "Direct localization .str output, StringLink display-text writes, and unverified non-ASCII changes must fail closed; a single complete visible inline Cn or Tw field may proceed only after matching-encoding round-trip verification and exact independent readback.",
     "Every numeric ID used by a test must be resolved through the exact .lst registry named by the fixture.",
     "Local indexes are acceleration artifacts only; stale indexes cannot replace target PVF readback."
   ],

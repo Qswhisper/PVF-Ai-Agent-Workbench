@@ -15,7 +15,7 @@
 ## 面向新手的说明
 
 - 安全检查、哈希绑定和机器清单全部保留，但用户可见回复先用通俗中文说明“能否继续、会改什么、风险是什么、下一步做什么”。
-- 主结论优先说“预演（只检查，不改文件）”“生成独立 PVF”“生成后复查”“中文等文字暂时不能直接改”，不要在开头堆叠 ASCII、non-ASCII、backend、manifest、approval code、readback 或 smoke check。
+- 主结论优先说“预演（先检查；中文改动会用临时文件验证并立即清理）”“生成独立 PVF”“生成后复查”“普通脚本里的单个中文名称/描述可验证修改”，不要在开头堆叠 ASCII、non-ASCII、backend、manifest、approval code、readback 或 smoke check。
 - 用户确实需要命令、路径、确认码、错误码或实现细节时，放到“技术详情（通常不用看）”之后。不得为了通俗而省略阻断条件或安全步骤。
 
 ## 写 PVF 必须满足
@@ -45,8 +45,11 @@
 - 创建工作会话或 change-set 后，先确认源 PVF、输出 PVF 和客户端路径在记录中没有乱码。
 - 普通 `Cn` 搜索、`.str`、StringLink 和含非 ASCII 的脚本读取由 Workbench 自动进行语义保护；不要要求新手手工切换 backend，也不要关闭该保护来换取速度。
 - 含中文字符串或 StringLink 样 token 的 PVF 文本文件，不能只用“读回正常”判断客户端文本安全。
-- 数字字段最小替换可按已验证安全路线处理：保持 `pvfEncoding=Cn`，不做简繁转换，不自动转换 StringLink。
-- 当前禁止直接输出 `Cn .str`，也禁止直接修改非 ASCII 文本。两者必须在 dry-run 中失败关闭；无操作替换不应触发写入。
+- 数字字段最小替换可按已验证安全路线处理：使用目标原文实际对应的 `pvfEncoding=Cn` 或 `pvfEncoding=Tw`，不做简繁转换，不自动转换 StringLink。两种编码冲突时不得把明显乱码当成源文件损坏。
+- 普通脚本中一个完整、明确的可见中文字段可以使用 `textWriteMode: "verified-inline-text"`。`previousText` 与 `newText` 必须都是完整反引号 token，明确使用目标确认的 `Cn` 或 `Tw`，且不能批量替换。旧字段为纯英文或空字符串时，它本身不能证明新中文该用哪种编码，必须由同一脚本中的已有中文提供证据，否则停止。旧的 `verified-inline-cn` 变更集仅作为兼容别名接受。
+- 首期只开放已确认承载名称/说明的文件类型；`.co`、`.lst`、NUT 等逻辑或登记文件不会因为含 `[name]` 就获得中文写权限。
+- 这类预演必须先在隔离临时输出中真实写入，再由独立 TypeScript 解析器使用同一编码精确读回；还要证明既有字符串表条目未改变，并比较另一中文编码是否显示出更可信的原文。任一检查失败都不能生成 approval code，临时输出随后清理。
+- 直接输出 `.str`、直接修改 StringLink 显示文本、部分字符串替换、批量中文替换和无法无损编码的字符仍必须失败关闭；无操作替换不应触发写入。
 - 如果输出 PVF 出现 HTML 实体化、路径乱码或客户端道具名/描述/副本文本乱码，禁止继续部署该输出。
 - 涉及中文字符串文件的部署验收必须包含客户端 UI 文本 smoke check。
 
@@ -61,7 +64,7 @@ Script.pvf 内有资源引用，不代表客户端 ImagePacks2/NPK 资源完整�
 1. 只接受已成功读回并绑定最终输出 SHA256 的 `APPLY-MANIFEST.json`。
 2. `preview` 只生成外部预览，不修改客户端；它绑定输出 PVF、profile 客户端根目录和客户端当前 `Script.pvf`。
 3. `deploy` 必须使用预览确认码，并确认客户端和启动器已关闭。
-4. profile 的 source PVF 必须与 apply 清单一致且未变化；source PVF、独立输出 PVF和客户端 `Script.pvf` 必须是三个不同文件。
+4. profile 的 source PVF 必须与 apply 清单一致且未变化；source PVF、独立输出 PVF 和客户端 `Script.pvf` 必须是三个不同文件。
 5. 替换前创建并核对客户端当前 PVF 的内容寻址备份；相同 SHA256 只存一份。
 6. 部署后核对客户端目标 SHA256；恢复必须再次预览和确认，且客户端当前版本发生未知变化时停止。
 7. 这项权限只覆盖 profile 客户端根目录的 `Script.pvf`，不包含 NPK、IMG、UI 或其他客户端文件。

@@ -12,6 +12,9 @@
   ],
   "additionalProperties": false,
   "properties": {
+    "$schema": {
+      "type": "string"
+    },
     "schemaVersion": {
       "const": "1.0"
     },
@@ -129,6 +132,12 @@
         "replaceAll": {
           "type": "boolean",
           "default": false
+        },
+        "textWriteMode": {
+          "enum": [
+            "verified-inline-text",
+            "verified-inline-cn"
+          ]
         },
         "pvfEncoding": {
           "enum": [

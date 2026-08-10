@@ -16,11 +16,11 @@ You are working inside a clean PVF-Agent-Workbench folder. This is a task worksp
 
 ## Beginner-Facing Answers
 
-Assume the user does not code. Keep every safety check, but put the plain-language result first: can it proceed, what will change, what can go wrong, and what the user must do next. Say “预演（只检查，不改文件）”, “生成独立 PVF”, “生成后复查”, and “中文等文字暂时不能直接改” in the main answer. Put ASCII, non-ASCII, backend, binding, manifest, approval code, readback, SHA details, and exact commands under `技术详情（通常不用看）` unless the user explicitly asks for them.
+Assume the user does not code. Keep every safety check, but put the plain-language result first: can it proceed, what will change, what can go wrong, and what the user must do next. Say “预演（先检查；中文改动会用临时文件验证并立即清理）”, “生成独立 PVF”, “生成后复查”, and “普通脚本里的单个中文名称/描述可验证修改；`.str` 和 StringLink 仍不能直接改” in the main answer. Put ASCII, non-ASCII, backend, binding, manifest, approval code, readback, SHA details, and exact commands under `技术详情（通常不用看）` unless the user explicitly asks for them.
 
 ## Capability Lane
 
-Use `workbench.bat pvf-read`, `workbench.bat pvf-index`, and `workbench.bat pvf-change`. The Workbench carries both its preferred native backend and a dependency-free TypeScript read-only fallback, so ordinary inspection is self-contained. The bundled Node.js runtime executes the `.ts` sources directly without npm or a build step. If a session reports `readOnly: true`, continue only with reads/dry-run and block backup/apply/write until `workbench.bat check` confirms native is available. Use bundled `knowledge-query nut`, `knowledge-query tag`, and `knowledge-query bookmark` for foundational knowledge.
+Use `workbench.bat pvf-read`, `workbench.bat pvf-index`, and `workbench.bat pvf-change`. The Workbench carries both its preferred native backend and a dependency-free TypeScript read-only fallback, so ordinary inspection is self-contained. The bundled Node.js runtime executes the `.ts` sources directly without npm or a build step. If a session reports `readOnly: true`, continue only with reads and dry-runs that need no temporary write; block backup/apply/write until `workbench.bat check` confirms native is available. `verified-inline-text` dry-run also requires native for its isolated temporary-output proof and returns no approval code in fallback. Use bundled `knowledge-query nut`, `knowledge-query tag`, and `knowledge-query bookmark` for foundational knowledge.
 
 After a successful controlled apply, `workbench.bat client-pvf` may install the verified independent output into the `Script.pvf` at a local profile's client root. This is a separate user authorization: preview first, bind the output and current client hashes, confirm the client and launcher are closed, back up the current client PVF, verify after deployment, and use a separately previewed rollback when requested. Source/output/client paths must be distinct. It does not authorize NPK, IMG, UI, or another client file.
 
@@ -49,6 +49,7 @@ PVF writes require explicit user authorization and must use the controlled-outpu
 - Confirm the exact target PVF.
 - Resolve relevant IDs through the correct `.lst`.
 - Build exact replacement text from target raw no-simplified readback and make the smallest edit.
+- For one complete visible inline Cn or Tw text token, require `verified-inline-text`, the target-confirmed encoding, an isolated temporary-output round trip in that same encoding, preservation of all existing string-table entries, and exact independent TypeScript readback. Block an encoding when its text has obvious mojibake and the alternate decoding is cleaner. Keep `.str`, StringLink display text, partial-token, bulk, unencodable-character, and other unverified non-ASCII writes blocked.
 - Require a matching unblocked dry-run manifest for the same source PVF and same change-set, plus its approval code.
 - Create a timestamped backup.
 - Save to an explicit output PVF that is not the source.

@@ -114,7 +114,7 @@ class ReadonlyPvfSession {
   entriesByName: Map<string, PvfEntry>;
   cache: Map<string, Buffer>;
   cacheBytes: number;
-  stringTable: any;
+  stringTables: Map<string, any>;
   stringViews: Map<string, any>;
 
   constructor(sourcePath: string, encoding: string) {
@@ -130,7 +130,7 @@ class ReadonlyPvfSession {
     this.entriesByName = new Map();
     this.cache = new Map();
     this.cacheBytes = 0;
-    this.stringTable = null;
+    this.stringTables = new Map();
     this.stringViews = new Map();
   }
 
@@ -259,18 +259,20 @@ class ReadonlyPvfSession {
     return decrypted;
   }
 
-  async ensureStringTable(): Promise<any> {
-    if (this.stringTable) return this.stringTable;
+  async ensureStringTable(encoding = this.encoding): Promise<any> {
+    const normalized = normalizeEncoding(encoding, this.encoding);
+    if (this.stringTables.has(normalized)) return this.stringTables.get(normalized);
     const entry = this.entry("stringtable.bin");
     if (!entry) throw new Error("PVF has no stringtable.bin; script text cannot be decompiled.");
-    this.stringTable = StringTable.parse(await this.readDecrypted(entry), this.encoding);
-    return this.stringTable;
+    const table = StringTable.parse(await this.readDecrypted(entry), normalized);
+    this.stringTables.set(normalized, table);
+    return table;
   }
 
   async ensureStringView(encoding: string): Promise<any> {
     const normalized = normalizeEncoding(encoding, this.encoding);
     if (this.stringViews.has(normalized)) return this.stringViews.get(normalized);
-    const view = await StringView.load(this, await this.ensureStringTable(), normalized);
+    const view = await StringView.load(this, await this.ensureStringTable(normalized), normalized);
     this.stringViews.set(normalized, view);
     return view;
   }
@@ -280,7 +282,7 @@ class ReadonlyPvfSession {
     this.handle = null;
     this.cache.clear();
     this.cacheBytes = 0;
-    this.stringTable = null;
+    this.stringTables.clear();
     this.stringViews.clear();
   }
 }
@@ -355,7 +357,7 @@ async function readFile(sessionId: string, fileName: string, options: ReadFileOp
   };
 
   if (entry.isScriptFile && options.decompileScript !== false) {
-    const table = await session.ensureStringTable();
+    const table = await session.ensureStringTable(options.pvfEncoding || session.encoding);
     let text = entry.fileName.endsWith(".lst") ? decompileLst(bytes, table) : null;
     if (text === null) {
       const view = await session.ensureStringView(options.pvfEncoding || session.encoding);
@@ -430,7 +432,7 @@ async function searchFiles(sessionId: string, query: SearchQuery = {}): Promise<
 
   let stringIndices = null;
   if (searchType === "SearchStrings") {
-    const table = await session.ensureStringTable();
+    const table = await session.ensureStringTable(query.pvfEncoding || session.encoding);
     stringIndices = new Set();
     for (let index = 0; index < table.count; index += 1) if (matcher.test(table.get(index, false))) stringIndices.add(index);
   }
@@ -444,7 +446,7 @@ async function searchFiles(sessionId: string, query: SearchQuery = {}): Promise<
         for (const token of parseTokens(bytes)) {
           if ([5, 6, 7, 8, 10].includes(token.type) && stringIndices.has(token.value)) {
             matched = true;
-            preview = (await session.ensureStringTable()).get(token.value);
+            preview = (await session.ensureStringTable(query.pvfEncoding || session.encoding)).get(token.value);
             break;
           }
         }

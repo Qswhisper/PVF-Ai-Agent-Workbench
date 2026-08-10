@@ -22,11 +22,16 @@ const fallback = require(typescriptEntry);
 const { loadPvfBackend } = require("../../../tools/pvf-bridge/native-backend");
 const {
   containsStringLinkToken,
+  chooseSemanticReadCandidate,
   directReadReason,
   directSearchReason,
   retryReadReason,
   retrySearchReason,
+  VERIFIED_INLINE_TEXT_MODE,
+  VERIFIED_INLINE_CN_TEXT_MODE,
+  isVerifiedInlineTextMode,
 } = require("../lib/semantic-read-guard");
+const { encodeLegacyText } = require("../../../tools/pvf-bridge/verified-inline-cn-text");
 
 function pathInside(root, candidate) {
   const relative = path.relative(path.resolve(root), path.resolve(candidate));
@@ -47,8 +52,10 @@ function fileNameHash(bytes) {
   return Math.imul(value, 0x21) >>> 0;
 }
 
-function createStringTable(values) {
-  const parts = values.map((value) => Buffer.from(value, "utf8"));
+function createStringTable(values, encoding = "Utf8") {
+  const parts = values.map((value) => new Set(["Cn", "Tw"]).has(encoding)
+    ? encodeLegacyText(value, encoding)
+    : Buffer.from(value, "utf8"));
   const headerLength = 4 + (parts.length + 1) * 4;
   const output = Buffer.alloc(headerLength + parts.reduce((sum, part) => sum + part.length, 0));
   output.writeInt32LE(parts.length, 0);
@@ -96,7 +103,7 @@ function createFixturePvf(targetPath, options = {}) {
     "stringview/fixture.str",
     "test.shp",
     "[name]",
-    "fallback-fixture",
+    options.initialName || "fallback-fixture",
     "[message]",
     "message_1",
     "[/message]",
@@ -110,7 +117,18 @@ function createFixturePvf(targetPath, options = {}) {
     "Fixture Skill",
     "[type]",
     "[active]",
+    "second-fixture",
+    "[value]",
   ];
+  const cnAnchorSectionIndex = options.cnLocalized ? strings.length : null;
+  if (options.cnLocalized) strings.push("[description]", "装备强化增幅");
+  const cnAnchorValueIndex = options.cnLocalized ? cnAnchorSectionIndex + 1 : null;
+  const testScriptTokens = [[5, 2], [7, 3], [5, 4], [9, 0], [10, 5], [5, 6]];
+  const secondScriptTokens = [[5, 2], [7, 17]];
+  if (options.cnLocalized) {
+    testScriptTokens.push([5, cnAnchorSectionIndex], [7, cnAnchorValueIndex]);
+    secondScriptTokens.push([5, cnAnchorSectionIndex], [7, cnAnchorValueIndex]);
+  }
   const localizedStringView = options.cnLocalized
     ? Buffer.concat([
       Buffer.from("message_1>", "ascii"),
@@ -119,14 +137,16 @@ function createFixturePvf(targetPath, options = {}) {
     ])
     : Buffer.from("message_1>只读备用后端\r\n", "utf8");
   const sourceFiles = [
-    { fileName: "stringtable.bin", data: createStringTable(strings) },
+    { fileName: "stringtable.bin", data: createStringTable(strings, options.stringTableEncoding || "Utf8") },
     { fileName: "n_string.lst", data: createScript([[2, 0], [7, 0]]) },
     { fileName: "stringview/fixture.str", data: localizedStringView },
     { fileName: "itemshop/itemshop.lst", data: createScript([[2, 1], [7, 1]]) },
     {
       fileName: "itemshop/test.shp",
-      data: createScript([[5, 2], [7, 3], [5, 4], [9, 0], [10, 5], [5, 6]]),
+      data: createScript(testScriptTokens),
     },
+    { fileName: "itemshop/second.shp", data: createScript(secondScriptTokens) },
+    { fileName: "etc/numeric.etc", data: createScript([[5, 18], [2, 10]]) },
     { fileName: "character/character.lst", data: createScript([[2, 0], [7, 7]]) },
     { fileName: "character/Swordman/Swordman.chr", data: createScript([[5, 8], [7, 9]]) },
     { fileName: "skill/skilllist.lst", data: createScript([[2, 0], [7, 10]]) },
@@ -224,6 +244,7 @@ async function main() {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pvf-readonly-fallback-"));
   const fixturePath = path.join(tempRoot, "Script.pvf");
   const cnFixturePath = path.join(tempRoot, "Script-cn.pvf");
+  const twFixturePath = path.join(tempRoot, "Script-tw.pvf");
   const checks = [];
   const add = (id, ok, details) => checks.push({ id, ok: Boolean(ok), ...(details ? { details } : {}) });
   let fallbackSessionId;
@@ -236,9 +257,11 @@ async function main() {
   let nativeAvailable = false;
   try {
     const expectedFiles = createFixturePvf(fixturePath);
-    createFixturePvf(cnFixturePath, { cnLocalized: true });
+    createFixturePvf(cnFixturePath, { cnLocalized: true, stringTableEncoding: "Cn" });
+    createFixturePvf(twFixturePath, { stringTableEncoding: "Tw", initialName: "太陽" });
     const sourceSha = sha256File(fixturePath);
     const cnSourceSha = sha256File(cnFixturePath);
+    const twSourceSha = sha256File(twFixturePath);
     const fallbackHealth = fallback.health();
     const contractSourceFiles = readonlyContract.sourceFiles.map((file) => path.join(workbenchRoot, file));
     const fallbackDirectoryFiles = fs.readdirSync(path.dirname(typescriptEntry)).sort();
@@ -277,6 +300,7 @@ async function main() {
       "semantic-read-guard-policy",
       directReadReason("itemshop/itemshop.kor.str", { pvfEncoding: "Cn" }, "Tw") === "cn-localization-file" &&
         directReadReason("itemshop/birken.shp", { pvfEncoding: "Cn", autoConvertStringLink: true }, "Tw") === "cn-stringlink-conversion" &&
+        directReadReason("n_quest/title/fixture.qst", { pvfEncoding: "Tw", semanticVerificationRead: true }, "Tw") === "verified-text-readback" &&
         directReadReason("itemshop/itemshop.kor.str", { pvfEncoding: "Tw" }, "Tw") === null &&
         directSearchReason({ keyword: "中文", searchType: "SearchScript", pvfEncoding: "Cn" }, "Tw") === "cn-semantic-search" &&
         directSearchReason({ keyword: "中文", searchType: "SearchStrings", pvfEncoding: "Cn" }, "Tw") === "cn-semantic-search" &&
@@ -286,6 +310,21 @@ async function main() {
         retryReadReason({ isScriptFile: true, textContent: "<5::message_520`中文保护`>" }, { pvfEncoding: "Cn" }, "Tw") === "cn-stringlink-detected" &&
         retryReadReason({ isScriptFile: true, textContent: "[name]\r\n`中文保护`" }, { pvfEncoding: "Cn" }, "Tw") === "cn-nonascii-script-detected" &&
         retrySearchReason({ items: [{ preview: "[name] 中文保护" }] }, { keyword: "name", searchType: "SearchScript", pvfEncoding: "Cn" }, "Tw") === "cn-nonascii-search-preview-detected",
+    );
+    const encodingConflictChoice = chooseSemanticReadCandidate(
+      { isScriptFile: true, textContent: "[name]\r\n`太陽`\r\n" },
+      { isScriptFile: true, textContent: "[name]\r\n`び锭`\r\n" },
+      { pvfEncoding: "Cn" },
+      "Tw",
+      "cn-nonascii-script-detected",
+    );
+    add(
+      "semantic-read-guard-prefers-clean-session-encoding-over-obvious-mojibake",
+      encodingConflictChoice.file?.textContent?.includes("太陽") &&
+        encodingConflictChoice.semanticReadGuard?.reason === "text-encoding-mismatch-session-preferred" &&
+        encodingConflictChoice.semanticReadGuard?.requestedEncoding === "Cn" &&
+        encodingConflictChoice.semanticReadGuard?.selectedEncoding === "Tw",
+      encodingConflictChoice,
     );
     add(
       "pvf-path-validator-accepts-legitimate-double-dot-name",
@@ -840,18 +879,29 @@ async function main() {
         pvfPath: "itemshop/test.shp",
         previousText: "fallback-fixture",
         newText: "fallback-fixture-checked",
-        dryRun: false,
+        dryRun: true,
         pvfEncoding: "Cn",
         convertToSimplifiedChinese: false,
       }));
       const controlledDirectChineseReplace = parseBackendTextResult(await controlledServerClient.callTool("pvf_replace_text", {
         sessionId: controlledCnSessionId,
         pvfPath: "itemshop/test.shp",
-        previousText: "fallback-fixture-checked",
-        newText: "中文直写",
+        previousText: "`fallback-fixture`",
+        newText: "`中文直写`",
         dryRun: false,
         pvfEncoding: "Cn",
         convertToSimplifiedChinese: false,
+      }));
+      const controlledVerifiedChineseReplace = parseBackendTextResult(await controlledServerClient.callTool("pvf_replace_text", {
+        sessionId: controlledCnSessionId,
+        pvfPath: "itemshop/test.shp",
+        previousText: "`fallback-fixture`",
+        newText: "`中文直写`",
+        replaceAll: false,
+        dryRun: false,
+        pvfEncoding: "Cn",
+        convertToSimplifiedChinese: false,
+        textWriteMode: VERIFIED_INLINE_CN_TEXT_MODE,
       }));
       const controlledCnOutput = path.join(tempRoot, "controlled-cn-output.pvf");
       const controlledCnSave = parseBackendTextResult(await controlledServerClient.callTool("pvf_save", {
@@ -876,18 +926,24 @@ async function main() {
         pvfPath: "itemshop/test.shp",
         pvfEncoding: "Cn",
         convertToSimplifiedChinese: false,
+        autoConvertStringLink: false,
+        semanticVerificationRead: true,
       }));
       const controlledCnWriteOk =
         controlledCnStrReplace?.data?.code === "CN_LOCALIZATION_WRITE_UNVERIFIED" &&
         controlledCnScriptReplace?.ok === true &&
         controlledCnScriptReplace?.semanticReadGuard?.reason === "cn-stringlink-detected" &&
         controlledDirectChineseReplace?.data?.code === "NON_ASCII_TEXT_WRITE_UNVERIFIED" &&
+        controlledVerifiedChineseReplace?.ok === true &&
+        controlledVerifiedChineseReplace?.writeResult?.proof?.existingStringEntriesPreserved === true &&
         controlledCnSave?.ok === true &&
         (controlledCnStrReadback?.textContent || "").includes("中文保护") &&
         !(controlledCnStrReadback?.textContent || "").includes("已验证") &&
-        (controlledCnScriptReadback?.textContent || "").includes("fallback-fixture-checked") &&
-        !(controlledCnScriptReadback?.textContent || "").includes("中文直写") &&
+        (controlledCnScriptReadback?.textContent || "").includes("`中文直写`") &&
+        !(controlledCnScriptReadback?.textContent || "").includes("&#") &&
         (controlledCnScriptReadback?.textContent || "").includes("<0::message_1`中文保护`>") &&
+        controlledCnScriptReadback?.semanticReadGuard?.reason === "verified-text-readback" &&
+        controlledCnScriptReadback?.semanticReadGuard?.backend === "typescript-readonly-fallback" &&
         sha256File(cnFixturePath) === cnSourceSha;
       add(
         "controlled-server-preserves-cn-semantics-on-write",
@@ -896,6 +952,7 @@ async function main() {
           strReplace: controlledCnStrReplace,
           scriptReplace: controlledCnScriptReplace,
           directChineseReplace: controlledDirectChineseReplace,
+          verifiedChineseReplace: controlledVerifiedChineseReplace,
           save: controlledCnSave,
           strReadbackText: controlledCnStrReadback?.textContent,
           scriptReadbackText: controlledCnScriptReadback?.textContent,
@@ -905,6 +962,290 @@ async function main() {
       await controlledServerClient.callTool("pvf_close", { sessionId: controlledCnReadbackSessionId });
       controlledServerClient.stop();
       controlledServerClient = null;
+
+      const changeSetFile = path.join(tempRoot, "verified-inline-cn-change-set.json");
+      const dryRunRoot = path.join(tempRoot, "verified-inline-cn-dry-run");
+      const applyRoot = path.join(tempRoot, "verified-inline-cn-apply");
+      fs.writeFileSync(changeSetFile, `${JSON.stringify({
+        schemaVersion: "1.0",
+        mode: "dry-run-only",
+        description: "Fallback regression fixture for verified inline Chinese text.",
+        target: {
+          sourcePvf: cnFixturePath,
+          pvfOpenEncoding: "Tw",
+          pvfReadEncoding: "Cn",
+        },
+        changes: [
+          {
+            id: "ascii-numeric-input-first",
+            type: "replace-text",
+            pvfPath: "etc/numeric.etc",
+            previousText: "10",
+            newText: "11",
+            replaceAll: false,
+            pvfEncoding: "Cn",
+          },
+          {
+            id: "verified-cn-name",
+            type: "replace-text",
+            pvfPath: "itemshop/test.shp",
+            previousText: "`fallback-fixture`",
+            newText: "`中文端到端`",
+            replaceAll: false,
+            textWriteMode: VERIFIED_INLINE_CN_TEXT_MODE,
+            pvfEncoding: "Cn",
+          },
+          {
+            id: "verified-cn-skill-name",
+            type: "replace-text",
+            pvfPath: "itemshop/second.shp",
+            previousText: "`second-fixture`",
+            newText: "`中文技能名称`",
+            replaceAll: false,
+            textWriteMode: VERIFIED_INLINE_CN_TEXT_MODE,
+            pvfEncoding: "Cn",
+          },
+        ],
+        safety: {
+          writeModeEnabled: false,
+          requiresBackupBeforeApply: true,
+          requiresExplicitOutputPath: true,
+          requiresReadback: true,
+        },
+      }, null, 2)}\n`, "utf8");
+      const pvfChangeCli = path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-change-set.js");
+      const cliEnv = { ...process.env, PVF_WORKBENCH_BACKEND: "native" };
+      const dryRunProcess = childProcess.spawnSync(process.execPath, [
+        pvfChangeCli,
+        "--root", workbenchRoot,
+        "dry-run",
+        "--file", changeSetFile,
+        "--out", dryRunRoot,
+      ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: cliEnv });
+      let dryRunResult = null;
+      try { dryRunResult = JSON.parse(dryRunProcess.stdout || "null"); } catch { /* recorded below */ }
+      const dryRunManifest = dryRunResult?.manifestPath && fs.existsSync(dryRunResult.manifestPath)
+        ? JSON.parse(fs.readFileSync(dryRunResult.manifestPath, "utf8"))
+        : null;
+      const applyProcess = dryRunProcess.status === 0 && dryRunResult?.approvalCode
+        ? childProcess.spawnSync(process.execPath, [
+          pvfChangeCli,
+          "--root", workbenchRoot,
+          "apply",
+          "--file", changeSetFile,
+          "--dry-run-manifest", dryRunResult.manifestPath,
+          "--authorize-apply", dryRunResult.approvalCode,
+          "--out", applyRoot,
+        ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: cliEnv })
+        : null;
+      let applyResult = null;
+      try { applyResult = JSON.parse(applyProcess?.stdout || "null"); } catch { /* recorded below */ }
+      const applyManifest = applyResult?.manifestPath && fs.existsSync(applyResult.manifestPath)
+        ? JSON.parse(fs.readFileSync(applyResult.manifestPath, "utf8"))
+        : null;
+      let endToEndText = null;
+      let endToEndSkillText = null;
+      let endToEndNumericText = null;
+      let endToEndGuard = null;
+      if (applyManifest?.outputPvf && fs.existsSync(applyManifest.outputPvf)) {
+        const endToEndOpened = await fallback.openSession(applyManifest.outputPvf, "Tw");
+        try {
+          const endToEndRead = await fallback.readFile(endToEndOpened.sessionId, "itemshop/test.shp", {
+            pvfEncoding: "Cn",
+            autoConvertStringLink: false,
+          });
+          endToEndText = endToEndRead.textContent;
+          const endToEndSkillRead = await fallback.readFile(endToEndOpened.sessionId, "itemshop/second.shp", {
+            pvfEncoding: "Cn",
+            autoConvertStringLink: false,
+          });
+          endToEndSkillText = endToEndSkillRead.textContent;
+          const endToEndNumericRead = await fallback.readFile(endToEndOpened.sessionId, "etc/numeric.etc", {
+            pvfEncoding: "Cn",
+            autoConvertStringLink: false,
+          });
+          endToEndNumericText = endToEndNumericRead.textContent;
+          endToEndGuard = applyManifest.readback?.[0]?.semanticReadGuard || null;
+        } finally {
+          await fallback.closeSession(endToEndOpened.sessionId);
+        }
+      }
+      const endToEndOk =
+        dryRunProcess.status === 0 &&
+        dryRunResult?.summary?.blockedCount === 0 &&
+        typeof dryRunResult?.approvalCode === "string" &&
+        applyProcess?.status === 0 &&
+        applyManifest?.safety?.sourceUnchanged === true &&
+        applyManifest?.safety?.verifiedInlineTextRequiresExactIndependentReadback === true &&
+        applyManifest?.safety?.verifiedInlineTextAppliedBeforeOtherWrites === true &&
+        applyManifest?.summary?.changedCount === 3 &&
+        applyManifest?.readback?.length === 3 &&
+        applyManifest.readback.every((item) => item.ok === true) &&
+        applyManifest.readback.filter((item) => item.verifiedInlineText).every((item) => item.exactTextOk === true && item.independentSemanticRead === true) &&
+        endToEndGuard?.backend === "typescript-readonly-fallback" &&
+        (endToEndText || "").includes("`中文端到端`") &&
+        !(endToEndText || "").includes("&#") &&
+        (endToEndText || "").includes("<0::message_1`中文保护`>") &&
+        (endToEndSkillText || "").includes("`中文技能名称`") &&
+        !(endToEndSkillText || "").includes("&#") &&
+        /\b11\b/.test(endToEndNumericText || "") &&
+        sha256File(cnFixturePath) === cnSourceSha;
+      add("pvf-change-verified-inline-text-cn-end-to-end", endToEndOk, endToEndOk ? undefined : {
+        dryRunStatus: dryRunProcess.status,
+        dryRunStdout: dryRunProcess.stdout,
+        dryRunStderr: dryRunProcess.stderr,
+        dryRunManifest,
+        applyStatus: applyProcess?.status,
+        applyStdout: applyProcess?.stdout,
+        applyStderr: applyProcess?.stderr,
+        applyManifest,
+        endToEndText,
+        endToEndSkillText,
+        endToEndNumericText,
+        sourceUnchanged: sha256File(cnFixturePath) === cnSourceSha,
+      });
+
+      const twChangeSetFile = path.join(tempRoot, "verified-inline-tw-change-set.json");
+      const twDryRunRoot = path.join(tempRoot, "verified-inline-tw-dry-run");
+      const twApplyRoot = path.join(tempRoot, "verified-inline-tw-apply");
+      fs.writeFileSync(twChangeSetFile, `${JSON.stringify({
+        schemaVersion: "1.0",
+        mode: "dry-run-only",
+        description: "Fallback regression fixture for verified inline Traditional Chinese text.",
+        target: {
+          sourcePvf: twFixturePath,
+          pvfOpenEncoding: "Tw",
+          pvfReadEncoding: "Tw",
+        },
+        changes: [{
+          id: "verified-tw-name",
+          type: "replace-text",
+          pvfPath: "itemshop/test.shp",
+          previousText: "`太陽`",
+          newText: "`繁體文字驗證`",
+          replaceAll: false,
+          textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+          pvfEncoding: "Tw",
+        }],
+        safety: {
+          writeModeEnabled: false,
+          requiresBackupBeforeApply: true,
+          requiresExplicitOutputPath: true,
+          requiresReadback: true,
+        },
+      }, null, 2)}\n`, "utf8");
+      const twDryRunProcess = childProcess.spawnSync(process.execPath, [
+        pvfChangeCli,
+        "--root", workbenchRoot,
+        "dry-run",
+        "--file", twChangeSetFile,
+        "--out", twDryRunRoot,
+      ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: cliEnv });
+      let twDryRunResult = null;
+      try { twDryRunResult = JSON.parse(twDryRunProcess.stdout || "null"); } catch { /* recorded below */ }
+      const twApplyProcess = twDryRunProcess.status === 0 && twDryRunResult?.approvalCode
+        ? childProcess.spawnSync(process.execPath, [
+          pvfChangeCli,
+          "--root", workbenchRoot,
+          "apply",
+          "--file", twChangeSetFile,
+          "--dry-run-manifest", twDryRunResult.manifestPath,
+          "--authorize-apply", twDryRunResult.approvalCode,
+          "--out", twApplyRoot,
+        ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: cliEnv })
+        : null;
+      let twApplyResult = null;
+      try { twApplyResult = JSON.parse(twApplyProcess?.stdout || "null"); } catch { /* recorded below */ }
+      const twApplyManifest = twApplyResult?.manifestPath && fs.existsSync(twApplyResult.manifestPath)
+        ? JSON.parse(fs.readFileSync(twApplyResult.manifestPath, "utf8"))
+        : null;
+      let twOutputText = null;
+      if (twApplyManifest?.outputPvf && fs.existsSync(twApplyManifest.outputPvf)) {
+        const twOutputOpened = await fallback.openSession(twApplyManifest.outputPvf, "Tw");
+        try {
+          twOutputText = (await fallback.readFile(twOutputOpened.sessionId, "itemshop/test.shp", {
+            pvfEncoding: "Tw",
+            autoConvertStringLink: false,
+          })).textContent;
+        } finally {
+          await fallback.closeSession(twOutputOpened.sessionId);
+        }
+      }
+      const twEndToEndOk =
+        twDryRunProcess.status === 0 &&
+        twDryRunResult?.summary?.blockedCount === 0 &&
+        twApplyProcess?.status === 0 &&
+        twApplyManifest?.safety?.sourceUnchanged === true &&
+        twApplyManifest?.summary?.verifiedInlineTextByEncoding?.Tw === 1 &&
+        twApplyManifest?.readback?.length === 1 &&
+        twApplyManifest.readback[0]?.verifiedInlineText === true &&
+        twApplyManifest.readback[0]?.verifiedInlineCn === false &&
+        twApplyManifest.readback[0]?.independentSemanticRead === true &&
+        twApplyManifest.readback[0]?.semanticReadGuard?.selectedEncoding === "Tw" &&
+        /\[name\]\s*`繁體文字驗證`/u.test(twOutputText || "") &&
+        sha256File(twFixturePath) === twSourceSha;
+      add("pvf-change-verified-inline-text-tw-end-to-end", twEndToEndOk, twEndToEndOk ? undefined : {
+        dryRunStatus: twDryRunProcess.status,
+        dryRunStdout: twDryRunProcess.stdout,
+        dryRunStderr: twDryRunProcess.stderr,
+        applyStatus: twApplyProcess?.status,
+        applyStdout: twApplyProcess?.stdout,
+        applyStderr: twApplyProcess?.stderr,
+        applyManifest: twApplyManifest,
+        twOutputText,
+        sourceUnchanged: sha256File(twFixturePath) === twSourceSha,
+      });
+
+      const wrongTwReadOpened = await fallback.openSession(twFixturePath, "Tw");
+      let wrongTwName = null;
+      try {
+        const wrongTwRead = await fallback.readFile(wrongTwReadOpened.sessionId, "itemshop/test.shp", {
+          pvfEncoding: "Cn",
+          autoConvertStringLink: false,
+        });
+        wrongTwName = /\[name\]\s*`([^`]*)`/u.exec(String(wrongTwRead.textContent || ""))?.[1] || null;
+      } finally {
+        await fallback.closeSession(wrongTwReadOpened.sessionId);
+      }
+      const wrongEncodingChangeSetFile = path.join(tempRoot, "wrong-cn-on-tw-change-set.json");
+      fs.writeFileSync(wrongEncodingChangeSetFile, `${JSON.stringify({
+        schemaVersion: "1.0",
+        mode: "dry-run-only",
+        description: "A Big5 string misread as GBK must never receive approval.",
+        target: { sourcePvf: twFixturePath, pvfOpenEncoding: "Tw", pvfReadEncoding: "Cn" },
+        changes: [{
+          id: "wrong-cn-on-tw-name",
+          type: "replace-text",
+          pvfPath: "itemshop/test.shp",
+          previousText: `\`${wrongTwName}\``,
+          newText: "`中文错误写入`",
+          replaceAll: false,
+          textWriteMode: VERIFIED_INLINE_CN_TEXT_MODE,
+          pvfEncoding: "Cn",
+        }],
+        safety: {
+          writeModeEnabled: false,
+          requiresBackupBeforeApply: true,
+          requiresExplicitOutputPath: true,
+          requiresReadback: true,
+        },
+      }, null, 2)}\n`, "utf8");
+      const wrongEncodingDryRun = childProcess.spawnSync(process.execPath, [
+        pvfChangeCli,
+        "--root", workbenchRoot,
+        "dry-run",
+        "--file", wrongEncodingChangeSetFile,
+        "--out", path.join(tempRoot, "wrong-cn-on-tw-dry-run"),
+      ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: cliEnv });
+      let wrongEncodingResult = null;
+      try { wrongEncodingResult = JSON.parse(wrongEncodingDryRun.stdout || "null"); } catch { /* recorded below */ }
+      add(
+        "pvf-change-big5-misread-as-gbk-has-no-approval",
+        wrongEncodingResult?.approvalCode === null &&
+          wrongEncodingResult?.blockedChanges?.[0]?.code === "TEXT_ENCODING_MISMATCH_SUSPECTED" &&
+          sha256File(twFixturePath) === twSourceSha,
+        wrongEncodingResult,
+      );
     } catch (error) {
       if (nativeAvailable) {
         add("native-server-write-boundary-unexpected-error", false, { error: error.message });

@@ -1,6 +1,15 @@
 "use strict";
 
 const path = require("path");
+const {
+  VERIFIED_INLINE_TEXT_MODE,
+  VERIFIED_INLINE_CN_TEXT_MODE,
+  analyzeVerifiedInlineTextChange,
+  isVerifiedInlineTextMode,
+} = require("../../../tools/pvf-bridge/verified-inline-cn-text");
+const {
+  compareChineseEncodingCandidates,
+} = require("../../../tools/pvf-bridge/fallback/codec.ts");
 
 const CN_SEMANTIC_SEARCH_TYPES = new Set(["searchscript", "searchstrings"]);
 
@@ -28,6 +37,7 @@ function isCnEncoding(value, fallback) {
 }
 
 function directReadReason(pvfPath, options = {}, fallbackEncoding = "Tw") {
+  if (options.semanticVerificationRead === true) return "verified-text-readback";
   if (!isCnEncoding(options.pvfEncoding, fallbackEncoding)) return null;
   const extension = path.posix.extname(String(pvfPath || "").replace(/\\/g, "/").toLowerCase());
   if (extension === ".str") return "cn-localization-file";
@@ -66,17 +76,78 @@ function retryReadReason(file, options = {}, fallbackEncoding = "Tw") {
   return null;
 }
 
-function guardDetails(reason) {
+function guardDetails(reason, details = {}) {
   return {
     applied: true,
     reason,
-    backend: "typescript-readonly-fallback",
+    backend: details.backend || "typescript-readonly-fallback",
     automatic: true,
+    ...details,
+  };
+}
+
+function compactEncodingComparison(comparison) {
+  return {
+    requestedScore: comparison.requested?.score ?? null,
+    alternateScore: comparison.alternate?.score ?? null,
+    requestedReasons: comparison.requested?.reasons || [],
+    alternateReasons: comparison.alternate?.reasons || [],
+    preferredEncoding: comparison.preferredEncoding || null,
+  };
+}
+
+function chooseSemanticReadCandidate(nativeFile, fallbackFile, options = {}, sessionEncoding = "Tw", reason = "") {
+  const requestedEncoding = normalizeEncoding(options.pvfEncoding, sessionEncoding);
+  const normalizedSessionEncoding = normalizeEncoding(sessionEncoding, "Tw");
+  if (
+    requestedEncoding === normalizedSessionEncoding ||
+    typeof nativeFile?.textContent !== "string" ||
+    typeof fallbackFile?.textContent !== "string"
+  ) {
+    return {
+      file: fallbackFile,
+      semanticReadGuard: guardDetails(reason, {
+        requestedEncoding,
+        selectedEncoding: requestedEncoding,
+      }),
+    };
+  }
+  const comparison = compareChineseEncodingCandidates(
+    fallbackFile.textContent,
+    nativeFile.textContent,
+    requestedEncoding,
+    normalizedSessionEncoding,
+  );
+  if (comparison.requestedLooksMojibake === true) {
+    return {
+      file: nativeFile,
+      semanticReadGuard: guardDetails("text-encoding-mismatch-session-preferred", {
+        backend: "native-session",
+        requestedEncoding,
+        selectedEncoding: normalizedSessionEncoding,
+        originalGuardReason: reason,
+        encodingConflict: true,
+        warning: `按 ${requestedEncoding} 复核时出现明显乱码特征，已保留按 ${normalizedSessionEncoding} 正常读取的文本。修改文字前必须明确使用 ${normalizedSessionEncoding}。`,
+        encodingEvidence: compactEncodingComparison(comparison),
+      }),
+    };
+  }
+  return {
+    file: fallbackFile,
+    semanticReadGuard: guardDetails(reason, {
+      requestedEncoding,
+      selectedEncoding: requestedEncoding,
+      encodingConflict: comparison.different === true,
+    }),
   };
 }
 
 function containsNonAscii(value) {
   return typeof value === "string" && /[^\x00-\x7f]/.test(value);
+}
+
+function containsHtmlNumericEntity(value) {
+  return typeof value === "string" && /&#(?:\d+|x[0-9a-f]+);/i.test(value);
 }
 
 function semanticWriteSafety(input = {}) {
@@ -103,6 +174,17 @@ function semanticWriteSafety(input = {}) {
     };
   }
 
+  const newWritePayload = input.kind === "write-file" ? String(input.textContent || "") : String(input.newText || "");
+  if (containsHtmlNumericEntity(newWritePayload)) {
+    return {
+      allowed: false,
+      code: "HTML_NUMERIC_ENTITY_WRITE_BLOCKED",
+      reason: "已阻止 HTML 数字实体写入 PVF；请从目标原始文本取得真实字符，不要写入 &#数字;。",
+      clientTextSmokeCheckRequired: true,
+      noOp: false,
+    };
+  }
+
   if (encoding === "Cn" && extension === ".str") {
     return {
       allowed: false,
@@ -112,11 +194,45 @@ function semanticWriteSafety(input = {}) {
       noOp: false,
     };
   }
+  if (input.kind !== "write-file" && isVerifiedInlineTextMode(input.textWriteMode)) {
+    try {
+      const analysis = analyzeVerifiedInlineTextChange({
+        ...input,
+        pvfPath,
+        pvfEncoding: encoding,
+      });
+      return {
+        allowed: true,
+        code: null,
+        reason: "中文内联文本结构检查通过；仍需临时输出往返验证和客户端文字检查。",
+        clientTextSmokeCheckRequired: analysis.clientTextSmokeCheckRequired,
+        noOp: analysis.noOp,
+        verifiedInlineTextWrite: {
+          mode: analysis.mode,
+          encoding: analysis.encoding,
+          parentTag: analysis.parentTag,
+          previousCharacterCount: analysis.previousCharacterCount,
+          newCharacterCount: analysis.newCharacterCount,
+          encodedNewValueSha256: analysis.encodedNewValueSha256,
+          requiresEncodingRoundTripProbe: analysis.requiresEncodingRoundTripProbe,
+        },
+      };
+    } catch (error) {
+      return {
+        allowed: false,
+        code: error.code || "CN_TEXT_VERIFICATION_FAILED",
+        reason: error.message,
+        details: error.details || null,
+        clientTextSmokeCheckRequired: true,
+        noOp: false,
+      };
+    }
+  }
   if (payloads.some(containsNonAscii)) {
     return {
       allowed: false,
       code: "NON_ASCII_TEXT_WRITE_UNVERIFIED",
-      reason: "已阻止直接非 ASCII 文本写入；当前仅放行数字或 ASCII 最小修改。",
+      reason: "直接中文文本必须使用已验证的内联文本模式；未验证写入仍被阻止。",
       clientTextSmokeCheckRequired: true,
       noOp: false,
     };
@@ -132,7 +248,9 @@ function semanticWriteSafety(input = {}) {
 
 module.exports = {
   containsNonAscii,
+  containsHtmlNumericEntity,
   containsStringLinkToken,
+  chooseSemanticReadCandidate,
   directReadReason,
   directSearchReason,
   guardDetails,
@@ -141,4 +259,7 @@ module.exports = {
   retryReadReason,
   retrySearchReason,
   semanticWriteSafety,
+  VERIFIED_INLINE_TEXT_MODE,
+  VERIFIED_INLINE_CN_TEXT_MODE,
+  isVerifiedInlineTextMode,
 };

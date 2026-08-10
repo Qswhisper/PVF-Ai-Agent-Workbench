@@ -2,6 +2,17 @@
 
 type DecodeTextOptions = Readonly<{ trimNull?: boolean }>;
 
+type TextEncodingRisk = Readonly<{
+  score: number;
+  replacementCount: number;
+  controlCount: number;
+  privateUseCount: number;
+  kanaCount: number;
+  greekOrCyrillicCount: number;
+  cjkCount: number;
+  reasons: string[];
+}>;
+
 function rotl32(value: number, shift: number): number {
   return ((value << shift) | (value >>> (32 - shift))) >>> 0;
 }
@@ -90,11 +101,111 @@ function decodeFileName(source: Uint8Array): string {
   return decodeText(source, "Kr").replace(/\\/g, "/");
 }
 
+function textEncodingRisk(value: unknown): TextEncodingRisk {
+  const text = String(value || "");
+  let score = 0;
+  let replacementCount = 0;
+  let controlCount = 0;
+  let privateUseCount = 0;
+  let kanaCount = 0;
+  let greekOrCyrillicCount = 0;
+  let cjkCount = 0;
+  for (const character of text) {
+    const codePoint = character.codePointAt(0) || 0;
+    if (codePoint === 0xfffd) {
+      replacementCount += 1;
+      score += 100;
+      continue;
+    }
+    if ((codePoint >= 0 && codePoint < 0x20 && !new Set([0x09, 0x0a, 0x0d]).has(codePoint)) || codePoint === 0x7f) {
+      controlCount += 1;
+      score += 50;
+      continue;
+    }
+    if ((codePoint >= 0xe000 && codePoint <= 0xf8ff) || (codePoint >= 0xf0000 && codePoint <= 0xffffd) || (codePoint >= 0x100000 && codePoint <= 0x10fffd)) {
+      privateUseCount += 1;
+      score += 20;
+      continue;
+    }
+    if ((codePoint >= 0x3040 && codePoint <= 0x30ff) || (codePoint >= 0x31f0 && codePoint <= 0x31ff) || (codePoint >= 0xff61 && codePoint <= 0xff9f)) {
+      kanaCount += 1;
+      score += 5;
+      continue;
+    }
+    if ((codePoint >= 0x0370 && codePoint <= 0x052f) || (codePoint >= 0x1f00 && codePoint <= 0x1fff)) {
+      greekOrCyrillicCount += 1;
+      score += 2;
+      continue;
+    }
+    if (
+      (codePoint >= 0x3400 && codePoint <= 0x4dbf) ||
+      (codePoint >= 0x4e00 && codePoint <= 0x9fff) ||
+      (codePoint >= 0xf900 && codePoint <= 0xfaff) ||
+      (codePoint >= 0x20000 && codePoint <= 0x323af)
+    ) {
+      cjkCount += 1;
+    }
+  }
+  const reasons = [];
+  if (replacementCount) reasons.push("replacement-character");
+  if (controlCount) reasons.push("unexpected-control-character");
+  if (privateUseCount) reasons.push("private-use-character");
+  if (kanaCount) reasons.push("kana-in-chinese-text-candidate");
+  if (greekOrCyrillicCount) reasons.push("greek-or-cyrillic-in-chinese-text-candidate");
+  return {
+    score,
+    replacementCount,
+    controlCount,
+    privateUseCount,
+    kanaCount,
+    greekOrCyrillicCount,
+    cjkCount,
+    reasons,
+  };
+}
+
+function compareChineseEncodingCandidates(
+  requestedText: unknown,
+  alternateText: unknown,
+  requestedEncoding: unknown,
+  alternateEncoding: unknown,
+): Record<string, unknown> {
+  const requested = textEncodingRisk(requestedText);
+  const alternate = textEncodingRisk(alternateText);
+  const different = String(requestedText || "") !== String(alternateText || "");
+  const strongRequestedRisk =
+    requested.replacementCount > 0 ||
+    requested.controlCount > 0 ||
+    requested.privateUseCount > 0 ||
+    (requested.kanaCount > 0 && alternate.kanaCount === 0 && alternate.cjkCount > 0);
+  const requestedLooksMojibake = different && strongRequestedRisk && requested.score >= alternate.score + 4;
+  const strongAlternateRisk =
+    alternate.replacementCount > 0 ||
+    alternate.controlCount > 0 ||
+    alternate.privateUseCount > 0 ||
+    (alternate.kanaCount > 0 && requested.kanaCount === 0 && requested.cjkCount > 0);
+  const alternateLooksMojibake = different && strongAlternateRisk && alternate.score >= requested.score + 4;
+  return {
+    different,
+    requestedEncoding: normalizeEncoding(requestedEncoding),
+    alternateEncoding: normalizeEncoding(alternateEncoding),
+    requested,
+    alternate,
+    requestedLooksMojibake,
+    alternateLooksMojibake,
+    preferredEncoding: requestedLooksMojibake
+      ? normalizeEncoding(alternateEncoding)
+      : (alternateLooksMojibake ? normalizeEncoding(requestedEncoding) : null),
+  };
+}
+
 module.exports = {
+  compareChineseEncodingCandidates,
   createChecksum,
   decodeFileName,
   decodeText,
   decrypt,
   encrypt,
   normalizeEncoding,
+  textEncodingRisk,
 };

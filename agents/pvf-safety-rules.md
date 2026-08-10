@@ -44,9 +44,10 @@
 
 ## Phase 3 dry-run 边界
 
-- `workbench.bat pvf-change dry-run` 只能读取 PVF 文件内容并计算替换结果。
-- dry-run manifest 必须记录 `writeOperationsExecuted=false`。
-- dry-run 不创建 PVF 备份、不调用写工具、不保存 output PVF。
+- 普通 `workbench.bat pvf-change dry-run` 只读取 PVF 内容并计算替换结果。
+- `verified-inline-text` 是唯一例外：为了证明编码安全，dry-run 可在外部运行状态目录临时启动受控 writer，按目标确认的 `Cn` 或 `Tw` 生成隔离输出并交给独立 TypeScript 解析器以同一编码精确读回；临时输出必须立即清理，源 PVF 不变，失败时不给 approval code。
+- dry-run manifest 的 `writeOperationsExecuted=false` 表示没有保留或交付 PVF 输出；中文路线必须另记临时验证已执行且输出未保留。
+- dry-run 不创建源 PVF 备份，不把临时验证文件当作正式 output；`readOnly=true` 时中文临时验证以 `READ_ONLY_FALLBACK` 停止。
 - 后续真正 apply 前仍必须重新确认目标 PVF、创建备份、保存到显式输出路径并 readback。
 
 ## 受控 apply 要求
@@ -55,6 +56,7 @@
 
 - 用户确认目标 PVF。
 - 使用目标 PVF 的 raw no-simplified 精确文本，不写回简体化显示文本或 HTML 数字实体。
+- 普通脚本单个中文名称/描述必须使用完整反引号 token、`verified-inline-text`、目标确认的 `Cn` 或 `Tw` 与非批量替换；dry-run 和 apply 后均需按同一编码独立精确读回并证明旧字符串表条目未变。明显乱码而另一编码更可信时必须阻断。`.str`、StringLink 显示文本和未验证中文继续阻断。
 - 提供同一源 PVF、同一 change-set 的未阻塞 dry-run manifest 和 approval code。
 - 工具层确认源 PVF 不允许覆盖，输出路径必须显式指定。
 - 备份路径带时间戳。
@@ -69,7 +71,7 @@
 
 - `preview` 必须先验证受控 apply 清单及最终输出 SHA256，并绑定 profile 目标和客户端当前 SHA256。
 - `deploy` 必须使用本次预览确认码，同时确认客户端和启动器已关闭。
-- 源 PVF、独立输出 PVF和客户端目标必须互不相同。
+- 源 PVF、独立输出 PVF 和客户端目标必须互不相同。
 - 替换前必须存在已核对且不会覆盖的内容寻址备份；替换后必须核对目标 SHA256。
 - `rollback` 也要先预览和单独确认；客户端出现未知变化时禁止覆盖。
 - 该命令不允许 NPK、IMG、UI 或其他客户端文件写入。

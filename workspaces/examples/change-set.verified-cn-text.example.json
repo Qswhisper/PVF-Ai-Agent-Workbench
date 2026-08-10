@@ -1,0 +1,30 @@
+{
+  "$schema": "../../core/pvf-agent-core/schemas/pvf-change-set.schema.json",
+  "schemaVersion": "1.0",
+  "mode": "dry-run-only",
+  "description": "安全修改普通脚本中的一个完整中文名称字段（本例为 Cn；繁体目标应使用 Tw）",
+  "target": {
+    "sourcePvf": "D:\\MyDNFWork\\Script.pvf",
+    "pvfOpenEncoding": "Tw",
+    "pvfReadEncoding": "Cn"
+  },
+  "changes": [
+    {
+      "id": "replace-visible-name",
+      "type": "replace-text",
+      "pvfPath": "stackable/example.stk",
+      "previousText": "`旧名称`",
+      "newText": "`新名称`",
+      "replaceAll": false,
+      "textWriteMode": "verified-inline-text",
+      "pvfEncoding": "Cn",
+      "rationale": "只替换一个完整、可见的名称字段；pvfEncoding 必须来自目标原文；预演时先临时写出并独立复查"
+    }
+  ],
+  "safety": {
+    "writeModeEnabled": false,
+    "requiresBackupBeforeApply": true,
+    "requiresExplicitOutputPath": true,
+    "requiresReadback": true
+  }
+}

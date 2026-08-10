@@ -6,7 +6,7 @@
   "controlledApplyEnabled": true,
   "permissionModel": {
     "readOnlyAdapter": "config/pvf-adapter.json launches only the Workbench-bundled read backend for ordinary inspection.",
-    "controlledWriteRunner": "core/pvf-agent-core/cli/pvf-change-set.js is the only local PVF-generation lane; it may call bundled backend write operations only inside apply, only with explicit output, backup, readback, and final-output SHA256 binding. Client installation remains a separate client-pvf lane.",
+    "controlledWriteRunner": "core/pvf-agent-core/cli/pvf-change-set.js is the only local PVF-generation lane. It may call bundled backend write operations during apply with explicit output, backup, readback, and final-output SHA256 binding; verified-inline-text dry-run may additionally create and delete an isolated temporary output for encoding proof. Client installation remains a separate client-pvf lane.",
     "hostExposedWriteToolsEnabled": false,
     "sourceOverwriteAllowed": false,
     "clientWriteAllowed": false
@@ -17,9 +17,13 @@
       "value": "controlled-write"
     },
     "semanticTextSafety": {
-      "automaticCnReadGuardRequired": true,
+      "automaticEncodingConflictGuardRequired": true,
       "cnStrWriteAllowed": false,
-      "directNonAsciiTextWriteAllowed": false,
+      "unverifiedDirectNonAsciiTextWriteAllowed": false,
+      "verifiedInlineTextWriteAllowed": true,
+      "verifiedInlineTextAppliedBeforeOtherWrites": true,
+      "stringLinkTextWriteAllowed": false,
+      "cnAndTwRoundTripProbeRequired": true,
       "numericOrAsciiMinimalWriteAllowed": true,
       "clientTextSmokeCheckRequired": true
     },
@@ -43,8 +47,10 @@
   "allowedOperations": [
     "validate-change-set",
     "dry-run-replace-text",
+    "dry-run-verified-inline-text",
     "dry-run-write-new-file",
     "apply-replace-text-to-explicit-output",
+    "apply-verified-inline-text-to-explicit-output",
     "apply-write-new-file-to-explicit-output"
   ],
   "forbiddenOperations": [
@@ -56,7 +62,8 @@
     "apply-without-matching-dry-run",
     "apply-without-explicit-authorization-code",
     "direct-cn-str-write",
-    "direct-non-ascii-text-write"
+    "unverified-direct-non-ascii-text-write",
+    "direct-stringlink-text-write"
   ],
   "requiredBeforeApply": [
     "explicit-user-authorization",
