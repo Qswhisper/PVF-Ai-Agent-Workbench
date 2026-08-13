@@ -1,1 +1,1 @@
-先解析相关 .lst ID 并读取目标原文，执行 dry-run。apply 必须提供同一源 PVF、同一 change-set 的未阻塞 dry-run manifest 及其 approval code；任一哈希变化都重新 dry-run。随后做时间戳备份，使用 raw/no-simplified 原始文本进行最小替换，只保存到显式的新输出 PVF，不覆盖源 PVF，最后重新打开输出做 readback。
+先解析相关 .lst ID 并读取目标原文，执行 dry-run。apply 必须提供同一源 PVF、同一 change-set 的未阻塞 dry-run manifest 及其 approval code；任一哈希变化都重新 dry-run。随后创建或复用经 SHA256 核对的内容寻址源备份，使用 raw/no-simplified 原始文本进行最小替换，只保存到显式的新输出 PVF，不覆盖源 PVF，最后重新打开输出做 readback。

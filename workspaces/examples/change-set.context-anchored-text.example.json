@@ -1,0 +1,31 @@
+{
+  "$schema": "../../core/pvf-agent-core/schemas/pvf-change-set.schema.json",
+  "schemaVersion": "1.0",
+  "mode": "dry-run-only",
+  "description": "当完整说明在同一文件重复时，用紧邻的目标原文只定位其中一处",
+  "target": {
+    "sourcePvf": "D:\\MyDNFWork\\Script.pvf",
+    "pvfOpenEncoding": "Tw",
+    "pvfReadEncoding": "Tw"
+  },
+  "changes": [
+    {
+      "id": "replace-one-duplicate-explain",
+      "type": "replace-text",
+      "pvfPath": "stackable/example.stk",
+      "previousText": "`移動距離 +6%%`",
+      "newText": "`移動距離 +100%%`",
+      "contextBefore": "[skill]\r\n9\r\n`[swordman]`\t60\r\n[skill explain]\r\n",
+      "replaceAll": false,
+      "textWriteMode": "verified-inline-text",
+      "pvfEncoding": "Tw",
+      "rationale": "上下文和完整文字必须逐字复制自同一次 pvf-read read --raw；上下文只定位，不会被写入"
+    }
+  ],
+  "safety": {
+    "writeModeEnabled": false,
+    "requiresBackupBeforeApply": true,
+    "requiresExplicitOutputPath": true,
+    "requiresReadback": true
+  }
+}

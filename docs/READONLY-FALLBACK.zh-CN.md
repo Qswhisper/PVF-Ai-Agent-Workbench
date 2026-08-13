@@ -25,7 +25,7 @@ Workbench 的普通后端选择顺序是：
 
 备用模式下，保存、写文件、非 dry-run 文本替换、删除、重命名、导入、导出和为写入任务创建备份都会抛出 `READ_ONLY_FALLBACK`。`verified-inline-text` 的 dry-run 也会停止，因为它必须实际生成并清理一个隔离临时输出才能证明编码安全；停止时不给 approval code。stdio 的 `tools/list` 不公开写工具；即使绕过枚举直接按名称调用，分发层和 TypeScript API 层仍会再次阻断。`workbench.bat pvf-change apply` 会在修改发生前停止，不会把备用解析结果交给 native 写回。
 
-native 可写时仍有独立的编码护栏：普通脚本中一个完整、明确的中文名称/描述可以使用 `verified-inline-text` 和目标确认的 `Cn` 或 `Tw`。预演会先按同一编码生成隔离临时输出，由 TypeScript 备用解析器精确读回，并确认所有旧字符串表条目保持不变；若另一编码明显更可信或任一检查失败，都不给正式生成许可。`.str`、StringLink 显示文本、部分 token、批量替换和无法无损编码的字符仍被阻断。数字或 ASCII 最小替换继续使用语义正确的源文本、会话 overlay 和 fallback 读回；所有文本承载文件都保留客户端文字检查。
+native 可写时仍有独立的编码护栏：普通脚本中完整、明确的中文名称/描述（可含真实多行）可以使用 `verified-inline-text` 和目标确认的 `Cn` 或 `Tw`；相同完整文本重复时，可由同次原始读回中紧邻目标的前后原文联合定位，定位后仍须精确命中且不会放宽其他保护；批量必须声明准确命中数。参数/结构与中文可拆成同路径变化，预演会生成隔离临时输出并对最终文件做 TypeScript 精确读回，同时确认所有旧字符串表条目保持不变；若另一编码明显更可信或任一检查失败，都不给正式生成许可。`.str`、StringLink 显示文本、部分中文 token、出现序号定位、未精确计数批量和无法无损编码字符仍被阻断。
 
 这条限制是架构边界，不是等待用户确认后可以绕开的提示。需要输出 PVF 时，先安装兼容的 Microsoft Visual C++ v14 x64 runtime，再运行 `workbench.bat check`，直到状态显示 native 完整后端可用。
 

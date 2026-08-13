@@ -269,8 +269,8 @@
     },
     {
       "dest": "dictionaries/text-stringlink-encoding-fields.zh-CN.md",
-      "bytes": 5853,
-      "sha256": "318e7b65a6a6cc07b14ae1c07474458fc4a26cc15de916b2bc73d2cc19e4f2d0"
+      "bytes": 7138,
+      "sha256": "7f10cb936d18b55bb6851de13f00f6531fb82e0c25ad7f1f8267fa9ab337c4f5"
     },
     {
       "dest": "dictionaries/unified-knowledge-query-boundary-quick.zh-CN.md",
@@ -404,8 +404,8 @@
     },
     {
       "dest": "encyclopedia/pvf-file-types/text-stringlink-localization.zh-CN.md",
-      "bytes": 2584,
-      "sha256": "4d71c48ee074b76ebe870c45bab7e87bdd699a50eb460de8ae034912413780ee"
+      "bytes": 3392,
+      "sha256": "c3809d141b4bc485b272611ea0991daa2aa20b920176c6cac2ad68b810251287"
     },
     {
       "dest": "encyclopedia/pvf-file-types/upgrade-reinforce-amplify-enchant-recipe.zh-CN.md",
@@ -949,8 +949,8 @@
     },
     {
       "dest": "indexes/text-stringlink-encoding-localization-boundary.zh-CN.md",
-      "bytes": 6972,
-      "sha256": "9f2b85a22ae6dbfb0c13ddaa9ac4ce5ab91b8a7e4f286919592c6a78cdacb6f5"
+      "bytes": 8079,
+      "sha256": "7aed3177bbea225779962acd5756fb4fa5c4d17ee6ac1a5579d593227c78e7a2"
     },
     {
       "dest": "indexes/upgrade-reinforce-amplify-enchant-recipe-boundary.zh-CN.md",
@@ -964,8 +964,8 @@
     },
     {
       "dest": "safety/README.zh-CN.md",
-      "bytes": 6270,
-      "sha256": "e58a2aa6748c485a7aa0d110f2a6b1a8399053a8ae3eb614f9136b0e5045e3ee"
+      "bytes": 9934,
+      "sha256": "482445ea77def2a2690069f247ee17e5c9537aee4b6af920f7a0f63b7e2ac3a1"
     },
     {
       "dest": "task-cards/action-combat-cross-version-porting.zh-CN.md",
@@ -1079,8 +1079,8 @@
     },
     {
       "dest": "task-cards/equipment-stackable-controlled-change.zh-CN.md",
-      "bytes": 1375,
-      "sha256": "3363631064ed01a942e5b485d1bf29123dd22b3c62964002a035c6c2b1241ac6"
+      "bytes": 1528,
+      "sha256": "ff4cbaa6e80f72bc0a5ba2bd0cb70b0a96694368f3baf8c5aedb201bb0333c8b"
     },
     {
       "dest": "task-cards/equipment-stackable-readonly-audit.zh-CN.md",
@@ -1159,8 +1159,8 @@
     },
     {
       "dest": "task-cards/npc-shop-controlled-change.zh-CN.md",
-      "bytes": 1295,
-      "sha256": "8ec8388df920b77b5e388c6150b07e9a4b2b8fcc456a5b89b96a316b20b0f719"
+      "bytes": 1328,
+      "sha256": "4d73909175c041685b36b5412f16e67d4e34599fdad0f2df9e67e50de3b762de"
     },
     {
       "dest": "task-cards/npc-shop-readonly-audit.zh-CN.md",
@@ -1249,8 +1249,8 @@
     },
     {
       "dest": "task-cards/text-stringlink-encoding-readonly-audit.zh-CN.md",
-      "bytes": 2850,
-      "sha256": "16a8b25dd4df91d2d40e1a30c94fabc1fa86b9aac1f523262a0baaab8f68625b"
+      "bytes": 4665,
+      "sha256": "c2d6c6fc673516a4dc037df4a3543bc8415206e2568630d7d19598e429a786b3"
     },
     {
       "dest": "task-cards/unified-dependency-planner-readonly-preview.zh-CN.md",
@@ -1304,8 +1304,8 @@
     },
     {
       "dest": "workflows/client-pvf-controlled-deployment.zh-CN.md",
-      "bytes": 1656,
-      "sha256": "dae2f09de7222f98c8517390756ce092d0741ad715bfe6346c49ab9e0dfe05c1"
+      "bytes": 2217,
+      "sha256": "25a051c138f2b6e06ab992cc4bb51848e5b3ac559aff3415861ac3d6229c881e"
     },
     {
       "dest": "workflows/dungeon-difficulty-and-ultimate-list-audit.zh-CN.md",
@@ -1354,8 +1354,8 @@
     },
     {
       "dest": "workflows/npc-shop-edit.zh-CN.md",
-      "bytes": 2670,
-      "sha256": "e52089ef7a04df11139ccb9610dd9ec3d5b29a121385a63182a2269c0c7d2be1"
+      "bytes": 2703,
+      "sha256": "7050a1fea581ede04eeeed20e3ed8ad002bff9948d7d2d0409ebdff4df50b09b"
     },
     {
       "dest": "workflows/pvf-package-quality-audit.zh-CN.md",
@@ -1430,6 +1430,6 @@
   ],
   "summary": {
     "entryCount": 285,
-    "totalBytes": 5513672
+    "totalBytes": 5523131
   }
 }

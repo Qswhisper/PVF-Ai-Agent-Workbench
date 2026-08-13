@@ -1,0 +1,43 @@
+{
+  "$schema": "../../core/pvf-agent-core/schemas/pvf-change-set.schema.json",
+  "schemaVersion": "1.0",
+  "mode": "dry-run-only",
+  "description": "第二轮只声明本轮差异；继续保护最初源 PVF，并显式继承上一轮成功输出",
+  "baseline": {
+    "applyManifest": "D:\\MyDNFWork\\pvf-lab\\round-1-output\\APPLY-MANIFEST.json"
+  },
+  "target": {
+    "sourcePvf": "D:\\MyDNFWork\\Script.pvf",
+    "pvfOpenEncoding": "Tw",
+    "pvfReadEncoding": "Tw"
+  },
+  "changes": [
+    {
+      "id": "round-2-value",
+      "type": "replace-text",
+      "pvfPath": "stackable/example.stk",
+      "previousText": "[value]\r\n20",
+      "newText": "[value]\r\n30",
+      "replaceAll": false,
+      "pvfEncoding": "Tw",
+      "rationale": "参数改动使用上一轮输出的原始读回 token；target.sourcePvf 仍是最初受保护源"
+    },
+    {
+      "id": "round-2-name",
+      "type": "replace-text",
+      "pvfPath": "stackable/example.stk",
+      "previousText": "`第一輪名稱`",
+      "newText": "`第二輪累積名稱`",
+      "replaceAll": false,
+      "textWriteMode": "verified-inline-text",
+      "pvfEncoding": "Tw",
+      "rationale": "同一文件的参数与完整文字仍放在一个 change-set 中统一检查"
+    }
+  ],
+  "safety": {
+    "writeModeEnabled": false,
+    "requiresBackupBeforeApply": true,
+    "requiresExplicitOutputPath": true,
+    "requiresReadback": true
+  }
+}

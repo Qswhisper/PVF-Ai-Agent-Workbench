@@ -1,4 +1,4 @@
-# GitHub 2.2.1 发布清单
+# GitHub 2.2.2 发布清单
 
 本清单用于把当前干净目录同步到 GitHub。Gate 报告、真实 PVF、客户端、
 本机 profile 和研究目录都不进入仓库。
@@ -30,7 +30,7 @@
 7. 提交并推送后，在远端 tag 对应的 Source code zip 中再次运行
    `workbench.bat check`、`workbench.bat pvf-change self-test`、
    `workbench.bat client-pvf self-test`、`workbench.bat fallback-self-test` 和
-   `workbench.bat release gate3`，再创建 `v2.2.1`
+   `workbench.bat release gate3`，再创建 `v2.2.2`
    Release。
 
 ## 发布措辞边界
@@ -46,10 +46,10 @@
   运行库链接。人工交互终端会打开官方说明页；Agent/CI 不弹窗，也不会
   自动下载或安装。
 - 可以声明 `Cn` 搜索、`.str`、StringLink 与中文脚本读取会自动进行语义
-  保护；也可以声明普通脚本中单个完整中文名称/描述会先做隔离临时写出、
-  独立精确读回和旧字符串表保持检查。不能把它宣传成任意中文都可写；
-  `Cn .str`、StringLink 显示文本、部分 token、批量替换和无法编码字符仍
-  必须失败关闭，最终仍需游戏内文字检查。
+  保护；也可以声明普通脚本中完整中文名称/描述支持单行、多行和精确计数
+  批量，参数与中文可在同文件联动验证。不能宣传成任意中文都可写；
+  `Cn .str`、StringLink 显示文本、部分中文 token、未计数批量和无法编码
+  字符仍必须失败关闭，最终仍需游戏内文字检查。
 - 可以声明已复查的独立输出 PVF 可在单独预览和确认后部署到 profile 指定
   的测试客户端，并可恢复部署前版本；不能把这项权限扩大为 NPK、IMG、UI
   或其他客户端资源写入，也不能把文件部署成功宣传为实机功能通过。

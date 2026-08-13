@@ -6,7 +6,7 @@
   "controlledApplyEnabled": true,
   "permissionModel": {
     "readOnlyAdapter": "config/pvf-adapter.json launches only the Workbench-bundled read backend for ordinary inspection.",
-    "controlledWriteRunner": "core/pvf-agent-core/cli/pvf-change-set.js is the only local PVF-generation lane. It may call bundled backend write operations during apply with explicit output, backup, readback, and final-output SHA256 binding; verified-inline-text dry-run may additionally create and delete an isolated temporary output for encoding proof. Client installation remains a separate client-pvf lane.",
+    "controlledWriteRunner": "core/pvf-agent-core/cli/pvf-change-set.js is the only local PVF-generation lane. It may call bundled backend write operations during apply with explicit output, a SHA256-verified content-addressed protected-source backup, readback, and final-output SHA256 binding; an identical protected-source backup is reused only after its hash is rechecked. A cumulative next round must explicitly bind the previous successful apply manifest. verified-inline-text dry-run may additionally create and delete an isolated temporary output for encoding proof. Client installation remains a separate client-pvf lane.",
     "hostExposedWriteToolsEnabled": false,
     "sourceOverwriteAllowed": false,
     "clientWriteAllowed": false
@@ -21,7 +21,14 @@
       "cnStrWriteAllowed": false,
       "unverifiedDirectNonAsciiTextWriteAllowed": false,
       "verifiedInlineTextWriteAllowed": true,
-      "verifiedInlineTextAppliedBeforeOtherWrites": true,
+      "verifiedInlineTextMultilineAllowed": true,
+      "verifiedInlineTextBatchRequiresExactExpectedOccurrences": true,
+      "exactAdjacentContextAnchoringAllowed": true,
+      "contextAnchorDoesNotRelaxTextSafety": true,
+      "sameFileChangesPlannedAsOneFinalText": true,
+      "sameFileChangeOrderPreservedWhenRequired": true,
+      "sameFileVerifiedInlineTextAppliedAsOneBatch": true,
+      "stringTableAppendedOncePerVerifiedFileBatch": true,
       "stringLinkTextWriteAllowed": false,
       "cnAndTwRoundTripProbeRequired": true,
       "numericOrAsciiMinimalWriteAllowed": true,
@@ -33,8 +40,9 @@
       "pvf_read_file",
       "pvf_resolve_lst_id",
       "pvf_replace_text",
+      "pvf_apply_text_plan",
+      "pvf_apply_verified_text_plan",
       "pvf_write_file",
-      "pvf_backup",
       "pvf_save",
       "pvf_close"
     ],
@@ -42,7 +50,9 @@
     "clientWriteAllowed": false,
     "requiresDryRunFirst": true,
     "requiresMatchingDryRunManifest": true,
-    "requiresExplicitAuthorizationCode": true
+    "requiresExplicitAuthorizationCode": true,
+    "contentAddressedSourceBackupRequired": true,
+    "existingSourceBackupSha256RecheckRequired": true
   },
   "allowedOperations": [
     "validate-change-set",
@@ -61,6 +71,7 @@
     "apply-without-readback",
     "apply-without-matching-dry-run",
     "apply-without-explicit-authorization-code",
+    "undeclared-cumulative-baseline-assumption",
     "direct-cn-str-write",
     "unverified-direct-non-ascii-text-write",
     "direct-stringlink-text-write"
@@ -68,8 +79,9 @@
   "requiredBeforeApply": [
     "explicit-user-authorization",
     "matching-dry-run-manifest",
+    "verified-cumulative-baseline-chain-when-declared",
     "target-pvf-confirmed",
-    "timestamped-backup",
+    "verified-content-addressed-source-backup",
     "explicit-output-path",
     "readback-after-save"
   ],

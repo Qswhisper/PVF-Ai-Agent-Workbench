@@ -73,8 +73,8 @@
     {
       "id": "write.controlled-output",
       "level": "required-before-production-write",
-      "summary": "Apply a change set only with timestamped backup, explicit output PVF, readback verification, and a full final-output SHA256 binding. Verified inline Cn or Tw text additionally requires a matching-encoding isolated round-trip probe and exact TypeScript readback.",
-      "requiredTools": ["pvf_backup", "pvf_replace_text", "pvf_save"],
+      "summary": "Apply a change set only with a SHA256-verified content-addressed protected-source backup, explicit output PVF, readback verification, and a full final-output SHA256 binding. A next-round delta must bind the previous successful apply manifest; its unchanged output becomes the input while the original source stays protected. Verified inline Cn or Tw text supports complete multiline tokens and exact-count batches; all verified changes on one path are applied in one string-table/script batch, while dependent ordinary deletions preserve declared order and the coordinated final file receives exact TypeScript readback.",
+      "requiredTools": ["pvf_apply_text_plan", "pvf_apply_verified_text_plan", "pvf_save"],
       "mustNot": [
         "overwrite-source-pvf",
         "write-client-resources",
@@ -90,8 +90,10 @@
     "Default adapter mode is read-only.",
     "Ordinary read-only commands must not expose write tools.",
     "A write smoke test must write to an explicit output path and must not modify the source PVF.",
+    "The controlled change runner must create or reuse a SHA256-verified content-addressed source backup before save; the standalone bridge backup tool is not part of the controlled write surface.",
     "A successful apply manifest must bind the full SHA256 and byte size of the final output PVF after readback.",
-    "Direct localization .str output, StringLink display-text writes, and unverified non-ASCII changes must fail closed; a single complete visible inline Cn or Tw field may proceed only after matching-encoding round-trip verification and exact independent readback.",
+    "A cumulative next round must explicitly bind and rehash the previous successful apply manifest, its output, and the original protected source; a successful output never becomes an implicit source.",
+    "Direct localization .str output, StringLink display-text writes, partial Chinese tokens, uncounted bulk writes, and other unverified non-ASCII changes must fail closed; complete visible inline Cn or Tw tokens, including multiline and exact-count batches, may proceed only after one-pass same-file batching, matching-encoding round-trip verification, and exact independent readback.",
     "Every numeric ID used by a test must be resolved through the exact .lst registry named by the fixture.",
     "Local indexes are acceleration artifacts only; stale indexes cannot replace target PVF readback."
   ],

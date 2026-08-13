@@ -11,6 +11,7 @@ const {
   shouldAutoOpen: shouldAutoOpenRuntimeHelp,
 } = require("../lib/native-runtime-help");
 const { sha256File } = require("../lib/release-utils");
+const { selectedLocalProfilesMetadata } = require("../lib/workspace-profiles");
 
 const args = process.argv.slice(2);
 const rootArgIndex = args.indexOf("--root");
@@ -223,6 +224,7 @@ function checkRequiredPaths(errors) {
       "tools/pvf-bridge/server.js",
       "tools/pvf-bridge/native-backend.js",
       "tools/pvf-bridge/verified-inline-cn-text.js",
+      "tools/pvf-bridge/context-anchored-replace.js",
       "tools/pvf-bridge/native/pvf_rust_core.node",
       "tools/pvf-bridge/fallback/codec.ts",
       "tools/pvf-bridge/fallback/script.ts",
@@ -348,6 +350,8 @@ function checkRequiredPaths(errors) {
       "evals/agent/suite.json",
       "workspaces/examples/change-set.replace-text.example.json",
       "workspaces/examples/change-set.blocked-cn-text.example.json",
+      "workspaces/examples/change-set.verified-cn-text.example.json",
+      "workspaces/examples/change-set.context-anchored-text.example.json",
       "workspaces/examples/local-workspace-profile.example.json",
       "workspaces/examples/real-task-report-template.zh-CN.md",
       "workspaces/examples/real-task-summary.example.json",
@@ -495,6 +499,8 @@ function checkRequiredPaths(errors) {
     "workspaces/doctor-runs/README.zh-CN.md",
     "workspaces/examples/change-set.replace-text.example.json",
     "workspaces/examples/change-set.blocked-cn-text.example.json",
+    "workspaces/examples/change-set.verified-cn-text.example.json",
+    "workspaces/examples/change-set.context-anchored-text.example.json",
     "workspaces/indexes/README.zh-CN.md",
     "workspaces/package-dry-runs/README.zh-CN.md",
   ];
@@ -794,7 +800,14 @@ function checkWritePolicy(writePolicy, errors) {
     semanticSafety.cnStrWriteAllowed !== false ||
     semanticSafety.unverifiedDirectNonAsciiTextWriteAllowed !== false ||
     semanticSafety.verifiedInlineTextWriteAllowed !== true ||
-    semanticSafety.verifiedInlineTextAppliedBeforeOtherWrites !== true ||
+    semanticSafety.verifiedInlineTextMultilineAllowed !== true ||
+    semanticSafety.verifiedInlineTextBatchRequiresExactExpectedOccurrences !== true ||
+    semanticSafety.exactAdjacentContextAnchoringAllowed !== true ||
+    semanticSafety.contextAnchorDoesNotRelaxTextSafety !== true ||
+    semanticSafety.sameFileChangesPlannedAsOneFinalText !== true ||
+    semanticSafety.sameFileChangeOrderPreservedWhenRequired !== true ||
+    semanticSafety.sameFileVerifiedInlineTextAppliedAsOneBatch !== true ||
+    semanticSafety.stringTableAppendedOncePerVerifiedFileBatch !== true ||
     semanticSafety.stringLinkTextWriteAllowed !== false ||
     semanticSafety.cnAndTwRoundTripProbeRequired !== true ||
     semanticSafety.numericOrAsciiMinimalWriteAllowed !== true ||
@@ -802,17 +815,26 @@ function checkWritePolicy(writePolicy, errors) {
   ) {
     errors.push("write-policy.json must allow only matching-encoding round-trip-verified inline Cn/Tw text while blocking .str, StringLink, and unverified non-ASCII writes.");
   }
+  if (
+    writePolicy.controlledWriteRunner?.contentAddressedSourceBackupRequired !== true ||
+    writePolicy.controlledWriteRunner?.existingSourceBackupSha256RecheckRequired !== true
+  ) {
+    errors.push("write-policy.json must require a content-addressed source backup and recheck its SHA256 before reuse.");
+  }
   const runnerTools = new Set(writePolicy.controlledWriteRunner?.allowedBridgeTools || []);
-  for (const tool of ["pvf_open", "pvf_read_file", "pvf_replace_text", "pvf_backup", "pvf_save", "pvf_close"]) {
+  for (const tool of ["pvf_open", "pvf_read_file", "pvf_replace_text", "pvf_apply_text_plan", "pvf_apply_verified_text_plan", "pvf_save", "pvf_close"]) {
     if (!runnerTools.has(tool)) {
       errors.push(`write-policy.json controlledWriteRunner.allowedBridgeTools missing: ${tool}`);
     }
   }
   const forbidden = new Set(writePolicy.forbiddenOperations || []);
-  for (const operation of ["overwrite-source-pvf", "client-resource-write", "apply-without-backup", "apply-without-explicit-output", "apply-without-readback", "apply-without-matching-dry-run", "apply-without-explicit-authorization-code", "direct-cn-str-write", "unverified-direct-non-ascii-text-write", "direct-stringlink-text-write"]) {
+  for (const operation of ["overwrite-source-pvf", "client-resource-write", "apply-without-backup", "apply-without-explicit-output", "apply-without-readback", "apply-without-matching-dry-run", "apply-without-explicit-authorization-code", "undeclared-cumulative-baseline-assumption", "direct-cn-str-write", "unverified-direct-non-ascii-text-write", "direct-stringlink-text-write"]) {
     if (!forbidden.has(operation)) {
       errors.push(`write-policy.json must explicitly forbid: ${operation}`);
     }
+  }
+  if (!(writePolicy.requiredBeforeApply || []).includes("verified-cumulative-baseline-chain-when-declared")) {
+    errors.push("write-policy.json must require verification of every declared cumulative baseline chain.");
   }
   const allowed = new Set(writePolicy.allowedOperations || []);
   for (const operation of ["dry-run-verified-inline-text", "apply-verified-inline-text-to-explicit-output"]) {
@@ -821,7 +843,7 @@ function checkWritePolicy(writePolicy, errors) {
     }
   }
   const required = new Set(writePolicy.requiredBeforeApply || []);
-  for (const gate of ["explicit-user-authorization", "matching-dry-run-manifest", "target-pvf-confirmed", "timestamped-backup", "explicit-output-path", "readback-after-save"]) {
+  for (const gate of ["explicit-user-authorization", "matching-dry-run-manifest", "target-pvf-confirmed", "verified-content-addressed-source-backup", "explicit-output-path", "readback-after-save"]) {
     if (!required.has(gate)) {
       errors.push(`write-policy.json missing apply gate: ${gate}`);
     }
@@ -863,6 +885,7 @@ function checkClientPvfDeployPolicy(policy, errors) {
     "source-pvf-sha256-unchanged",
     "profile-client-target",
     "current-client-pvf-sha256-binding",
+    "current-client-matches-apply-input-or-explicit-baseline-switch",
     "explicit-deploy-authorization-code",
     "client-and-launcher-confirmed-closed",
     "content-addressed-client-backup",
@@ -889,6 +912,7 @@ function checkClientPvfDeployPolicy(policy, errors) {
     "deploy-profile-source-mismatch",
     "deploy-changed-source-pvf",
     "deploy-stale-client-target",
+    "deploy-over-divergent-baseline-without-explicit-switch",
     "deploy-over-source-pvf",
     "deploy-to-direct-unprofiled-path",
     "overwrite-client-without-backup",
@@ -1017,8 +1041,19 @@ function main() {
   const writePolicy = readJson("config/write-policy.json", errors);
   const clientPvfDeployPolicy = readJson("config/client-pvf-deploy-policy.json", errors);
   const profilesConfig = readJson("config/workspace-profiles.json", errors);
-  const localProfilesPath = join("config/workspace-profiles.local.json");
-  const localProfilesConfig = fs.existsSync(localProfilesPath) ? readJson("config/workspace-profiles.local.json", errors) : null;
+  const selectedLocalProfiles = selectedLocalProfilesMetadata(workbenchRoot);
+  let localProfilesConfig = null;
+  if (selectedLocalProfiles.kind) {
+    try {
+      localProfilesConfig = JSON.parse(fs.readFileSync(selectedLocalProfiles.path, "utf8"));
+    } catch (error) {
+      errors.push(`Invalid JSON in local profile store ${selectedLocalProfiles.path}: ${error.message}`);
+    }
+    info.push(`Local profile store: ${selectedLocalProfiles.path}`);
+    if (selectedLocalProfiles.kind === "legacy-local") {
+      info.push("Legacy local profile detected; the next profile command will copy it to the external user-state store without deleting the legacy file.");
+    }
+  }
   const schema = readJson("core/pvf-agent-core/schemas/workspace-profiles.schema.json", errors);
   const releaseManifest = readJson(agentWorkspaceMode ? "release/PORTABLE-RELEASE-MANIFEST.json" : "PORTABLE-RELEASE-MANIFEST.json", errors);
   const agentWorkspaceManifest = agentWorkspaceMode ? readJson("release/AGENT-WORKSPACE-MANIFEST.json", errors) : null;

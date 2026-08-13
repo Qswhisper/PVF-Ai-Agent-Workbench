@@ -24,6 +24,20 @@
     "description": {
       "type": "string"
     },
+    "baseline": {
+      "type": "object",
+      "required": [
+        "applyManifest"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "applyManifest": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional previous successful APPLY-MANIFEST.json. Its unchanged, readback-successful output becomes this change-set input while target.sourcePvf remains the original protected source."
+        }
+      }
+    },
     "target": {
       "type": "object",
       "required": [
@@ -129,15 +143,32 @@
         "newText": {
           "type": "string"
         },
+        "contextBefore": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional exact text immediately before previousText. It selects the location but is not replaced. It must not contain previousText."
+        },
+        "contextAfter": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Optional exact text immediately after previousText. It selects the location but is not replaced. It must not contain previousText."
+        },
         "replaceAll": {
           "type": "boolean",
-          "default": false
+          "default": false,
+          "description": "Replace every exact occurrence only when expectedOccurrences declares the exact positive count."
+        },
+        "expectedOccurrences": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Required when replaceAll=true; actual occurrences must match exactly."
         },
         "textWriteMode": {
           "enum": [
             "verified-inline-text",
             "verified-inline-cn"
-          ]
+          ],
+          "description": "Use only for one complete visible backtick token, including a multiline token. Keep parameter/structure edits as separate ordinary replace-text changes on the same pvfPath. Change array order is semantic when a later structure deletion depends on the verified text result."
         },
         "pvfEncoding": {
           "enum": [

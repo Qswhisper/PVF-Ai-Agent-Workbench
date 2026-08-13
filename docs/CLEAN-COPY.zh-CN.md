@@ -7,7 +7,7 @@
 ## 不要复制
 
 - `config/providers.local.json`
-- `config/workspace-profiles.local.json`
+- 旧版 `config/workspace-profiles.local.json`（若存在，只作迁移来源，仍不可打包）
 - `config/*.secret.json`
 - 任何真实 `.pvf`、`.bak`、`.npk`、`.img`
 - 外部 source manifest、claim store、PVF lineage、dependency plan、client matrix、私有回归 profile 和查询报告
@@ -19,7 +19,7 @@
 1. 进入 Workbench 根目录，运行 `workbench.bat check`。
 2. 支持 Agent Skills 的宿主可以直接发现 `.agents/skills/dnf-pvf-xpilot`；需要用户级调用时，在新电脑运行 `workbench.bat skill install --client codex` 或 `--client agents`。
 3. 让当前 AI Agent 先读 `AGENTS.md`、`README.zh-CN.md` 和 knowledge-pack 路由入口。
-4. 如果需要固定 PVF、客户端和输出目录，重新运行 `workbench.bat profile init ... --set-active` 生成本机 profile。
+4. 如果需要固定 PVF、客户端和输出目录，重新运行 `workbench.bat profile init ... --set-active` 生成本机 profile。新 profile 保存在用户状态目录 `PVF-Agent-Workbench-State\profiles\<workbench-id>\`，不会随工作台目录升级而被替换；旧版工作台内 profile 首次读取时会自动原子复制到这里，旧文件不会被删除。
 5. 直接使用 `workbench.bat pvf-read`、`workbench.bat pvf-index`、`workbench.bat pvf-change`；随包后端不需要宿主 MCP、已下架插件或额外知识目录。若 `check` 显示只读降级，可继续读取和预演，但必须修复 native 后才能生成输出。需要部署到测试客户端时，使用单独的 `workbench.bat client-pvf` 预览、确认和恢复路线。
 6. 用 `workbench.bat knowledge-query nut/tag/bookmark` 检查随包知识是否可查；只在具体任务需要时重新提供该任务自己的 PVF、客户端或输出路径。
 
@@ -32,7 +32,8 @@
 - `workbench.bat doctor check --skip-profiles` 应通过必需能力通道。
 - `workbench.bat eval self-test` 应同时接受正夹具并拒绝负夹具。
 - `workbench.bat skill self-test` 应通过结构、安装更新、漂移检测和冲突保护检查。
+- `workbench.bat profile self-test` 应通过旧配置迁移、外置状态、工作台刷新后保持和后续写入检查；只使用临时夹具。
 - `workbench.bat client-pvf self-test` 应通过纯临时夹具的预览、授权负控、备份去重、部署和恢复检查，不需要真实客户端。
 - `workbench.bat knowledge-query self-test` 和 `workbench.bat client-matrix self-test` 应通过只读 contract 与边界负控。
 - `workbench.bat release gate3` 应在独立 stage 中通过。
-- `config/workspace-profiles.local.json` 不应该来自旧电脑；需要时在新电脑重新生成。
+- 用户状态目录中的本机 profile 不应该随干净包复制到另一台电脑；需要时在新电脑重新生成。

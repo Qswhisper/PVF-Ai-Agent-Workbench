@@ -11,6 +11,12 @@ const {
   resolveWorkbenchRoot,
   upstreamLaunchOptions,
 } = require("../lib/adapter-config");
+const {
+  normalizeEncoding,
+} = require("../lib/semantic-read-guard");
+const {
+  compareChineseEncodingCandidates,
+} = require("../../../tools/pvf-bridge/fallback/codec.ts");
 
 const rawArgs = process.argv.slice(2);
 const workbenchRoot = resolveWorkbenchRoot(rawArgs, path.resolve(__dirname, "../../.."));
@@ -35,8 +41,9 @@ function usage() {
   workbench.bat pvf-read resolve-path [--profile <name> | --pvf <Script.pvf>] --path <pvf/path.ext> [--registry <registry.lst>]... [--include-secondary] [--include-errors] [--raw]
 
 Raw text:
-  --raw is the write-preparation display mode. It disables simplified-Chinese
-  conversion and StringLink auto-conversion. --no-simplified remains supported.
+  --raw is the write-preparation display mode. It uses the same independent
+  canonical token layout as pvf-change, disables simplified-Chinese conversion
+  and StringLink auto-conversion. --no-simplified remains supported.
 `;
 }
 
@@ -83,6 +90,220 @@ function requireOption(name) {
 
 function output(value) {
   process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+}
+
+function selectedReadEncodings(result, requestedEncoding) {
+  const values = [];
+  const add = (value) => {
+    const normalized = String(value || "").trim();
+    if (normalized && !values.includes(normalized)) values.push(normalized);
+  };
+  if (command === "read") {
+    add(result?.semanticReadGuard?.selectedEncoding);
+  } else if (command === "read-batch") {
+    for (const item of result?.items || []) add(item?.semanticReadGuard?.selectedEncoding);
+  }
+  if (values.length === 0) add(requestedEncoding);
+  return values;
+}
+
+function readTextUsage(result, config, readPreparation = null) {
+  if (command !== "read" && command !== "read-batch") return null;
+  const raw = rawDisplayMode();
+  const requestedEncoding = option("--pvf-encoding", config.defaults.pvfReadEncoding);
+  const selectedEncodings = selectedReadEncodings(result, requestedEncoding);
+  const preferredEncoding = selectedEncodings.length === 1 ? selectedEncodings[0] : null;
+  const truncated = command === "read"
+    ? result?.truncated === true
+    : Boolean(result?.truncatedByTotalLimit || (result?.items || []).some((item) => item?.truncated === true));
+  return {
+    mode: raw ? "canonical-change-source" : "reader-friendly-display",
+    safeForChangeSetSource: raw,
+    canonicalTokenLayout: raw,
+    simplifiedChineseDisplayConversion: !raw && !flag("--no-simplified"),
+    requestedEncoding,
+    selectedEncodings,
+    responseTruncated: truncated,
+    warning: raw
+      ? (truncated
+        ? "这是修改校验使用的原始 token 排列，但返回内容已截断；只能复制首尾都完整可见的 token。"
+        : "这是修改校验使用的原始 token 排列；只复制完整 token，并保留原始文字、换行和 Tab。")
+      : "这是便于阅读的显示文本，可能已转成简体或整理布局，禁止复制到 change-set 的 previousText/contextBefore/contextAfter。",
+    requiredActionBeforeChangeSet: raw
+      ? null
+      : {
+          rerunSameTargetWithRaw: true,
+          requiredFlags: ["--raw", `--pvf-encoding ${preferredEncoding || "<selected Cn or Tw>"}`],
+          instruction: "对同一 PVF 路径重新运行 pvf-read read/read-batch，并从 --raw 结果复制完整原始 token。",
+        },
+    ...(raw && readPreparation ? { automaticEncodingSelection: readPreparation } : {}),
+  };
+}
+
+function selectedCandidateSummary(selection, requestedEncoding, alternateEncoding) {
+  const selectedEncoding = selection?.selectedEncoding || requestedEncoding;
+  return {
+    requestedEncoding,
+    alternateEncoding,
+    selectedEncoding,
+    encodingConflict: selection?.encodingConflict === true,
+    warning: selection?.warning || null,
+    encodingEvidence: selection?.encodingEvidence || null,
+  };
+}
+
+function directScriptEncodingEvidence(value) {
+  return String(value || "")
+    // StringLink display text comes from a separate string-view resource and
+    // must not decide the encoding of direct script string-table tokens.
+    .replace(/<\s*\d+\s*::[^>`]{1,512}`[^`]*`>/gu, "")
+    .replace(/\[[^\]\r\n]+\]/g, "")
+    .replace(/[\x00-\x7f]+/g, "");
+}
+
+function selectRawChineseCandidate(requestedFile, alternateFile, requestedEncoding, alternateEncoding) {
+  const comparison = compareChineseEncodingCandidates(
+    directScriptEncodingEvidence(requestedFile?.textContent),
+    directScriptEncodingEvidence(alternateFile?.textContent),
+    requestedEncoding,
+    alternateEncoding,
+  );
+  const selectAlternate = comparison.requestedLooksMojibake === true;
+  const selectedEncoding = selectAlternate ? alternateEncoding : requestedEncoding;
+  const selectedFile = selectAlternate ? alternateFile : requestedFile;
+  selectedFile.semanticReadGuard = {
+    ...(selectedFile?.semanticReadGuard || {}),
+    applied: true,
+    reason: "raw-change-source-encoding-selection",
+    backend: selectedFile?.semanticReadGuard?.backend || selectedFile?.backend || "typescript-readonly-fallback",
+    automatic: true,
+    requestedEncoding,
+    selectedEncoding,
+    encodingConflict: comparison.different === true,
+    warning: selectAlternate
+      ? `按 ${requestedEncoding} 原始读取时出现明显乱码特征，已只读选择更干净的 ${alternateEncoding} 结果。change-set 必须明确使用 ${alternateEncoding}。`
+      : null,
+  };
+  return {
+    file: selectedFile,
+    selectedEncoding,
+    encodingConflict: comparison.different === true,
+    warning: selectAlternate
+      ? `按 ${requestedEncoding} 原始读取时出现明显乱码特征，已只读选择更干净的 ${alternateEncoding} 结果。change-set 必须明确使用 ${alternateEncoding}。`
+      : null,
+    encodingEvidence: {
+      requestedScore: comparison.requested?.score ?? null,
+      alternateScore: comparison.alternate?.score ?? null,
+      requestedReasons: comparison.requested?.reasons || [],
+      alternateReasons: comparison.alternate?.reasons || [],
+      preferredEncoding: comparison.preferredEncoding || null,
+      stringLinkDisplayIgnored: true,
+    },
+  };
+}
+
+async function readOneRawAutoEncodingCandidate(client, sessionId, commandArgs, pvfPath, requestedEncoding) {
+  const normalizedRequested = normalizeEncoding(requestedEncoding, "Tw");
+  if (!["Cn", "Tw"].includes(normalizedRequested)) {
+    const file = await callAndParse(client, "pvf_read_file", { ...commandArgs, pvfPath });
+    return {
+      file,
+      selection: {
+        requestedEncoding: normalizedRequested,
+        alternateEncoding: null,
+        selectedEncoding: normalizedRequested,
+        encodingConflict: false,
+        warning: null,
+        encodingEvidence: null,
+      },
+    };
+  }
+  const alternateEncoding = normalizedRequested === "Cn" ? "Tw" : "Cn";
+  const requestedFile = await callAndParse(client, "pvf_read_file", {
+    ...commandArgs,
+    pvfPath,
+    pvfEncoding: normalizedRequested,
+  });
+  const alternateFile = await callAndParse(client, "pvf_read_file", {
+    ...commandArgs,
+    pvfPath,
+    pvfEncoding: alternateEncoding,
+  });
+  const selection = selectRawChineseCandidate(
+    requestedFile,
+    alternateFile,
+    normalizedRequested,
+    alternateEncoding,
+  );
+  return {
+    file: selection.file,
+    selection: selectedCandidateSummary(selection, normalizedRequested, alternateEncoding),
+  };
+}
+
+async function readRawWithAutomaticEncoding(client, sessionId, commandArgs) {
+  const requestedEncoding = commandArgs.pvfEncoding;
+  if (command === "read") {
+    const candidate = await readOneRawAutoEncodingCandidate(
+      client,
+      sessionId,
+      commandArgs,
+      commandArgs.pvfPath,
+      requestedEncoding,
+    );
+    return {
+      result: candidate.file,
+      readPreparation: {
+        automatic: true,
+        perFile: [
+          {
+            pvfPath: commandArgs.pvfPath,
+            ...candidate.selection,
+          },
+        ],
+      },
+    };
+  }
+  const items = [];
+  const selections = [];
+  let returnedChars = 0;
+  let truncatedByTotalLimit = false;
+  for (const pvfPath of commandArgs.pvfPaths) {
+    if (returnedChars >= commandArgs.maxTotalChars) {
+      truncatedByTotalLimit = true;
+      break;
+    }
+    const remainingChars = Math.max(0, commandArgs.maxTotalChars - returnedChars);
+    const candidate = await readOneRawAutoEncodingCandidate(
+      client,
+      sessionId,
+      {
+        ...commandArgs,
+        maxChars: Math.min(commandArgs.maxCharsPerFile, remainingChars),
+      },
+      pvfPath,
+      requestedEncoding,
+    );
+    items.push({ pvfPath, ok: true, ...candidate.file });
+    selections.push({ pvfPath, ...candidate.selection });
+    returnedChars += String(candidate.file?.textContent || "").length;
+    if (returnedChars >= commandArgs.maxTotalChars && items.length < commandArgs.pvfPaths.length) {
+      truncatedByTotalLimit = true;
+    }
+  }
+  return {
+    result: {
+      ok: items.every((item) => item.ok !== false),
+      sessionId,
+      items,
+      requestedCount: commandArgs.pvfPaths.length,
+      returnedCount: items.length,
+      returnedChars,
+      maxTotalChars: commandArgs.maxTotalChars,
+      truncatedByTotalLimit,
+    },
+    readPreparation: { automatic: true, perFile: selections },
+  };
 }
 
 function normalizePvfPath(value) {
@@ -176,6 +397,11 @@ function toolArgsFor(commandName, config, sessionId) {
       autoConvertStringLink: flag("--string-link") && !rawDisplayMode(),
       useCompatibleDecompiler: !flag("--no-compatible-decompiler"),
       convertToSimplifiedChinese: !(flag("--no-simplified") || rawDisplayMode()),
+      // A change-set is matched and patched against the independent TypeScript
+      // decompiler's canonical token layout.  Raw display must expose that exact
+      // layout; otherwise an Agent can copy visually equivalent native output
+      // whose tabs/newlines can never match the controlled-write source text.
+      semanticVerificationRead: rawDisplayMode(),
       startLine: numberOption("--start-line"),
       endLine: numberOption("--end-line"),
       maxChars: numberOption("--max-chars", config.defaults.maxReadChars),
@@ -193,6 +419,7 @@ function toolArgsFor(commandName, config, sessionId) {
       autoConvertStringLink: flag("--string-link") && !rawDisplayMode(),
       useCompatibleDecompiler: !flag("--no-compatible-decompiler"),
       convertToSimplifiedChinese: !(flag("--no-simplified") || rawDisplayMode()),
+      semanticVerificationRead: rawDisplayMode(),
       startLine: numberOption("--start-line"),
       endLine: numberOption("--end-line"),
       maxCharsPerFile: numberOption("--max-chars-per-file", config.defaults.maxReadChars),
@@ -490,6 +717,9 @@ async function main() {
         return { opened, sessionInfo };
       }
       const commandArgs = toolArgsFor(command, config, sessionId);
+      if (rawDisplayMode() && (command === "read" || command === "read-batch") && !option("--pvf-encoding")) {
+        return readRawWithAutomaticEncoding(client, sessionId, commandArgs);
+      }
       const primary = await callAndParse(client, toolName, commandArgs);
       if (
         command === "search" &&
@@ -510,12 +740,20 @@ async function main() {
           upstreamSearch: primary,
         };
       }
-      return primary;
+      return { result: primary, readPreparation: null };
     });
+    const commandResult = result?.result && Object.prototype.hasOwnProperty.call(result, "readPreparation")
+      ? result.result
+      : result;
+    const readPreparation = result?.result && Object.prototype.hasOwnProperty.call(result, "readPreparation")
+      ? result.readPreparation
+      : null;
+    const textUsage = readTextUsage(commandResult, config, readPreparation);
     output({
       ok: true,
       command,
-      result,
+      ...(textUsage ? { textUsage } : {}),
+      result: commandResult,
       ...(command === "search-script"
         ? {
             agentHandoff: {

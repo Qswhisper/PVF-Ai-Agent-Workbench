@@ -32,7 +32,7 @@
       "notes": [
         "This is a disabled example profile.",
         "Replace paths with local machine paths before enabling.",
-        "Prefer workbench.bat profile init to create config/workspace-profiles.local.json.",
+        "Prefer workbench.bat profile init; machine-local profiles are stored outside the Workbench under PVF-Agent-Workbench-State.",
         "Use one profile per test client; client-pvf deployment still requires a separate preview and confirmation.",
         "Do not bind a redistributable package to machine-local development paths."
       ]

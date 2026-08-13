@@ -31,7 +31,7 @@ workbench.bat backend-contract show-readonly
 | registry resolve | 数字 ID 必须通过明确 `.lst` 解析成 PVF 路径，不允许直接猜。 |
 | reverse registry resolve | 能按精确 PVF 路径反查登记它的 `.lst` 与数字 ID。 |
 | local index | 能建立或读取 path / registry / `.lst` 索引，并能判断索引是否和源 PVF 匹配。 |
-| controlled write | 写入必须经过 change-set、备份、显式 output、重新打开 output readback，并绑定最终输出的完整 SHA256 与字节数。 |
+| controlled write | 写入必须经过 change-set、经 SHA256 核对的内容寻址受保护源备份、显式 output、重新打开 output readback，并绑定最终输出的完整 SHA256 与字节数；相同受保护源可安全复用一份备份。下一轮差异必须显式引用上一轮成功生成记录，不能把输出自动当成新源。 |
 
 TypeScript 备用模式中的搜索还必须显式返回 `truncated`、`errorCount`、有限错误样本与 `errorsTruncated`；损坏文件不能被静默计作普通未命中。
 
@@ -57,7 +57,7 @@ workbench.bat backend-contract check --profile <profile> --scope itemshop
 workbench.bat backend-contract check --profile <profile> --scope itemshop --include-write-smoke
 ```
 
-这个写出烟测使用 fixture 里的 no-op replace，仍然会走备份、显式 output、保存、重新打开 output、readback manifest，并核对 manifest 记录的最终输出 SHA256 与字节数。它不会覆盖源 PVF，也不会写客户端资源。
+这个写出烟测使用 fixture 里的 no-op replace，仍然会走内容寻址源备份、显式 output、保存、重新打开 output、readback manifest，并核对 manifest 记录的最终输出 SHA256 与字节数。它不会覆盖源 PVF，也不会写客户端资源。
 
 ## Fixture 策略
 

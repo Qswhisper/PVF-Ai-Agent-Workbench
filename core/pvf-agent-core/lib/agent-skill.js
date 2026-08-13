@@ -95,7 +95,7 @@ function validateBundledSkill(workbenchRoot) {
       if (keys.join(",") !== "description,name") errors.push("SKILL.md frontmatter must contain only name and description.");
       if (parsed.fields.name !== SKILL_NAME) errors.push(`SKILL.md name must be ${SKILL_NAME}.`);
       if (!parsed.fields.description || parsed.fields.description.length > 1024) errors.push("SKILL.md description must be 1-1024 characters.");
-      for (const requiredText of ["release/AGENT-WORKSPACE-MANIFEST.json", "AGENTS.md", "knowledge-pack/indexes/knowledge-index.json", "raw, no-simplified", "timestamped backup", "readback", "dry-run manifest and approval code", "Workbench-bundled native backend", "bundled TypeScript read-only backend", "without npm or a build step", "READ_ONLY_FALLBACK", "self-contained", "knowledge-query bookmark", "workbench.bat research", "external claim store", "workbench.bat client-pvf", "rollback-preview", "技术详情（通常不用看）"]) {
+      for (const requiredText of ["release/AGENT-WORKSPACE-MANIFEST.json", "AGENTS.md", "knowledge-pack/indexes/knowledge-index.json", "pvf-read read --raw", "independent canonical token layout", "content-addressed source backup", "readback", "dry-run manifest and approval code", "Workbench-bundled native backend", "bundled TypeScript read-only backend", "without npm or a build step", "READ_ONLY_FALLBACK", "self-contained", "knowledge-query bookmark", "workbench.bat research", "external claim store", "workbench.bat client-pvf", "rollback-preview", "技术详情（通常不用看）"]) {
         if (!parsed.body.includes(requiredText)) errors.push(`SKILL.md is missing required routing or safety text: ${requiredText}`);
       }
     }

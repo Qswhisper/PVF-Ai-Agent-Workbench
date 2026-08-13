@@ -19,7 +19,14 @@ const {
   VERIFIED_INLINE_TEXT_MODE,
   VERIFIED_INLINE_CN_TEXT_MODE,
   buildVerifiedInlineTextPatch,
+  buildVerifiedInlineTextBatchPatch,
+  buildRawAsciiScriptPatch,
 } = require("./verified-inline-cn-text");
+const {
+  analyzeContextAnchoredReplacement,
+  applyContextAnchoredReplacement,
+  occurrenceMismatch,
+} = require("./context-anchored-replace");
 
 const SERVER_MODE_ENV = "PVF_WORKBENCH_SERVER_MODE";
 const CONTROLLED_WRITE_MODE = "controlled-write";
@@ -58,6 +65,7 @@ const READ_ONLY_TOOL_NAMES = new Set([
   "pvf_read_file",
   "pvf_read_files",
 ]);
+const CONTROLLED_WRITE_DEPRECATED_TOOL_NAMES = new Set(["pvf_backup"]);
 
 function assertWritableBackend(operation) {
   if (selectedBackend.readOnly) {
@@ -82,7 +90,13 @@ function assertWritableBackend(operation) {
 function assertToolAllowedForSelectedBackend(name, args) {
   if (READ_ONLY_TOOL_NAMES.has(name)) return;
   if (name === "pvf_replace_text" && args?.dryRun === true) return;
+  if (name === "pvf_apply_text_plan" && args?.dryRun === true) return;
   assertWritableBackend(`tool ${name}`);
+  if (CONTROLLED_WRITE_DEPRECATED_TOOL_NAMES.has(name)) {
+    const error = new Error("The standalone PVF backup tool is retired from controlled writes; pvf-change creates and verifies its content-addressed source backup directly.");
+    error.code = "BACKUP_TOOL_DEPRECATED";
+    throw error;
+  }
 }
 
 const REGISTRY_CATALOG = [
@@ -896,7 +910,11 @@ async function writeVerifiedInlineText(sessionId, pvfPath, sourceText, args) {
     sourceText,
     previousText: args.previousText,
     newText: args.newText,
+    contextBefore: args.contextBefore,
+    contextAfter: args.contextAfter,
     replaceAll: args.replaceAll === true,
+    expectedOccurrences: args.expectedOccurrences,
+    prevalidatedEncodingProof: args.prevalidatedEncodingProof,
     stringTableBytes,
     scriptBytes,
   });
@@ -921,6 +939,251 @@ async function writeVerifiedInlineText(sessionId, pvfPath, sourceText, args) {
   };
 }
 
+async function writeVerifiedInlineTextBatch(sessionId, pvfPath, sourceText, args) {
+  const [stringTableBytes, scriptBytes] = await Promise.all([
+    readRawPvfBytes(sessionId, "stringtable.bin"),
+    readRawPvfBytes(sessionId, pvfPath),
+  ]);
+  const patch = buildVerifiedInlineTextBatchPatch({
+    pvfPath,
+    pvfEncoding: args.pvfEncoding,
+    fallbackEncoding: getSessionState(sessionId).encoding,
+    sourceText,
+    changes: args.changes,
+    stringTableBytes,
+    scriptBytes,
+  });
+  if (patch.noOp) {
+    return { ok: true, skipped: true, reason: "no-op verified inline text batch", proof: patch.proof, proofs: patch.proofs };
+  }
+  const stringTableResult = await native.upsertFile(sessionId, "stringtable.bin", {
+    base64Content: patch.stringTableBytes.toString("base64"),
+  });
+  const scriptResult = await native.upsertFile(sessionId, pvfPath, {
+    base64Content: patch.scriptBytes.toString("base64"),
+  });
+  setRawOverlay(sessionId, "stringtable.bin", patch.stringTableBytes);
+  setRawOverlay(sessionId, pvfPath, patch.scriptBytes);
+  setTextOverlay(sessionId, pvfPath, {
+    fileName: pvfPath,
+    dataLength: patch.scriptBytes.length,
+    isScriptFile: true,
+    isBinaryAniFile: false,
+  }, patch.sourceText);
+  return {
+    ok: true,
+    mode: patch.mode,
+    encoding: patch.encoding,
+    changeCount: patch.changeCount,
+    stringTableResult,
+    scriptResult,
+    proof: patch.proof,
+    proofs: patch.proofs,
+  };
+}
+
+async function writeRawAsciiScriptChange(sessionId, pvfPath, sourceText, args) {
+  const [stringTableBytes, scriptBytes] = await Promise.all([
+    readRawPvfBytes(sessionId, "stringtable.bin"),
+    readRawPvfBytes(sessionId, pvfPath),
+  ]);
+  const patch = buildRawAsciiScriptPatch({
+    pvfPath,
+    pvfEncoding: args.pvfEncoding,
+    fallbackEncoding: getSessionState(sessionId).encoding,
+    sourceText,
+    previousText: args.previousText,
+    newText: args.newText,
+    contextBefore: args.contextBefore,
+    contextAfter: args.contextAfter,
+    replaceAll: args.replaceAll === true,
+    expectedOccurrences: args.expectedOccurrences,
+    stringTableBytes,
+    scriptBytes,
+  });
+  if (patch.noOp) return { ok: true, skipped: true, reason: "no-op raw ASCII script replacement", proof: patch.proof };
+  let stringTableResult = null;
+  if (patch.stringTableBytes && patch.proof?.stringTableUntouched !== true) {
+    stringTableResult = await native.upsertFile(sessionId, "stringtable.bin", {
+      base64Content: patch.stringTableBytes.toString("base64"),
+    });
+    setRawOverlay(sessionId, "stringtable.bin", patch.stringTableBytes);
+  }
+  const scriptResult = await native.upsertFile(sessionId, pvfPath, {
+    base64Content: patch.scriptBytes.toString("base64"),
+  });
+  setRawOverlay(sessionId, pvfPath, patch.scriptBytes);
+  return { ok: true, mode: "raw-ascii-script-token", stringTableResult, scriptResult, proof: patch.proof };
+}
+
+async function toolApplyTextPlan(args) {
+  if (args.dryRun !== true) assertWritableBackend("PVF same-file text plan");
+  const sessionId = resolveSessionId(args);
+  const pvfPath = normalizePvfPath(args.pvfPath);
+  const changes = Array.isArray(args.changes) ? args.changes : [];
+  if (changes.length === 0) throw new Error("changes must contain at least one replacement.");
+  const readOptions = {
+    pvfEncoding: args.pvfEncoding ? normalizeEncoding(args.pvfEncoding) : undefined,
+    decompileScript: true,
+    decompileBinaryAni: true,
+    autoConvertStringLink: false,
+    useCompatibleDecompiler: true,
+    convertToSimplifiedChinese: false,
+    // Every controlled token plan must use the independent canonical
+    // decompiler, including an ordinary ASCII-only parameter stage.  The
+    // native display decompiler can place numeric and string tokens on
+    // different tab/newline boundaries; switching layouts here would make a
+    // plan that matched during change-set analysis fail again during proof.
+    semanticVerificationRead: true,
+  };
+  const guardedRead = await readPvfFileWithSemanticGuard(sessionId, pvfPath, readOptions);
+  if (typeof guardedRead.file.textContent !== "string") throw new Error("Target file is not text-readable.");
+  let plannedText = guardedRead.file.textContent;
+  const analyses = [];
+  for (const change of changes) {
+    if (typeof change.previousText !== "string" || typeof change.newText !== "string") {
+      throw new Error("Each plan change requires previousText and newText strings.");
+    }
+    const changeSourceText = plannedText;
+    const anchored = analyzeContextAnchoredReplacement({
+      sourceText: changeSourceText,
+      previousText: change.previousText,
+      newText: change.newText,
+      contextBefore: change.contextBefore,
+      contextAfter: change.contextAfter,
+      occurrenceIndex: change.occurrenceIndex,
+      replaceAll: change.replaceAll === true,
+      expectedOccurrences: change.expectedOccurrences,
+    });
+    const mismatch = occurrenceMismatch(anchored);
+    if (mismatch) throw mismatch;
+    const hits = anchored.occurrenceCount;
+    const replaceAll = anchored.replaceAll;
+    const expectedOccurrences = anchored.expectedOccurrences;
+    const safety = semanticWriteSafety({
+      kind: "replace-text", pvfPath,
+      pvfEncoding: readOptions.pvfEncoding,
+      fallbackEncoding: getSessionState(sessionId).encoding,
+      previousText: change.previousText, newText: change.newText,
+      contextBefore: change.contextBefore, contextAfter: change.contextAfter,
+      replaceAll, expectedOccurrences,
+      textWriteMode: change.textWriteMode, sourceText: changeSourceText,
+    });
+    if (!safety.allowed) {
+      const error = new Error(`Controlled PVF write blocked: ${safety.reason}`);
+      error.code = safety.code;
+      error.details = safety.details || undefined;
+      throw error;
+    }
+    analyses.push({ change, hits, expectedOccurrences, safety, sourceText: changeSourceText, anchored });
+    plannedText = applyContextAnchoredReplacement({
+      sourceText: plannedText,
+      previousText: change.previousText,
+      newText: change.newText,
+    }, anchored);
+  }
+
+  const verifiedAnalyses = analyses.filter((item) => isVerifiedInlineTextMode(item.change.textWriteMode));
+  if (verifiedAnalyses.length > 0) {
+    const error = new Error("pvf_apply_text_plan only handles ordinary structure changes; verified text uses the coordinated same-file write path.");
+    error.code = "TEXT_PLAN_VERIFIED_STAGE_REQUIRED";
+    throw error;
+  }
+  let rawScriptBytes = await readRawPvfBytes(sessionId, pvfPath);
+  let stringTableBytes = await readRawPvfBytes(sessionId, "stringtable.bin");
+  let rawSourceText = guardedRead.file.textContent;
+  const proofs = [];
+  for (const item of analyses) {
+    if (item.change.previousText === item.change.newText) continue;
+    const patch = buildRawAsciiScriptPatch({
+      pvfPath,
+      pvfEncoding: readOptions.pvfEncoding,
+      fallbackEncoding: getSessionState(sessionId).encoding,
+      sourceText: rawSourceText,
+      previousText: item.change.previousText,
+      newText: item.change.newText,
+      contextBefore: item.change.contextBefore,
+      contextAfter: item.change.contextAfter,
+      replaceAll: item.change.replaceAll === true,
+      expectedOccurrences: item.expectedOccurrences,
+      stringTableBytes,
+      scriptBytes: rawScriptBytes,
+    });
+    stringTableBytes = patch.stringTableBytes || stringTableBytes;
+    rawScriptBytes = patch.scriptBytes;
+    rawSourceText = patch.expectedText;
+    proofs.push({ id: item.change.id || null, ...patch.proof });
+  }
+  if (rawSourceText !== plannedText) {
+    const error = new Error("Raw ASCII token plan did not produce the planned final text.");
+    error.code = "RAW_ASCII_TOKEN_READBACK_FAILED";
+    throw error;
+  }
+  if (proofs.length > 0) {
+    if (args.dryRun !== true) {
+      if (proofs.some((proof) => proof.stringTableUntouched !== true)) {
+        await native.upsertFile(sessionId, "stringtable.bin", { base64Content: stringTableBytes.toString("base64") });
+        setRawOverlay(sessionId, "stringtable.bin", stringTableBytes);
+      }
+      await native.upsertFile(sessionId, pvfPath, { base64Content: rawScriptBytes.toString("base64") });
+      setRawOverlay(sessionId, pvfPath, rawScriptBytes);
+      setTextOverlay(sessionId, pvfPath, guardedRead.file, plannedText);
+    }
+  }
+  return text({
+    ok: true,
+    sessionId,
+    pvfPath,
+    changeCount: changes.length,
+    dryRun: args.dryRun === true,
+    finalTextSha256: crypto.createHash("sha256").update(plannedText).digest("hex"),
+    results: proofs,
+    semanticReadGuard: guardedRead.semanticReadGuard || undefined,
+  });
+}
+
+async function toolApplyVerifiedTextPlan(args) {
+  assertWritableBackend("PVF verified text batch plan");
+  const sessionId = resolveSessionId(args);
+  const pvfPath = normalizePvfPath(args.pvfPath);
+  const changes = Array.isArray(args.changes) ? args.changes : [];
+  if (changes.length === 0) throw new Error("changes must contain at least one verified text replacement.");
+  if (changes.some((change) => !isVerifiedInlineTextMode(change.textWriteMode))) {
+    const error = new Error("pvf_apply_verified_text_plan accepts verified-inline-text changes only.");
+    error.code = "CN_TEXT_BATCH_MODE_REQUIRED";
+    throw error;
+  }
+  const encoding = args.pvfEncoding ? normalizeEncoding(args.pvfEncoding) : getSessionState(sessionId).encoding;
+  if (changes.some((change) => normalizeEncoding(change.pvfEncoding || encoding) !== encoding)) {
+    const error = new Error("One verified text batch cannot mix PVF encodings.");
+    error.code = "CN_TEXT_BATCH_ENCODING_MISMATCH";
+    throw error;
+  }
+  const guardedRead = await readPvfFileWithSemanticGuard(sessionId, pvfPath, {
+    pvfEncoding: encoding,
+    decompileScript: true,
+    decompileBinaryAni: true,
+    autoConvertStringLink: false,
+    useCompatibleDecompiler: true,
+    convertToSimplifiedChinese: false,
+    semanticVerificationRead: true,
+  });
+  if (typeof guardedRead.file.textContent !== "string") throw new Error("Target file is not text-readable.");
+  const writeResult = await writeVerifiedInlineTextBatch(sessionId, pvfPath, guardedRead.file.textContent, {
+    pvfEncoding: encoding,
+    changes,
+  });
+  return text({
+    ok: true,
+    dryRun: false,
+    sessionId,
+    pvfPath,
+    changeCount: changes.length,
+    writeResult,
+    semanticReadGuard: guardedRead.semanticReadGuard || undefined,
+  });
+}
+
 async function toolReplaceText(args) {
   if (args.dryRun !== true) assertWritableBackend("PVF text replacement");
   const sessionId = resolveSessionId(args);
@@ -935,7 +1198,9 @@ async function toolReplaceText(args) {
     autoConvertStringLink: Boolean(args.autoConvertStringLink),
     useCompatibleDecompiler: args.useCompatibleDecompiler !== false,
     convertToSimplifiedChinese: args.convertToSimplifiedChinese !== false,
-    semanticVerificationRead: isVerifiedInlineTextMode(args.textWriteMode),
+    // Controlled script writes always bind to the independent decompiler so
+    // raw token patches and final readback use one exact source text.
+    semanticVerificationRead: true,
   };
   const guardedRead = await readPvfFileWithSemanticGuard(sessionId, pvfPath, readOptions);
   const { file, semanticReadGuard } = guardedRead;
@@ -943,11 +1208,26 @@ async function toolReplaceText(args) {
     throw new Error("Target file is not text-readable.");
   }
   const before = file.textContent;
-  const hits = before.split(args.previousText).length - 1;
-  if (hits <= 0) {
-    throw new Error("previousText was not found in the current PVF file content.");
-  }
-  const after = args.replaceAll === true ? before.split(args.previousText).join(args.newText) : before.replace(args.previousText, args.newText);
+  const anchored = analyzeContextAnchoredReplacement({
+    sourceText: before,
+    previousText: args.previousText,
+    newText: args.newText,
+    contextBefore: args.contextBefore,
+    contextAfter: args.contextAfter,
+    occurrenceIndex: args.occurrenceIndex,
+    replaceAll: args.replaceAll === true,
+    expectedOccurrences: args.expectedOccurrences,
+  });
+  const mismatch = occurrenceMismatch(anchored);
+  if (mismatch) throw mismatch;
+  const hits = anchored.occurrenceCount;
+  const replaceAll = anchored.replaceAll;
+  const expectedOccurrences = anchored.expectedOccurrences;
+  const after = applyContextAnchoredReplacement({
+    sourceText: before,
+    previousText: args.previousText,
+    newText: args.newText,
+  }, anchored);
   const preview = changedPreview(before, after);
   const writeSafety = semanticWriteSafety({
     kind: "replace-text",
@@ -956,7 +1236,10 @@ async function toolReplaceText(args) {
     fallbackEncoding: getSessionState(sessionId).encoding,
     previousText: args.previousText,
     newText: args.newText,
-    replaceAll: args.replaceAll === true,
+    contextBefore: args.contextBefore,
+    contextAfter: args.contextAfter,
+    replaceAll,
+    expectedOccurrences,
     textWriteMode: args.textWriteMode,
     sourceText: before,
   });
@@ -967,6 +1250,8 @@ async function toolReplaceText(args) {
       sessionId,
       pvfPath,
       occurrences: hits,
+      totalOccurrences: anchored.totalOccurrenceCount,
+      contextAnchor: anchored.evidence,
       ...preview,
       semanticReadGuard: semanticReadGuard || undefined,
       semanticWriteSafety: writeSafety,
@@ -981,6 +1266,8 @@ async function toolReplaceText(args) {
       sessionId,
       pvfPath,
       occurrences: hits,
+      totalOccurrences: anchored.totalOccurrenceCount,
+      contextAnchor: anchored.evidence,
       ...preview,
       semanticReadGuard: semanticReadGuard || undefined,
       semanticWriteSafety: writeSafety,
@@ -991,9 +1278,14 @@ async function toolReplaceText(args) {
     error.code = writeSafety.code;
     throw error;
   }
-  const writeResult = isVerifiedInlineTextMode(args.textWriteMode)
-    ? await writeVerifiedInlineText(sessionId, pvfPath, before, args)
-    : await writeText(sessionId, pvfPath, after, args);
+  let writeResult;
+  if (isVerifiedInlineTextMode(args.textWriteMode)) {
+    writeResult = await writeVerifiedInlineText(sessionId, pvfPath, before, args);
+  } else if (file.isScriptFile === true) {
+    writeResult = await writeRawAsciiScriptChange(sessionId, pvfPath, before, args);
+  } else {
+    writeResult = await writeText(sessionId, pvfPath, after, args);
+  }
   setTextOverlay(sessionId, pvfPath, file, after);
   return text({
     ok: true,
@@ -1001,6 +1293,8 @@ async function toolReplaceText(args) {
     sessionId,
     pvfPath,
     occurrences: hits,
+    totalOccurrences: anchored.totalOccurrenceCount,
+    contextAnchor: anchored.evidence,
     writeResult,
     ...preview,
     semanticReadGuard: semanticReadGuard || undefined,
@@ -1393,7 +1687,7 @@ const tools = [
   {
     name: "pvf_backup",
     title: "Backup PVF",
-    description: "Copy a PVF archive to a timestamped backup path.",
+    description: "Copy a PVF archive to an explicit non-overwriting backup path. The controlled change runner uses its own SHA256-verified content-addressed backup lifecycle.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1449,6 +1743,7 @@ const tools = [
         },
         matchMode: { type: "string", enum: ["None", "Like", "Regex"] },
         pvfEncoding: { type: "string" },
+        dryRun: { type: "boolean" },
         convertToSimplifiedChinese: { type: "boolean" },
         sourceFiles: { type: "array", items: { type: "string" } },
         limit: { type: "integer", minimum: 1, maximum: 500 },
@@ -1594,7 +1889,7 @@ const tools = [
   {
     name: "pvf_replace_text",
     title: "Replace PVF Text",
-    description: "Replace exact PVF text inside the controlled write runner. Verified inline Cn/Tw text uses textWriteMode=verified-inline-text (legacy verified-inline-cn is accepted); .str and StringLink display text remain blocked.",
+    description: "Replace exact PVF text inside the controlled write runner. Optional exact adjacent context can select one target among duplicate text without weakening verified inline Cn/Tw token, encoding, .str, or StringLink protections.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1602,7 +1897,10 @@ const tools = [
         pvfPath: { type: "string" },
         previousText: { type: "string" },
         newText: { type: "string" },
+        contextBefore: { type: "string", minLength: 1 },
+        contextAfter: { type: "string", minLength: 1 },
         replaceAll: { type: "boolean" },
+        expectedOccurrences: { type: "integer", minimum: 1 },
         dryRun: { type: "boolean" },
         pvfEncoding: { type: "string" },
         autoConvertStringLink: { type: "boolean" },
@@ -1614,6 +1912,74 @@ const tools = [
         textWriteMode: { type: "string", enum: [VERIFIED_INLINE_TEXT_MODE, VERIFIED_INLINE_CN_TEXT_MODE] },
       },
       required: ["pvfPath", "previousText", "newText"],
+    },
+  },
+  {
+    name: "pvf_apply_text_plan",
+    title: "Apply Same-File Text Plan",
+    description: "Atomically apply an ordered set of ordinary replacements to one PVF file, including exact adjacent-context selectors.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string" },
+        pvfPath: { type: "string" },
+        pvfEncoding: { type: "string" },
+        dryRun: { type: "boolean" },
+        compileScript: { type: "boolean" },
+        compileBinaryAni: { type: "boolean" },
+        changes: {
+          type: "array",
+          minItems: 1,
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              previousText: { type: "string" },
+              newText: { type: "string" },
+              contextBefore: { type: "string", minLength: 1 },
+              contextAfter: { type: "string", minLength: 1 },
+              replaceAll: { type: "boolean" },
+              expectedOccurrences: { type: "integer", minimum: 1 },
+              textWriteMode: { type: "string", enum: [VERIFIED_INLINE_TEXT_MODE, VERIFIED_INLINE_CN_TEXT_MODE] },
+            },
+            required: ["previousText", "newText"],
+          },
+        },
+      },
+      required: ["pvfPath", "changes"],
+    },
+  },
+  {
+    name: "pvf_apply_verified_text_plan",
+    title: "Apply Verified Same-File Text Batch",
+    description: "Apply an ordered verified-inline-text batch to one script while rebuilding its string table and raw script only once at the end of the batch.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        sessionId: { type: "string" },
+        pvfPath: { type: "string" },
+        pvfEncoding: { type: "string" },
+        changes: {
+          type: "array",
+          minItems: 1,
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              previousText: { type: "string" },
+              newText: { type: "string" },
+              contextBefore: { type: "string", minLength: 1 },
+              contextAfter: { type: "string", minLength: 1 },
+              replaceAll: { type: "boolean" },
+              expectedOccurrences: { type: "integer", minimum: 1 },
+              pvfEncoding: { type: "string" },
+              textWriteMode: { type: "string", enum: [VERIFIED_INLINE_TEXT_MODE, VERIFIED_INLINE_CN_TEXT_MODE] },
+            },
+            required: ["previousText", "newText", "textWriteMode"],
+          },
+        },
+      },
+      required: ["pvfPath", "changes"],
     },
   },
   {
@@ -1665,6 +2031,8 @@ const handlers = {
   pvf_read_file: toolReadFile,
   pvf_read_files: toolReadFiles,
   pvf_replace_text: toolReplaceText,
+  pvf_apply_text_plan: toolApplyTextPlan,
+  pvf_apply_verified_text_plan: toolApplyVerifiedTextPlan,
   pvf_write_file: toolWriteFile,
   pvf_save: toolSave,
 };
@@ -1688,7 +2056,7 @@ async function handle(message) {
           capabilities: { tools: { listChanged: false } },
           serverInfo: {
             name: "pvf-workbench-bundled-backend",
-            version: "2.2.1",
+            version: "2.2.2",
             backend: selectedBackend.source,
             readOnly: effectiveReadOnly,
             capabilityMode: serverMode,
@@ -1711,7 +2079,7 @@ async function handle(message) {
     if (message.method === "tools/list") {
       const advertisedTools = effectiveReadOnly
         ? tools.filter((tool) => READ_ONLY_TOOL_NAMES.has(tool.name))
-        : tools;
+        : tools.filter((tool) => !CONTROLLED_WRITE_DEPRECATED_TOOL_NAMES.has(tool.name));
       send({ jsonrpc: "2.0", id, result: { tools: advertisedTools } });
       return;
     }
@@ -1731,7 +2099,10 @@ async function handle(message) {
         send({
           jsonrpc: "2.0",
           id,
-          result: errorResult(err && err.message ? err.message : String(err), err && err.code ? { code: err.code } : undefined),
+          result: errorResult(
+            err && err.message ? err.message : String(err),
+            err && err.code ? { code: err.code, ...(err.details ? { details: err.details } : {}) } : undefined,
+          ),
         });
       }
       return;

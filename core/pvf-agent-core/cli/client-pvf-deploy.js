@@ -35,7 +35,7 @@ function flag(name) {
 function usage() {
   return [
     "Usage:",
-    "  workbench.bat client-pvf preview --profile <name> --apply-manifest <APPLY-MANIFEST.json> [--out <dir>]",
+    "  workbench.bat client-pvf preview --profile <name> --apply-manifest <APPLY-MANIFEST.json> [--out <dir>] [--confirm-baseline-switch]",
     "  workbench.bat client-pvf deploy --preview-manifest <CLIENT-PVF-DEPLOY-PREVIEW.json> --authorize-deploy <code> --confirm-client-closed",
     "  workbench.bat client-pvf rollback-preview --deployment-manifest <CLIENT-PVF-DEPLOYMENT-MANIFEST.json> [--out <dir>]",
     "  workbench.bat client-pvf rollback --preview-manifest <CLIENT-PVF-ROLLBACK-PREVIEW.json> --authorize-rollback <code> --confirm-client-closed",
@@ -163,6 +163,16 @@ function loadPolicy() {
     policy.permissionModel?.nonPvfClientResourceWriteAllowed === false,
     "Non-PVF client resource writes must remain blocked.",
   );
+  const deployGates = new Set(policy.requiredBeforeDeploy || []);
+  assertCondition(
+    deployGates.has("current-client-matches-apply-input-or-explicit-baseline-switch"),
+    "Client deployment policy must require apply-input baseline continuity.",
+  );
+  const forbidden = new Set(policy.forbiddenOperations || []);
+  assertCondition(
+    forbidden.has("deploy-over-divergent-baseline-without-explicit-switch"),
+    "Client deployment policy must block an undeclared baseline switch.",
+  );
   return policy;
 }
 
@@ -272,14 +282,24 @@ function validateApplyManifest(manifestFile) {
   );
 
   const outputPvf = assertRegularFile(manifest.outputPvf, "Apply output PVF");
-  const sourcePvf = assertRegularFile(manifest.sourcePvf, "Apply source PVF");
-  assertCondition(sourcePvf && !samePath(sourcePvf, outputPvf), "Apply output must remain separate from the source PVF.");
+  const sourcePvf = assertRegularFile(manifest.sourcePvf, "Apply input PVF");
+  const protectedSourcePvf = assertRegularFile(manifest.protectedSourcePvf || manifest.sourcePvf, "Apply protected source PVF");
+  assertCondition(sourcePvf && !samePath(sourcePvf, outputPvf), "Apply output must remain separate from the input PVF.");
+  assertCondition(!samePath(protectedSourcePvf, outputPvf), "Apply output must remain separate from the protected source PVF.");
   const sourceInfo = fileInfo(sourcePvf);
+  const protectedSourceInfo = fileInfo(protectedSourcePvf);
   assertCondition(isSha256(manifest.sourcePvfSha256), "Apply manifest sourcePvfSha256 is missing or invalid.");
   assertCondition(
     sourceInfo.sha256.toLowerCase() === String(manifest.sourcePvfSha256).toLowerCase(),
     "Apply source PVF changed after its output was generated. Regenerate the output and deployment preview.",
     "APPLY_SOURCE_CHANGED",
+  );
+  const expectedProtectedSourceSha256 = manifest.protectedSourcePvfSha256 || manifest.sourcePvfSha256;
+  assertCondition(isSha256(expectedProtectedSourceSha256), "Apply manifest protectedSourcePvfSha256 is missing or invalid.");
+  assertCondition(
+    protectedSourceInfo.sha256.toLowerCase() === String(expectedProtectedSourceSha256).toLowerCase(),
+    "Apply protected source PVF changed after its output was generated.",
+    "APPLY_PROTECTED_SOURCE_CHANGED",
   );
   assertOutsideWorkbench(outputPvf, "Apply output PVF");
   assertOutsideWorkbench(sourcePvf, "Apply source PVF");
@@ -303,6 +323,9 @@ function validateApplyManifest(manifestFile) {
     sourcePvf: sourceInfo.path,
     sourcePvfRealPath: sourceInfo.realPath,
     sourcePvfSha256: sourceInfo.sha256,
+    protectedSourcePvf: protectedSourceInfo.path,
+    protectedSourcePvfRealPath: protectedSourceInfo.realPath,
+    protectedSourcePvfSha256: protectedSourceInfo.sha256,
     outputPvf: outputInfo.path,
     outputPvfRealPath: outputInfo.realPath,
     outputPvfSha256: outputInfo.sha256,
@@ -372,10 +395,13 @@ function createDeployPreview(options) {
   const profile = options.profile;
   const client = resolveClientContext(profile, policy);
   const apply = validateApplyManifest(options.applyManifestPath);
+  const applyInputIsClientTarget =
+    samePath(client.clientPvf, apply.sourcePvf) ||
+    samePath(client.clientPvfRealPath, apply.sourcePvfRealPath);
   assertCondition(
-    !samePath(client.clientPvf, apply.sourcePvf) &&
-      !samePath(client.clientPvfRealPath, apply.sourcePvfRealPath),
-    "The client Script.pvf is also the source PVF. Keep an independent protected source and deploy to a separate test client.",
+    !samePath(client.clientPvf, apply.protectedSourcePvf) &&
+      !samePath(client.clientPvfRealPath, apply.protectedSourcePvfRealPath),
+    "The client Script.pvf is also the protected source PVF. Keep the protected source outside the test client.",
     "SOURCE_CLIENT_COLLISION",
   );
   assertCondition(
@@ -391,10 +417,27 @@ function createDeployPreview(options) {
   );
   assertCondition(
     typeof profile.sourcePvf === "string" &&
-      (samePath(profile.sourcePvf, apply.sourcePvf) ||
-        samePath(prospectiveRealPath(profile.sourcePvf), apply.sourcePvfRealPath)),
-    "The deployment profile sourcePvf does not match the source recorded by the apply manifest.",
+      (samePath(profile.sourcePvf, apply.protectedSourcePvf) ||
+        samePath(prospectiveRealPath(profile.sourcePvf), apply.protectedSourcePvfRealPath)),
+    "The deployment profile sourcePvf does not match the protected source recorded by the apply manifest.",
     "PROFILE_APPLY_SOURCE_MISMATCH",
+  );
+  const cumulativeInputExpected = apply.manifest.cumulative?.enabled === true
+    ? String(apply.manifest.cumulative.inputPvfSha256 || "").toLowerCase()
+    : String(apply.sourcePvfSha256 || "").toLowerCase();
+  assertCondition(
+    isSha256(cumulativeInputExpected) && cumulativeInputExpected === apply.sourcePvfSha256.toLowerCase(),
+    "Apply manifest input baseline does not match its verified input PVF.",
+    "APPLY_INPUT_BASELINE_MISMATCH",
+  );
+  const baselineContinuityOk =
+    client.clientPvfSha256.toLowerCase() === cumulativeInputExpected ||
+    client.clientPvfSha256.toLowerCase() === apply.outputPvfSha256.toLowerCase();
+  const baselineSwitchConfirmed = options.confirmBaselineSwitch === true;
+  assertCondition(
+    baselineContinuityOk || baselineSwitchConfirmed,
+    "客户端当前 PVF 不是这轮生成所基于的版本；继续会回退或覆盖另一条修改链。请改用正确的累积基线重新生成，或在确认主动切换基线时使用 --confirm-baseline-switch。",
+    "CLIENT_BASELINE_CONTINUITY_MISMATCH",
   );
 
   const runRoot = ensureExternalRunRoot(options.outRoot, client.clientRoot);
@@ -419,6 +462,8 @@ function createDeployPreview(options) {
     applyManifestSha256: apply.manifestSha256,
     sourcePvf: apply.sourcePvf,
     sourcePvfSha256: apply.sourcePvfSha256,
+    protectedSourcePvf: apply.protectedSourcePvf,
+    protectedSourcePvfSha256: apply.protectedSourcePvfSha256,
     outputPvf: apply.outputPvf,
     outputPvfSha256: apply.outputPvfSha256,
     outputPvfBytes: apply.outputPvfBytes,
@@ -429,6 +474,10 @@ function createDeployPreview(options) {
     clientPvfSha256Before: client.clientPvfSha256,
     clientPvfBytesBefore: client.clientPvfBytes,
     backupPath,
+    baselineInputPvfSha256: cumulativeInputExpected,
+    baselineContinuityOk,
+    baselineSwitchConfirmed,
+    applyInputIsClientTarget,
     deploymentManifestPath,
   };
   const binding = noChange ? null : makeBinding("DEPLOY", bindingInputs);
@@ -452,6 +501,10 @@ function createDeployPreview(options) {
     clientPvfSha256Before: client.clientPvfSha256,
     clientPvfBytesBefore: client.clientPvfBytes,
     backupPath,
+    baselineInputPvfSha256: cumulativeInputExpected,
+    baselineContinuityOk,
+    baselineSwitchConfirmed,
+    applyInputIsClientTarget,
     binding,
     safety: {
       writeOperationsExecuted: false,
@@ -461,7 +514,12 @@ function createDeployPreview(options) {
       applyManifestVerified: true,
       applyOutputSha256Verified: true,
       clientTargetSha256Bound: true,
-      sourceClientPathsDistinct: true,
+      baselineContinuityRequired: true,
+      baselineContinuityVerified: baselineContinuityOk,
+      explicitBaselineSwitchConfirmed: baselineSwitchConfirmed,
+      sourceClientPathsDistinct: !applyInputIsClientTarget,
+      protectedSourceClientPathsDistinct: true,
+      applyInputIsClientTarget,
       outputClientPathsDistinct: true,
       profileClientRootRequired: true,
       explicitAuthorizationRequired: true,
@@ -497,6 +555,11 @@ function validateDeployPreview(previewFile) {
   assertCondition(samePath(inputs.deploymentManifestPath, preview.deploymentManifestPath), "Deployment manifest path was altered.");
   assertCondition(samePath(inputs.clientPvf, preview.clientPvf), "Deployment client target was altered.");
   assertCondition(String(inputs.outputPvfSha256).toLowerCase() === String(preview.outputPvfSha256).toLowerCase(), "Deployment candidate hash was altered.");
+  assertCondition(inputs.baselineContinuityOk === true || inputs.baselineSwitchConfirmed === true, "Deployment preview lacks baseline continuity or an explicit branch switch.");
+  assertCondition(inputs.baselineInputPvfSha256 === preview.baselineInputPvfSha256, "Deployment input baseline was altered.");
+  assertCondition(inputs.baselineContinuityOk === preview.baselineContinuityOk, "Deployment baseline continuity evidence was altered.");
+  assertCondition(inputs.baselineSwitchConfirmed === preview.baselineSwitchConfirmed, "Deployment baseline-switch confirmation was altered.");
+  assertCondition(inputs.applyInputIsClientTarget === preview.applyInputIsClientTarget, "Deployment apply-input/client relationship was altered.");
   return {
     previewManifestPath,
     previewManifestSha256: sha256File(previewManifestPath),
@@ -683,9 +746,9 @@ function executeDeploy(options) {
   const apply = validateApplyManifest(loaded.inputs.applyManifest);
   assertCondition(
     typeof profile.sourcePvf === "string" &&
-      (samePath(profile.sourcePvf, apply.sourcePvf) ||
-        samePath(prospectiveRealPath(profile.sourcePvf), apply.sourcePvfRealPath)),
-    "The deployment profile sourcePvf changed or no longer matches the apply manifest.",
+      (samePath(profile.sourcePvf, apply.protectedSourcePvf) ||
+        samePath(prospectiveRealPath(profile.sourcePvf), apply.protectedSourcePvfRealPath)),
+    "The deployment profile sourcePvf changed or no longer matches the protected source in the apply manifest.",
     "PROFILE_APPLY_SOURCE_MISMATCH",
   );
   assertCondition(
@@ -702,10 +765,10 @@ function executeDeploy(options) {
     "Client Script.pvf changed after deployment preview. Create a new preview.",
     "STALE_CLIENT_TARGET",
   );
-  assertCondition(!samePath(client.clientPvf, apply.sourcePvf), "Refusing to overwrite the source PVF during client deployment.");
   assertCondition(
-    !samePath(client.clientPvfRealPath, apply.sourcePvfRealPath),
-    "Refusing to overwrite the resolved source PVF during client deployment.",
+    !samePath(client.clientPvf, apply.protectedSourcePvf) &&
+      !samePath(client.clientPvfRealPath, apply.protectedSourcePvfRealPath),
+    "Refusing to overwrite the protected source PVF during client deployment.",
   );
   assertCondition(!samePath(client.clientPvf, apply.outputPvf), "Refusing to deploy over the independent apply output.");
   assertCondition(
@@ -734,12 +797,18 @@ function executeDeploy(options) {
     applyManifestSha256: apply.manifestSha256,
     sourcePvf: apply.sourcePvf,
     sourcePvfSha256: apply.sourcePvfSha256,
+    protectedSourcePvf: apply.protectedSourcePvf,
+    protectedSourcePvfSha256: apply.protectedSourcePvfSha256,
     outputPvf: apply.outputPvf,
     outputPvfSha256: apply.outputPvfSha256,
     clientRoot: client.clientRoot,
     clientPvf: client.clientPvf,
     clientPvfSha256Before: client.clientPvfSha256,
     clientPvfSha256After: apply.outputPvfSha256,
+    baselineInputPvfSha256: loaded.inputs.baselineInputPvfSha256,
+    baselineContinuityOk: loaded.inputs.baselineContinuityOk,
+    baselineSwitchConfirmed: loaded.inputs.baselineSwitchConfirmed,
+    applyInputIsClientTarget: loaded.inputs.applyInputIsClientTarget,
     backupPath: expectedBackupPath,
     backup: null,
     replacement: {
@@ -752,11 +821,16 @@ function executeDeploy(options) {
       separateClientAuthorizationVerified: true,
       clientClosedConfirmed: true,
       sourcePvfModified: false,
+      protectedSourcePvfModified: false,
+      applyInputIsClientTarget: loaded.inputs.applyInputIsClientTarget,
+      applyInputPvfModifiedByDeployment: false,
       applyOutputModified: false,
       clientPvfWritten: false,
       nonPvfClientResourceWrite: false,
       backupVerifiedBeforeReplace: false,
       currentClientSha256Bound: true,
+      baselineContinuityVerified: loaded.inputs.baselineContinuityOk === true,
+      explicitBaselineSwitchConfirmed: loaded.inputs.baselineSwitchConfirmed === true,
       postDeploySha256Readback: false,
       rollbackAvailable: false,
     },
@@ -779,6 +853,8 @@ function executeDeploy(options) {
     );
     manifest.replacement = { ...manifest.replacement, ...replacement };
     manifest.safety.clientPvfWritten = true;
+    manifest.safety.sourcePvfModified = loaded.inputs.applyInputIsClientTarget === true;
+    manifest.safety.applyInputPvfModifiedByDeployment = loaded.inputs.applyInputIsClientTarget === true;
     manifest.safety.postDeploySha256Readback = true;
     manifest.safety.rollbackAvailable = true;
     const completionInputs = {
@@ -791,6 +867,11 @@ function executeDeploy(options) {
       clientPvf: client.clientPvf,
       clientPvfSha256Before: client.clientPvfSha256,
       clientPvfSha256After: apply.outputPvfSha256,
+      baselineInputPvfSha256: loaded.inputs.baselineInputPvfSha256,
+      baselineContinuityOk: loaded.inputs.baselineContinuityOk,
+      baselineSwitchConfirmed: loaded.inputs.baselineSwitchConfirmed,
+      applyInputIsClientTarget: loaded.inputs.applyInputIsClientTarget,
+      applyInputPvfModifiedByDeployment: loaded.inputs.applyInputIsClientTarget === true,
       backupPath: backup.path,
       backupSha256: backup.sha256,
     };
@@ -810,6 +891,8 @@ function executeDeploy(options) {
       recovery: error.recovery || null,
     };
     manifest.safety.clientPvfWritten = actualTargetSha256 === apply.outputPvfSha256;
+    manifest.safety.sourcePvfModified = loaded.inputs.applyInputIsClientTarget === true && actualTargetSha256 !== client.clientPvfSha256;
+    manifest.safety.applyInputPvfModifiedByDeployment = manifest.safety.sourcePvfModified;
     manifest.safety.postDeploySha256Readback = actualTargetSha256 === apply.outputPvfSha256;
     manifest.safety.rollbackAvailable = Boolean(manifest.backup?.sha256 === client.clientPvfSha256);
     appendState(manifest, restored ? "failed-restored" : "recovery-required");
@@ -825,7 +908,11 @@ function validateDeploymentManifest(manifestFile) {
   assertCondition(manifest.schemaVersion === "1.0", "Deployment manifest schemaVersion must be 1.0.");
   assertCondition(manifest.phase === "client-pvf-deployment", "Unexpected deployment manifest phase.");
   assertCondition(manifest.status === "deployed", "Deployment manifest is not in deployed state.");
-  assertCondition(manifest.safety?.sourcePvfModified === false, "Deployment manifest does not preserve the source PVF.");
+  assertCondition(
+    manifest.safety?.protectedSourcePvfModified === false ||
+      (manifest.safety?.protectedSourcePvfModified === undefined && manifest.safety?.sourcePvfModified === false),
+    "Deployment manifest does not preserve the original protected source PVF.",
+  );
   assertCondition(manifest.safety?.applyOutputModified === false, "Deployment manifest does not preserve the apply output.");
   assertCondition(manifest.safety?.nonPvfClientResourceWrite === false, "Deployment manifest includes unsupported client resources.");
   assertCondition(manifest.safety?.backupVerifiedBeforeReplace === true, "Deployment backup was not verified.");
@@ -838,6 +925,14 @@ function validateDeploymentManifest(manifestFile) {
   assertCondition(samePath(inputs.clientPvf, manifest.clientPvf), "Deployment target differs from its completion binding.");
   assertCondition(inputs.clientPvfSha256Before === manifest.clientPvfSha256Before, "Deployment before-hash differs from its binding.");
   assertCondition(inputs.clientPvfSha256After === manifest.clientPvfSha256After, "Deployment after-hash differs from its binding.");
+  assertCondition(inputs.baselineInputPvfSha256 === manifest.baselineInputPvfSha256, "Deployment input baseline differs from its completion binding.");
+  assertCondition(inputs.baselineContinuityOk === manifest.baselineContinuityOk, "Deployment baseline continuity differs from its completion binding.");
+  assertCondition(inputs.baselineSwitchConfirmed === manifest.baselineSwitchConfirmed, "Deployment baseline-switch evidence differs from its completion binding.");
+  assertCondition(inputs.applyInputIsClientTarget === manifest.applyInputIsClientTarget, "Deployment apply-input/client relationship differs from its completion binding.");
+  assertCondition(
+    inputs.applyInputPvfModifiedByDeployment === manifest.safety?.applyInputPvfModifiedByDeployment,
+    "Deployment apply-input modification evidence differs from its completion binding.",
+  );
   assertCondition(samePath(inputs.backupPath, manifest.backupPath), "Deployment backup differs from its binding.");
   assertCondition(inputs.backupSha256 === manifest.backup?.sha256, "Deployment backup hash differs from its binding.");
   return {
@@ -1198,7 +1293,7 @@ function selfTest(options) {
     const markerNpk = path.join(clientRoot, "marker.npk");
     fs.writeFileSync(sourcePvf, "source-pvf-fixture-v1\n", "utf8");
     fs.writeFileSync(outputPvf, "output-pvf-fixture-v2\n", "utf8");
-    fs.writeFileSync(clientPvf, "client-pvf-fixture-v1\n", "utf8");
+    fs.writeFileSync(clientPvf, "source-pvf-fixture-v1\n", "utf8");
     fs.writeFileSync(markerNpk, "npk-marker-must-not-change\n", "utf8");
     const sourceSha = sha256File(sourcePvf);
     const outputSha = sha256File(outputPvf);
@@ -1253,8 +1348,128 @@ function selfTest(options) {
     });
     checks.push({
       id: "preview-does-not-write-client",
-      ok: preview.ready === true && sha256File(clientPvf) === originalClientSha && sha256File(markerNpk) === markerSha,
+      ok:
+        preview.ready === true && preview.safety.baselineContinuityVerified === true &&
+        sha256File(clientPvf) === originalClientSha && sha256File(markerNpk) === markerSha,
     });
+    fs.writeFileSync(clientPvf, "unrelated-client-baseline\n", "utf8");
+    expectFailure(
+      checks,
+      "unrelated-client-baseline-rejected-before-preview",
+      () => createDeployPreview({
+        policy,
+        profile,
+        applyManifestPath,
+        outRoot: path.join(tempRoot, "runs", "baseline-mismatch"),
+      }),
+      "CLIENT_BASELINE_CONTINUITY_MISMATCH",
+    );
+    const explicitSwitchPreview = createDeployPreview({
+      policy,
+      profile,
+      applyManifestPath,
+      outRoot: path.join(tempRoot, "runs", "explicit-baseline-switch"),
+      confirmBaselineSwitch: true,
+    });
+    checks.push({
+      id: "explicit-baseline-switch-is-bound-in-preview",
+      ok:
+        explicitSwitchPreview.ready === true &&
+        explicitSwitchPreview.safety.baselineContinuityVerified === false &&
+        explicitSwitchPreview.safety.explicitBaselineSwitchConfirmed === true,
+    });
+    const cumulativeClientInputManifestPath = path.join(applyDir, "APPLY-MANIFEST-CUMULATIVE-CLIENT-INPUT.json");
+    const cumulativeClientInputManifest = JSON.parse(JSON.stringify(applyManifest));
+    cumulativeClientInputManifest.sourcePvf = clientPvf;
+    cumulativeClientInputManifest.sourcePvfSha256 = originalClientSha;
+    cumulativeClientInputManifest.protectedSourcePvf = sourcePvf;
+    cumulativeClientInputManifest.protectedSourcePvfSha256 = sourceSha;
+    cumulativeClientInputManifest.cumulative = {
+      enabled: true,
+      inputPvf: clientPvf,
+      inputPvfSha256: originalClientSha,
+    };
+    writeJson(cumulativeClientInputManifestPath, cumulativeClientInputManifest);
+    fs.writeFileSync(clientPvf, "source-pvf-fixture-v1\n", "utf8");
+    const cumulativeClientInputRun = path.join(tempRoot, "runs", "cumulative-client-input");
+    const cumulativeClientInputPreview = createDeployPreview({
+      policy,
+      profile,
+      applyManifestPath: cumulativeClientInputManifestPath,
+      outRoot: cumulativeClientInputRun,
+    });
+    checks.push({
+      id: "cumulative-readonly-input-may-match-current-client",
+      ok:
+        cumulativeClientInputPreview.ready === true &&
+        cumulativeClientInputPreview.safety.baselineContinuityVerified === true &&
+        cumulativeClientInputPreview.applyInputIsClientTarget === true &&
+        cumulativeClientInputPreview.safety.sourceClientPathsDistinct === false &&
+        cumulativeClientInputPreview.safety.protectedSourceClientPathsDistinct === true &&
+        sha256File(clientPvf) === originalClientSha,
+    });
+    const cumulativeClientInputDeployment = executeDeploy({
+      policy,
+      profile,
+      previewManifestPath: cumulativeClientInputPreview.previewManifestPath,
+      authorizationCode: cumulativeClientInputPreview.binding.approvalCode,
+      clientClosedConfirmed: true,
+    });
+    checks.push({
+      id: "cumulative-client-input-deploy-records-true-source-boundary",
+      ok:
+        cumulativeClientInputDeployment.status === "deployed" &&
+        cumulativeClientInputDeployment.applyInputIsClientTarget === true &&
+        cumulativeClientInputDeployment.safety.sourcePvfModified === true &&
+        cumulativeClientInputDeployment.safety.protectedSourcePvfModified === false &&
+        cumulativeClientInputDeployment.safety.applyInputPvfModifiedByDeployment === true &&
+        sha256File(clientPvf) === outputSha &&
+        sha256File(sourcePvf) === sourceSha &&
+        sha256File(outputPvf) === outputSha,
+    });
+    const cumulativeClientInputRollbackPreview = createRollbackPreview({
+      policy,
+      profile,
+      deploymentManifestPath: cumulativeClientInputDeployment.manifestPath,
+      outRoot: path.join(tempRoot, "runs", "cumulative-client-input-rollback"),
+    });
+    const cumulativeClientInputRollback = executeRollback({
+      policy,
+      profile,
+      previewManifestPath: cumulativeClientInputRollbackPreview.previewManifestPath,
+      authorizationCode: cumulativeClientInputRollbackPreview.binding.approvalCode,
+      clientClosedConfirmed: true,
+    });
+    checks.push({
+      id: "cumulative-client-input-rollback-restores-prior-version",
+      ok:
+        cumulativeClientInputRollback.status === "rolled-back" &&
+        sha256File(clientPvf) === originalClientSha &&
+        sha256File(sourcePvf) === sourceSha &&
+        sha256File(outputPvf) === outputSha &&
+        sha256File(markerNpk) === markerSha,
+    });
+    fs.writeFileSync(clientPvf, "unrelated-client-baseline\n", "utf8");
+    const tamperedCumulativeApplyManifestPath = path.join(applyDir, "APPLY-MANIFEST-TAMPERED-CUMULATIVE.json");
+    const tamperedCumulativeApplyManifest = JSON.parse(JSON.stringify(applyManifest));
+    tamperedCumulativeApplyManifest.cumulative = {
+      enabled: true,
+      inputPvfSha256: outputSha,
+    };
+    writeJson(tamperedCumulativeApplyManifestPath, tamperedCumulativeApplyManifest);
+    expectFailure(
+      checks,
+      "tampered-cumulative-input-baseline-rejected",
+      () => createDeployPreview({
+        policy,
+        profile,
+        applyManifestPath: tamperedCumulativeApplyManifestPath,
+        outRoot: path.join(tempRoot, "runs", "tampered-cumulative-input"),
+        confirmBaselineSwitch: true,
+      }),
+      "APPLY_INPUT_BASELINE_MISMATCH",
+    );
+    fs.writeFileSync(clientPvf, "source-pvf-fixture-v1\n", "utf8");
     expectFailure(
       checks,
       "wrong-deploy-code-rejected",
@@ -1295,7 +1510,7 @@ function selfTest(options) {
         }),
       "STALE_CLIENT_TARGET",
     );
-    fs.writeFileSync(clientPvf, "client-pvf-fixture-v1\n", "utf8");
+    fs.writeFileSync(clientPvf, "source-pvf-fixture-v1\n", "utf8");
 
     const deployment = executeDeploy({
       policy,
@@ -1464,6 +1679,8 @@ function selfTest(options) {
       ...applyManifest,
       sourcePvf: clientPvf,
       sourcePvfSha256: originalClientSha,
+      protectedSourcePvf: clientPvf,
+      protectedSourcePvfSha256: originalClientSha,
     };
     writeJson(collisionManifestPath, collisionManifest);
     expectFailure(
@@ -1531,6 +1748,7 @@ function main() {
       profile,
       applyManifestPath: requireOption("--apply-manifest"),
       outRoot,
+      confirmBaselineSwitch: flag("--confirm-baseline-switch"),
     });
     process.stdout.write(JSON.stringify(visibleDeployPreview(preview), null, 2) + "\n");
     return;

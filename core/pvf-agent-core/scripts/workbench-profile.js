@@ -1,8 +1,15 @@
 "use strict";
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
-const { loadWorkspaceProfiles, resolveProfile } = require("../lib/workspace-profiles");
+const {
+  ensureWorkspaceProfilesState,
+  loadWorkspaceProfiles,
+  resolveProfile,
+  selectedLocalProfilesConfig,
+  writeLocalWorkspaceProfiles,
+} = require("../lib/workspace-profiles");
 
 const rawArgs = process.argv.slice(2);
 const rootArgIndex = rawArgs.indexOf("--root");
@@ -20,10 +27,11 @@ function usage() {
   workbench.bat profile show [--name <profile>]
   workbench.bat profile select --name <profile>
   workbench.bat profile init --name <profile> --workspace <dir> --source-pvf <Script.pvf> --output <dir> [--client <dir>] [--materials <dir>] [--set-active] [--force]
+  workbench.bat profile self-test
 
 Notes:
-  Local profiles are written to config/workspace-profiles.local.json.
-  That file is machine-specific and ignored by git/packages.
+  Local profiles are written outside the Workbench under PVF-Agent-Workbench-State.
+  A legacy config/workspace-profiles.local.json is copied there on the first profile command.
   Use one profile per test client. The client field records the client root containing Script.pvf.
   Client writes remain off by default; workbench.bat client-pvf requires a separate preview and confirmation.
 `;
@@ -62,27 +70,24 @@ function printJson(value) {
 }
 
 function localProfilesPath() {
-  return path.join(workbenchRoot, "config", "workspace-profiles.local.json");
+  return selectedLocalProfilesConfig(workbenchRoot).path;
 }
 
 function readLocalConfig() {
-  const file = localProfilesPath();
-  if (!fs.existsSync(file)) {
+  const selected = selectedLocalProfilesConfig(workbenchRoot);
+  if (!selected.data) {
     return {
-      $schema: "../core/pvf-agent-core/schemas/workspace-profiles.schema.json",
       schemaVersion: "1.0",
       activeProfile: null,
       profiles: [],
     };
   }
-  return JSON.parse(fs.readFileSync(file, "utf8"));
+  return selected.data;
 }
 
 function writeLocalConfig(config) {
-  const file = localProfilesPath();
-  fs.mkdirSync(path.dirname(file), { recursive: true });
-  fs.writeFileSync(file, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-  return file;
+  ensureWorkspaceProfilesState(workbenchRoot);
+  return writeLocalWorkspaceProfiles(workbenchRoot, config);
 }
 
 function normalizePath(value) {
@@ -152,8 +157,10 @@ function commandStatus() {
     ok: true,
     command: "status",
     workbenchRoot,
-    localProfilesPath: localProfilesPath(),
-    localProfilesExists: fs.existsSync(localProfilesPath()),
+    localProfilesPath: registry.localProfilesPath,
+    localProfilesExists: Boolean(registry.localProfilesSource),
+    localProfilesSource: registry.localProfilesSource,
+    legacyMigrationPending: registry.localProfilesSource === "legacy-local",
     activeProfile: registry.activeProfile || null,
     activeProfileSource: active?.profileSource || null,
     profileCount: registry.profiles.length,
@@ -242,7 +249,7 @@ function commandInit() {
     },
     safety: defaultSafety(),
     notes: [
-      "Machine-local profile. Keep config/workspace-profiles.local.json private.",
+      "Machine-local profile. Keep the external PVF-Agent-Workbench-State profile store private.",
       "Default write mode remains disabled; use controlled-output change-set apply only after explicit authorization.",
       "The client root is used only by the separately previewed and authorized client-pvf deployment lane.",
     ],
@@ -265,6 +272,104 @@ function commandInit() {
     activeProfile: config.activeProfile,
     profile: summarizeProfile(profile),
   });
+}
+
+function commandSelfTest() {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "pvf-profile-state-self-test-"));
+  const fixtureWorkbench = path.join(tempRoot, "workbench");
+  const stateBase = path.join(tempRoot, "external-state");
+  const previousStateRoot = process.env.PVF_WORKBENCH_PROFILE_STATE_ROOT;
+  const checks = [];
+  try {
+    fs.mkdirSync(path.join(fixtureWorkbench, "config"), { recursive: true });
+    const baseConfig = {
+      schemaVersion: "1.0",
+      activeProfile: null,
+      profiles: [{
+        name: "disabled-example", enabled: false,
+        workspace: "D:\\Example", sourcePvf: "D:\\Example\\Script.pvf", output: "D:\\Example\\output",
+        pvfEncoding: { open: "Tw", readWrite: "Cn" }, safety: defaultSafety(),
+      }],
+    };
+    const legacyConfig = {
+      schemaVersion: "1.0",
+      activeProfile: "main-local",
+      profiles: [{
+        name: "main-local", enabled: true,
+        workspace: "E:\\Fixture", sourcePvf: "E:\\Fixture\\Script.pvf", output: "E:\\Fixture\\output",
+        client: "E:\\Fixture\\client", materials: null,
+        pvfEncoding: { open: "Tw", readWrite: "Cn" }, safety: defaultSafety(),
+      }],
+    };
+    fs.writeFileSync(path.join(fixtureWorkbench, "config", "workspace-profiles.json"), `${JSON.stringify(baseConfig, null, 2)}\n`, "utf8");
+    const legacyPath = path.join(fixtureWorkbench, "config", "workspace-profiles.local.json");
+    fs.writeFileSync(legacyPath, `${JSON.stringify(legacyConfig, null, 2)}\n`, "utf8");
+    process.env.PVF_WORKBENCH_PROFILE_STATE_ROOT = stateBase;
+
+    const before = loadWorkspaceProfiles(fixtureWorkbench);
+    checks.push({
+      id: "legacy-profile-remains-readable-and-auto-migrates",
+      ok:
+        before.activeProfile === "main-local" && before.localProfilesSource === "state" &&
+        before.get("main-local")?.enabled === true && fs.existsSync(before.stateLocalProfilesPath),
+    });
+    const migration = ensureWorkspaceProfilesState(fixtureWorkbench);
+    checks.push({
+      id: "external-profile-store-is-stable-after-auto-migration",
+      ok:
+        migration.migrated === false && migration.migratedFrom === null &&
+        fs.existsSync(migration.path) && !path.resolve(migration.path).startsWith(path.resolve(fixtureWorkbench) + path.sep),
+    });
+
+    // Simulate a Workbench refresh that replaces the old in-tree private
+    // file. The state copy must remain authoritative without searching other
+    // drives or importing an unrelated backup.
+    fs.rmSync(legacyPath, { force: true });
+    const afterRefresh = loadWorkspaceProfiles(fixtureWorkbench);
+    checks.push({
+      id: "external-profile-survives-workbench-refresh",
+      ok:
+        afterRefresh.activeProfile === "main-local" && afterRefresh.localProfilesSource === "state" &&
+        afterRefresh.get("main-local")?.sourcePvf === "E:\\Fixture\\Script.pvf",
+    });
+
+    const updated = JSON.parse(JSON.stringify(legacyConfig));
+    updated.profiles[0].output = "E:\\Fixture\\output-v2";
+    writeLocalWorkspaceProfiles(fixtureWorkbench, updated);
+    const afterWrite = loadWorkspaceProfiles(fixtureWorkbench);
+    checks.push({
+      id: "profile-writes-stay-in-external-state",
+      ok:
+        afterWrite.get("main-local")?.output === "E:\\Fixture\\output-v2" &&
+        !fs.existsSync(legacyPath) && afterWrite.localProfilesSource === "state",
+    });
+    const rewritten = JSON.parse(fs.readFileSync(afterWrite.localProfilesPath, "utf8"));
+    checks.push({
+      id: "existing-external-profile-is-atomically-replaced",
+      ok:
+        rewritten.profiles?.[0]?.output === "E:\\Fixture\\output-v2" &&
+        fs.readdirSync(path.dirname(afterWrite.localProfilesPath)).every((name) => !name.endsWith(".previous") && !name.endsWith(".tmp")),
+    });
+  } finally {
+    if (previousStateRoot === undefined) delete process.env.PVF_WORKBENCH_PROFILE_STATE_ROOT;
+    else process.env.PVF_WORKBENCH_PROFILE_STATE_ROOT = previousStateRoot;
+    if (!path.resolve(tempRoot).startsWith(path.resolve(os.tmpdir()) + path.sep)) {
+      throw new Error(`Unsafe profile self-test cleanup path: ${tempRoot}`);
+    }
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+  const report = {
+    schemaVersion: "1.0",
+    phase: "workspace-profile-state-self-test",
+    summary: {
+      ok: checks.every((check) => check.ok),
+      checkCount: checks.length,
+      failedChecks: checks.filter((check) => !check.ok).length,
+    },
+    checks,
+  };
+  printJson(report);
+  if (!report.summary.ok) process.exitCode = 1;
 }
 
 function main() {
@@ -290,6 +395,10 @@ function main() {
   }
   if (command === "init") {
     commandInit();
+    return;
+  }
+  if (command === "self-test") {
+    commandSelfTest();
     return;
   }
   throw new Error(`Unsupported command: ${command}`);

@@ -79,6 +79,9 @@ function main() {
     const evalRun = runNode(stageDir, "core/pvf-agent-core/scripts/agent-eval.js", ["self-test", "--out", path.join(stageRuntimeRoot, "agent-eval")]);
     addCheck(checks, errors, "stage.agent-eval-self-test", evalRun, (parsed) => parsed?.summary?.ok === true);
 
+    const profileRun = runNode(stageDir, "core/pvf-agent-core/scripts/workbench-profile.js", ["self-test"]);
+    addCheck(checks, errors, "stage.workspace-profile-state-self-test", profileRun, (parsed) => parsed?.summary?.ok === true);
+
     const changeSetRun = runNode(stageDir, "core/pvf-agent-core/cli/pvf-change-set.js", ["self-test"]);
     addCheck(checks, errors, "stage.pvf-change-authorization-self-test", changeSetRun, (parsed) => parsed?.summary?.ok === true);
 

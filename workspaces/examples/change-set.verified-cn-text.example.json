@@ -2,7 +2,7 @@
   "$schema": "../../core/pvf-agent-core/schemas/pvf-change-set.schema.json",
   "schemaVersion": "1.0",
   "mode": "dry-run-only",
-  "description": "安全修改普通脚本中的一个完整中文名称字段（本例为 Cn；繁体目标应使用 Tw）",
+  "description": "同一脚本中联动修改参数块和完整多行中文说明，并示范先清空完整中文、再删除其所在结构（本例为 Cn；重复文字定位见 context-anchored 示例）",
   "target": {
     "sourcePvf": "D:\\MyDNFWork\\Script.pvf",
     "pvfOpenEncoding": "Tw",
@@ -10,15 +10,56 @@
   },
   "changes": [
     {
-      "id": "replace-visible-name",
+      "id": "replace-parameter-block",
       "type": "replace-text",
       "pvfPath": "stackable/example.stk",
-      "previousText": "`旧名称`",
-      "newText": "`新名称`",
+      "previousText": "[value]\r\n10",
+      "newText": "[value]\r\n20",
+      "replaceAll": false,
+      "pvfEncoding": "Cn",
+      "rationale": "参数和结构只使用目标原始读回中的完整 token 边界"
+    },
+    {
+      "id": "replace-visible-explain",
+      "type": "replace-text",
+      "pvfPath": "stackable/example.stk",
+      "previousText": "`旧说明第一行\r\n旧说明第二行`",
+      "newText": "`新说明第一行\r\n新说明第二行`",
       "replaceAll": false,
       "textWriteMode": "verified-inline-text",
       "pvfEncoding": "Cn",
-      "rationale": "只替换一个完整、可见的名称字段；pvfEncoding 必须来自目标原文；预演时先临时写出并独立复查"
+      "rationale": "替换完整多行文字 token；工作台会把本文件两条变化合并验证"
+    },
+    {
+      "id": "clear-dependent-option-explain",
+      "type": "replace-text",
+      "pvfPath": "equipment/example.equ",
+      "previousText": "`待删除说明`",
+      "newText": "``",
+      "replaceAll": false,
+      "textWriteMode": "verified-inline-text",
+      "pvfEncoding": "Cn",
+      "rationale": "删除链第 1 步：先按完整文字 token 清空中文；此变化必须排在依赖它的结构删除之前"
+    },
+    {
+      "id": "delete-empty-explain-section",
+      "type": "replace-text",
+      "pvfPath": "equipment/example.equ",
+      "previousText": "\r\n[explain]\r\n``\r\n",
+      "newText": "",
+      "replaceAll": false,
+      "pvfEncoding": "Cn",
+      "rationale": "删除链第 2 步：只删除已经不含中文的完整字段结构；文本必须逐字来自同次原始读回"
+    },
+    {
+      "id": "delete-dependent-option-block",
+      "type": "replace-text",
+      "pvfPath": "equipment/example.equ",
+      "previousText": "[option]\r\n[value]\r\n30\r\n[/option]\r\n",
+      "newText": "",
+      "replaceAll": false,
+      "pvfEncoding": "Cn",
+      "rationale": "删除链第 3 步：前一步完成后，再删除剩余的完整纯结构块；数组顺序就是依赖顺序"
     }
   ],
   "safety": {

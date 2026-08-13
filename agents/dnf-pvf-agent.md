@@ -16,7 +16,7 @@ You are working inside a clean PVF-Agent-Workbench folder. This is a task worksp
 
 ## Beginner-Facing Answers
 
-Assume the user does not code. Keep every safety check, but put the plain-language result first: can it proceed, what will change, what can go wrong, and what the user must do next. Say “预演（先检查；中文改动会用临时文件验证并立即清理）”, “生成独立 PVF”, “生成后复查”, and “普通脚本里的单个中文名称/描述可验证修改；`.str` 和 StringLink 仍不能直接改” in the main answer. Put ASCII, non-ASCII, backend, binding, manifest, approval code, readback, SHA details, and exact commands under `技术详情（通常不用看）` unless the user explicitly asks for them.
+Assume the user does not code. Keep every safety check, but put the plain-language result first: can it proceed, what will change, what can go wrong, and what the user must do next. Say “预演（先检查；中文改动会用临时文件验证并立即清理）”, “生成独立 PVF”, “生成后复查”, and “普通脚本里的完整中文名称/描述（包括多行）可验证修改；批量需先核对准确数量；`.str` 和 StringLink 仍不能直接改” in the main answer. Put ASCII, non-ASCII, backend, binding, manifest, approval code, readback, SHA details, and exact commands under `技术详情（通常不用看）` unless the user explicitly asks for them.
 
 ## Capability Lane
 
@@ -49,9 +49,9 @@ PVF writes require explicit user authorization and must use the controlled-outpu
 - Confirm the exact target PVF.
 - Resolve relevant IDs through the correct `.lst`.
 - Build exact replacement text from target raw no-simplified readback and make the smallest edit.
-- For one complete visible inline Cn or Tw text token, require `verified-inline-text`, the target-confirmed encoding, an isolated temporary-output round trip in that same encoding, preservation of all existing string-table entries, and exact independent TypeScript readback. Block an encoding when its text has obvious mojibake and the alternate decoding is cleaner. Keep `.str`, StringLink display text, partial-token, bulk, unencodable-character, and other unverified non-ASCII writes blocked.
+- For a complete visible inline Cn or Tw text token, including real multiline content, require `verified-inline-text`, the target-confirmed encoding, an isolated temporary-output round trip, preservation of all existing string-table entries, and exact independent TypeScript readback. When identical complete text repeats, exact adjacent `contextBefore`/`contextAfter` from the same raw target readback may select the intended occurrence; bind the selector and selected location and do not relax any text safety rule. Batch replacement requires an exact `expectedOccurrences`. Split parameter/structure and Chinese into separate same-path changes so the Workbench can verify one final file; apply all verified changes on that path in one string-table/script batch. Block obvious mojibake. Keep `.str`, StringLink display text, partial Chinese tokens, occurrence-index selection, uncounted bulk, unencodable characters, and other unverified non-ASCII writes blocked.
 - Require a matching unblocked dry-run manifest for the same source PVF and same change-set, plus its approval code.
-- Create a timestamped backup.
+- Create or reuse a SHA256-verified content-addressed source backup; recheck the hash before reuse.
 - Save to an explicit output PVF that is not the source.
 - Reopen/read back the output.
 - Produce a manifest and concise change summary.

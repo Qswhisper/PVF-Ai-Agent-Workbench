@@ -66,13 +66,14 @@
 ## 已验证写入边界
 
 - 语义读取已覆盖 `.str`、StringLink、中文脚本搜索、含非 ASCII 的脚本以及 `Cn`/`Tw` 冲突；这是自动只读保护。若请求编码呈现明显乱码而会话编码更可信，结果会保留正常文本并标出实际选择。
+- 普通 `pvf-read read`/`read-batch` 是便于阅读的显示结果，可能简体化中文或整理布局；返回的 `textUsage.safeForChangeSetSource=false` 明确禁止把它复制为修改原文。只有对同一路径使用 `--raw` 才得到 change-set 所需的规范 token；未指定编码时会只读比较 Cn/Tw，并在 `textUsage.automaticEncodingSelection.perFile[].selectedEncoding` 公开明显更干净的选择，不做逐段混合解码或自动写入。预演零命中可诊断显示文本误用或声明编码不一致，但只给出重新原始读取的恢复路线，不会自动改写繁简变体或跨编码写入。
 - 数字或 ASCII 最小替换可以使用正确语义源文本、受控输出和 fallback 读回；触达文本承载文件时仍要求客户端 UI smoke check。
-- 普通脚本中一个完整、明确的可见反引号文本可以使用 `textWriteMode: "verified-inline-text"` 和目标确认的 `Cn` 或 `Tw`。它只按同一编码追加一个新字符串表条目，并把目标脚本的一个文本 token 指向新条目；预演必须生成隔离临时输出、由独立 TypeScript 解析器按同一编码精确读回，并证明所有旧字符串条目保持不变。明显乱码且另一编码更可信时会失败关闭；旧字段为 ASCII 或空字符串时，还必须从同一脚本的已有中文取得编码证据。
+- 普通脚本中完整、明确的可见反引号文本可以使用 `textWriteMode: "verified-inline-text"` 和目标确认的 `Cn` 或 `Tw`；完整 token 可以含真实多行。相同完整文本重复时，可用来自同一次原始读回、紧邻目标的 `contextBefore`/`contextAfter` 联合定位；上下文不得包含目标文本，其选择器和具体位置会进入核验绑定，但不扩大写入权限。每个命中会追加新字符串表条目并改指向，所有旧条目必须保持不变；同一文件的所有文字命中合并为一次字符串表重建和一次脚本补丁。单点要求锚定后恰好 1 次；批量必须声明精确 `expectedOccurrences`。预演生成隔离临时输出并由独立 TypeScript 解析器精确读回；明显乱码或编码证据不足时失败关闭。
 - 首期只接受已确认的显示承载类型（如 `.stk`、`.equ`、`.qst`、`.dgn`、`.map`、`.aic`、`.cre`、`.skl` 等）；`.co`、`.lst`、NUT 和其他未批准类型继续阻断。
-- `.str`、StringLink 显示文本、部分 token、批量中文替换、无法编码字符和其他未验证中文写入仍失败关闭，不能生成 approval code。
+- 参数/结构改动使用普通 `replace-text`，完整原始 token 边界必须来自 `pvf-read read --raw` 或 `read-batch --raw`；该模式与写入校验使用同一个独立规范布局。与中文联动时拆为同路径多条变化，Workbench 按一个最终文件验证；若结构删除依赖前面的完整文字清空，则 change-set 数组顺序具有语义，文字批次仍只执行一次。`.str`、StringLink 显示文本、部分中文 token、未声明准确数量的批量、无法编码字符和其他未验证中文写入仍失败关闭。
 
 边界：
 
-- 直接中文能力只覆盖普通脚本中允许标签下的单个完整文本 token，不覆盖名称表、`.str`、StringLink 或任意逻辑字符串。
+- 直接中文能力只覆盖普通脚本中允许标签下的完整文本 token，不覆盖名称表、`.str`、StringLink 或任意逻辑字符串。
 - PVF 读回正常不等于客户端 UI 文本安全。
 - 任何触达中文字符串或 StringLink 样 token 的输出，部署后都要检查相关 NPC、道具名、道具描述、副本入口或副本文本。

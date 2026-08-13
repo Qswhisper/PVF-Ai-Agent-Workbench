@@ -15,18 +15,19 @@
     ]
   },
   "commands": {
-    "preview": "Verify a successful apply manifest, bind its output SHA256 and the current client Script.pvf SHA256, then emit a deployment approval code without touching the client.",
+    "preview": "Verify a successful apply manifest, bind its output SHA256 and the current client Script.pvf SHA256, require the current client to match the apply input unless an explicit baseline switch is declared, then emit a deployment approval code without touching the client.",
     "deploy": "Require the bound approval code and explicit client-closed confirmation, preserve a content-addressed backup, perform a same-directory staged replacement, and verify the deployed SHA256.",
     "rollback-preview": "Bind a completed deployment manifest, the current deployed SHA256, and the exact backup SHA256 without touching the client.",
     "rollback": "Require the bound rollback code and explicit client-closed confirmation, back up the current deployed version, restore through same-directory staging, and verify the restored SHA256.",
-    "self-test": "Exercise preview, stale-target rejection, authorization rejection, backup deduplication, deployment, rollback, and non-PVF preservation with temporary fixtures only."
+    "self-test": "Exercise preview, stale-target and baseline-continuity rejection, explicit branch switching, authorization rejection, backup deduplication, deployment, rollback, and non-PVF preservation with temporary fixtures only."
   },
   "invariants": [
     "Default client writes remain disabled.",
     "Preview never writes the client.",
     "An apply output is deployable only when APPLY-MANIFEST.json binds its full SHA256 after successful readback.",
-    "The profile sourcePvf must match the apply manifest and retain its bound SHA256.",
-    "The source PVF, apply output PVF, and client target must be distinct.",
+    "The profile sourcePvf must match the apply manifest's original protected source and retain its bound SHA256.",
+    "The current client must match the apply input (or already match the candidate output); a divergent baseline requires an explicitly bound branch-switch confirmation.",
+    "The original protected source, apply output PVF, and client target must be distinct; in a cumulative round the read-only apply input may be the client's already deployed prior version when their SHA256 values match.",
     "The current client SHA256 is rechecked immediately before replacement.",
     "A verified backup exists before the client target is replaced.",
     "Backups are content-addressed and never overwritten.",

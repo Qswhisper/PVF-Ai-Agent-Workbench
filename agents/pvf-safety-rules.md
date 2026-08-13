@@ -48,7 +48,7 @@
 - `verified-inline-text` 是唯一例外：为了证明编码安全，dry-run 可在外部运行状态目录临时启动受控 writer，按目标确认的 `Cn` 或 `Tw` 生成隔离输出并交给独立 TypeScript 解析器以同一编码精确读回；临时输出必须立即清理，源 PVF 不变，失败时不给 approval code。
 - dry-run manifest 的 `writeOperationsExecuted=false` 表示没有保留或交付 PVF 输出；中文路线必须另记临时验证已执行且输出未保留。
 - dry-run 不创建源 PVF 备份，不把临时验证文件当作正式 output；`readOnly=true` 时中文临时验证以 `READ_ONLY_FALLBACK` 停止。
-- 后续真正 apply 前仍必须重新确认目标 PVF、创建备份、保存到显式输出路径并 readback。
+- 后续真正 apply 前仍必须重新确认目标 PVF、创建或复用经 SHA256 核对的内容寻址备份、保存到显式输出路径并 readback。
 
 ## 受控 apply 要求
 
@@ -56,10 +56,10 @@
 
 - 用户确认目标 PVF。
 - 使用目标 PVF 的 raw no-simplified 精确文本，不写回简体化显示文本或 HTML 数字实体。
-- 普通脚本单个中文名称/描述必须使用完整反引号 token、`verified-inline-text`、目标确认的 `Cn` 或 `Tw` 与非批量替换；dry-run 和 apply 后均需按同一编码独立精确读回并证明旧字符串表条目未变。明显乱码而另一编码更可信时必须阻断。`.str`、StringLink 显示文本和未验证中文继续阻断。
+- 普通脚本中文名称/描述必须覆盖完整反引号 token；token 可含真实换行。使用 `verified-inline-text` 与目标确认的 `Cn` 或 `Tw`；相同完整文本重复时，可使用同一次原始读回中紧邻目标的 `contextBefore`/`contextAfter` 联合定位，锚定后仍须精确命中且不得放松其他文本保护；批量时必须同时填写精确 `expectedOccurrences`，数量不符即停止。参数/结构与中文拆为同一路径的独立 change，工作台按一个最终文件联动验证；同一路径的多条文字一次追加字符串表、一次修改脚本，dry-run 和 apply 后均需按同一编码独立精确读回并证明旧字符串表条目未变。`.str`、StringLink 显示文本、部分中文 token、出现序号定位和未验证中文继续阻断。
 - 提供同一源 PVF、同一 change-set 的未阻塞 dry-run manifest 和 approval code。
 - 工具层确认源 PVF 不允许覆盖，输出路径必须显式指定。
-- 备份路径带时间戳。
+- 源 PVF 备份按内容哈希存放；已有同哈希备份必须再次核对 SHA256 后才可复用，不重复复制相同源版本。
 - 保存后读回同一文件。
 - 生成机器可读 manifest。
 

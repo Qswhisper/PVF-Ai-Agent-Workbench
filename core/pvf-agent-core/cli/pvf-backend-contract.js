@@ -205,7 +205,13 @@ function pathItemsContain(items, expectedPath) {
 }
 
 function requiredReadTools(contract) {
-  const writeSmokeTools = new Set(["pvf_backup", "pvf_replace_text", "pvf_write_file", "pvf_save"]);
+  const writeSmokeTools = new Set([
+    "pvf_replace_text",
+    "pvf_apply_text_plan",
+    "pvf_apply_verified_text_plan",
+    "pvf_write_file",
+    "pvf_save",
+  ]);
   const tools = new Set();
   for (const capability of contract.requiredCapabilities || []) {
     for (const tool of capability.requiredTools || []) {

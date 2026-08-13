@@ -65,7 +65,7 @@ function retrySearchReason(result, query = {}, fallbackEncoding = "Tw") {
 
 function containsStringLinkToken(value) {
   if (typeof value !== "string" || !value.includes("::") || !value.includes("`")) return false;
-  return /<\s*\d+\s*::[^>\r\n`]{1,512}`[^>\r\n`]*`>/.test(value);
+  return /<\s*\d+\s*::[^>`]{1,512}`[^`]*`>/u.test(value);
 }
 
 function retryReadReason(file, options = {}, fallbackEncoding = "Tw") {
@@ -211,6 +211,11 @@ function semanticWriteSafety(input = {}) {
           mode: analysis.mode,
           encoding: analysis.encoding,
           parentTag: analysis.parentTag,
+          parentTags: analysis.parentTags,
+          occurrenceCount: analysis.occurrenceCount,
+          totalOccurrenceCount: analysis.totalOccurrenceCount,
+          expectedOccurrences: analysis.expectedOccurrences,
+          contextAnchor: analysis.contextAnchor,
           previousCharacterCount: analysis.previousCharacterCount,
           newCharacterCount: analysis.newCharacterCount,
           encodedNewValueSha256: analysis.encodedNewValueSha256,
