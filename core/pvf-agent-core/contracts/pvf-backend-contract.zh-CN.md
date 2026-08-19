@@ -31,7 +31,7 @@ workbench.bat backend-contract show-readonly
 | registry resolve | 数字 ID 必须通过明确 `.lst` 解析成 PVF 路径，不允许直接猜。 |
 | reverse registry resolve | 能按精确 PVF 路径反查登记它的 `.lst` 与数字 ID。 |
 | local index | 能建立或读取 path / registry / `.lst` 索引，并能判断索引是否和源 PVF 匹配。 |
-| controlled write | 写入必须经过 change-set、经 SHA256 核对的内容寻址受保护源备份、显式 output、重新打开 output readback，并绑定最终输出的完整 SHA256 与字节数；相同受保护源可安全复用一份备份。下一轮差异必须显式引用上一轮成功生成记录，不能把输出自动当成新源。 |
+| controlled write | 写入必须经过 change-set、经 SHA256 核对的内容寻址受保护源备份、显式 output、重新打开 output readback，并绑定最终输出的完整 SHA256 与字节数；相同受保护源可安全复用一份备份。同构块可用来自原始读回的精确非重叠 scope 缩小普通和中文匹配，范围字段、位置和内容哈希必须绑定，边界不可写。新增 `.co/.lst/.nut/.sqr/.str/.wdm` 还必须提交 `writeProof`，完成格式/登记冲突或 worldmap 入口闭合、脚本结构、临时写出/编码往返和独立读回；既有高风险文件普通修改仍失败关闭。下一轮差异必须显式引用上一轮成功生成记录，不能把输出自动当成新源。 |
 
 TypeScript 备用模式中的搜索还必须显式返回 `truncated`、`errorCount`、有限错误样本与 `errorsTruncated`；损坏文件不能被静默计作普通未命中。
 

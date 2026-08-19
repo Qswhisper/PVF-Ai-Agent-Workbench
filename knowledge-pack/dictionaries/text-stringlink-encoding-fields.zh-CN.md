@@ -68,9 +68,9 @@
 - 语义读取已覆盖 `.str`、StringLink、中文脚本搜索、含非 ASCII 的脚本以及 `Cn`/`Tw` 冲突；这是自动只读保护。若请求编码呈现明显乱码而会话编码更可信，结果会保留正常文本并标出实际选择。
 - 普通 `pvf-read read`/`read-batch` 是便于阅读的显示结果，可能简体化中文或整理布局；返回的 `textUsage.safeForChangeSetSource=false` 明确禁止把它复制为修改原文。只有对同一路径使用 `--raw` 才得到 change-set 所需的规范 token；未指定编码时会只读比较 Cn/Tw，并在 `textUsage.automaticEncodingSelection.perFile[].selectedEncoding` 公开明显更干净的选择，不做逐段混合解码或自动写入。预演零命中可诊断显示文本误用或声明编码不一致，但只给出重新原始读取的恢复路线，不会自动改写繁简变体或跨编码写入。
 - 数字或 ASCII 最小替换可以使用正确语义源文本、受控输出和 fallback 读回；触达文本承载文件时仍要求客户端 UI smoke check。
-- 普通脚本中完整、明确的可见反引号文本可以使用 `textWriteMode: "verified-inline-text"` 和目标确认的 `Cn` 或 `Tw`；完整 token 可以含真实多行。相同完整文本重复时，可用来自同一次原始读回、紧邻目标的 `contextBefore`/`contextAfter` 联合定位；上下文不得包含目标文本，其选择器和具体位置会进入核验绑定，但不扩大写入权限。每个命中会追加新字符串表条目并改指向，所有旧条目必须保持不变；同一文件的所有文字命中合并为一次字符串表重建和一次脚本补丁。单点要求锚定后恰好 1 次；批量必须声明精确 `expectedOccurrences`。预演生成隔离临时输出并由独立 TypeScript 解析器精确读回；明显乱码或编码证据不足时失败关闭。
+- 普通脚本中完整、明确的可见反引号文本可以使用 `textWriteMode: "verified-inline-text"` 和目标确认的 `Cn` 或 `Tw`；完整 token 可以含真实多行。相同完整文本重复时，可用来自同一次原始读回、紧邻目标的 `contextBefore`/`contextAfter` 联合定位；同构块连相邻内容也相同时，可再用同次原始读回的 `scope.startText`、`scope.endText` 和准确 `scope.expectedRanges` 限定一个或多个非重叠区间。上下文和目标必须完整位于区间内部；区间边界不能改写，新文字不能注入边界，字段哈希、范围位置、范围内容哈希和命中位置会进入核验绑定，但不扩大写入权限。每个命中会追加新字符串表条目并改指向，所有旧条目必须保持不变；同一文件的所有文字命中合并为一次字符串表重建和一次脚本补丁。单点要求筛选后恰好 1 次；批量必须声明区间内精确 `expectedOccurrences`。预演生成隔离临时输出并由独立 TypeScript 解析器精确读回；范围缺失/重叠/越界/漂移、明显乱码或编码证据不足时失败关闭。
 - 首期只接受已确认的显示承载类型（如 `.stk`、`.equ`、`.qst`、`.dgn`、`.map`、`.aic`、`.cre`、`.skl` 等）；`.co`、`.lst`、NUT 和其他未批准类型继续阻断。
-- 参数/结构改动使用普通 `replace-text`，完整原始 token 边界必须来自 `pvf-read read --raw` 或 `read-batch --raw`；该模式与写入校验使用同一个独立规范布局。与中文联动时拆为同路径多条变化，Workbench 按一个最终文件验证；若结构删除依赖前面的完整文字清空，则 change-set 数组顺序具有语义，文字批次仍只执行一次。`.str`、StringLink 显示文本、部分中文 token、未声明准确数量的批量、无法编码字符和其他未验证中文写入仍失败关闭。
+- 参数/结构改动使用普通 `replace-text`，完整原始 token 边界必须来自 `pvf-read read --raw` 或 `read-batch --raw`；该模式与写入校验使用同一个独立规范布局。与中文联动时拆为同路径多条变化；同构块任务可让普通和文字变化共用同一个精确 scope。Workbench 按一个最终文件验证；若结构删除依赖前面的完整文字清空，则 change-set 数组顺序具有语义，文字批次仍只执行一次。`.str`、StringLink 显示文本、部分中文 token、`scopePart` 魔法解析、未声明准确数量的批量、无法编码字符和其他未验证中文写入仍失败关闭。
 
 边界：
 

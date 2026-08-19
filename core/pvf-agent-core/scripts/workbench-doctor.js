@@ -508,6 +508,7 @@ async function runCheck() {
           "README.md",
           "README.zh-CN.md",
           "docs/CLEAN-COPY.zh-CN.md",
+          "docs/AGENT-INSTRUCTION-ARCHITECTURE.zh-CN.md",
           "docs/READONLY-FALLBACK.zh-CN.md",
           "docs/CLIENT-PVF-DEPLOYMENT.zh-CN.md",
           "VERSION",

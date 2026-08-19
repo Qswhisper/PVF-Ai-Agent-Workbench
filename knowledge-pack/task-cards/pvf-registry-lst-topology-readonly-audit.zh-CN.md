@@ -23,6 +23,10 @@
 2. `pvf-read read`，读回该目标文件的必要小段。
 3. 只有用户要求反向闭环时才运行 `pvf-read resolve-path`。
 
+同一 registry 有两个或更多 ID 时，改用一条 `pvf-read resolve-lst-batch --lst <registry-or-domain> --id <id> --id <id> ...`。它只打开一次 PVF，会返回全部登记结果和一条 `agentHandoff.nextCommandOnly` 批量读回命令；不要再按 ID 逐条 resolve。对两个或更多尚未确认的已知路径，同理使用一次 `resolve-path-batch`。`quest`、`dungeon`、`equipment`、`stackable`、`monster`、`apc`、`map`、`town` 等 domain 可直接作为 registry 别名。
+
+名称搜索已经在 `registryIdentity` 中附带 ID 且 `allReturnedPathsConfirmed=true` 时，不需要再运行单项或批量 `resolve-path`；直接读回返回路径即可。批量中的缺失 ID 或未匹配路径必须原样保留为未解决证据，不能猜文件名。
+
 这一路径的第一条 shell 动作就是 `pvf-read resolve-lst`，不需要预先运行 `Test-Path`、`Get-Item`、`open`、`list-files`、`check`、书签查询或读取完整知识索引；只有直接命令失败时才诊断返回错误。
 
 常用 domain 与 registry 的固定路由如下；它们只负责选表，最终事实仍以目标 PVF 的 resolve/readback 为准：

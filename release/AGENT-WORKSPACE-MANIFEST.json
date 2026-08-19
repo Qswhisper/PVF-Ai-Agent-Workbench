@@ -1,8 +1,8 @@
 {
   "schemaVersion": "1.0",
   "packageName": "PVF-Agent-Workbench",
-  "packageVersion": "2.2.2",
-  "purpose": "Self-contained clean workspace with beginner-first progressive responses, automatic Cn/Tw encoding-conflict protection, round-trip-verified multiline, exact-count batch, exact adjacent-context inline Chinese text changes, dependency-aware same-file ordering with one-pass verified-text batching, explicit cumulative apply chains, reusable SHA256-verified protected-source backups, external persistent local profiles, target-bound skill and script routing, a preferred native PVF backend, a dependency-free TypeScript read-only fallback, SHA-bound indexes, bundled knowledge, controlled output, and baseline-safe separately authorized test-client Script.pvf deployment and rollback.",
+  "packageVersion": "3.0.0",
+  "purpose": "Self-contained clean workspace with beginner-first progressive responses, automatic Cn/Tw encoding-conflict protection, round-trip-verified multiline, exact-count batch, exact adjacent-context and hash-bound exact-range-scoped inline Chinese text changes, dependency-aware same-file ordering with one-pass verified-text batching, explicit cumulative apply chains, reusable SHA256-verified protected-source backups, external persistent local profiles, target-bound skill and script routing, a preferred native PVF backend, a dependency-free TypeScript read-only fallback, SHA-bound indexes, bundled knowledge, controlled output, and baseline-safe separately authorized test-client Script.pvf deployment and rollback.",
   "includes": [
     ".gitattributes",
     ".gitignore",
@@ -74,6 +74,9 @@
     "verifiedInlineTextBatchRequiresExactExpectedOccurrences": true,
     "exactAdjacentContextAnchoringAllowed": true,
     "contextAnchorDoesNotRelaxTextSafety": true,
+    "exactRangeScopeAllowed": true,
+    "scopeBoundaryRewriteAllowed": false,
+    "scopeEvidenceBoundToDryRunAndApply": true,
     "sameFileChangesPlannedAsOneFinalText": true,
     "sameFileChangeOrderPreservedWhenRequired": true,
     "sameFileVerifiedInlineTextAppliedAsOneBatch": true,
@@ -92,7 +95,11 @@
     "clientPvfDeploymentRequiresSeparatePreviewAuthorizationBackupAndRollback": true,
     "clientPvfDeploymentRequiresApplyInputBaselineContinuity": true,
     "explicitClientBaselineSwitchRequiredForBranchChange": true,
-    "nonPvfClientResourceWriteAllowed": false
+    "nonPvfClientResourceWriteAllowed": false,
+    "newWorldmapFileRequiresRegistryAndPairedEntryCheck": true,
+    "highRiskNewFilesRequireSameExtensionReferenceAndIndependentReadback": true,
+    "registryLifecycleIsAddOnlyAndRequiresTargetClosure": true,
+    "worldmapLifecycleRequiresBothRegisteredTownAndRegion": true
   },
   "release": {
     "manifest": "release/PORTABLE-RELEASE-MANIFEST.json",

@@ -153,6 +153,30 @@
           "minLength": 1,
           "description": "Optional exact text immediately after previousText. It selects the location but is not replaced. It must not contain previousText."
         },
+        "scope": {
+          "type": "object",
+          "required": [
+            "startText",
+            "endText",
+            "expectedRanges"
+          ],
+          "additionalProperties": false,
+          "description": "Optional exact range selector copied from the same raw target readback. Matches and adjacent context must remain inside the declared non-overlapping range(s); boundary markers are never writable.",
+          "properties": {
+            "startText": {
+              "type": "string",
+              "minLength": 1
+            },
+            "endText": {
+              "type": "string",
+              "minLength": 1
+            },
+            "expectedRanges": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
         "replaceAll": {
           "type": "boolean",
           "default": false,
@@ -205,6 +229,9 @@
               }
             }
           }
+        },
+        "writeProof": {
+          "$ref": "#/$defs/writeProof"
         }
       }
     },
@@ -285,8 +312,135 @@
               }
             }
           }
+        },
+        "writeProof": {
+          "$ref": "#/$defs/writeProof"
         }
       }
+    },
+    "writeProof": {
+      "type": "object",
+      "required": ["mode"],
+      "additionalProperties": false,
+      "description": "受控高风险新增文件或登记表生命周期证据。工作台会在目标 PVF 内重新检查，不能只凭声明放行。",
+      "properties": {
+        "mode": {
+          "enum": ["worldmap-lifecycle", "registry-lifecycle", "script-new-file", "localization-new-file"]
+        },
+        "allowExistingRegistryEdit": { "type": "boolean" },
+        "registry": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "lstPath": { "type": "string", "minLength": 1 },
+            "id": { "type": "integer" },
+            "expectedPvfPath": { "type": "string", "minLength": 1 },
+            "action": { "enum": ["add", "reuse", "verify"] }
+          }
+        },
+        "pairedEntries": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "pvfPath"],
+            "properties": {
+              "kind": { "enum": ["ui", "town-gate", "region-town", "registry", "dungeon"] },
+              "pvfPath": { "type": "string", "minLength": 1 },
+              "worldmapId": { "type": "integer" },
+              "townId": { "type": "integer" },
+              "dungeonIds": { "type": "array", "items": { "type": "integer" } },
+              "required": { "type": "boolean" }
+            }
+          }
+        },
+        "referencePaths": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "compileRequired": { "type": "boolean" },
+        "encodingRoundTripRequired": { "type": "boolean" },
+        "pvfEncoding": { "enum": ["Cn", "Tw", "Kr", "Jp", "Utf8", "Unicode"] },
+        "sourceTextSha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+        "crossVersionEvidence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "pvfSha256": { "type": "string", "pattern": "^[A-Fa-f0-9]{64}$" },
+              "pvfPath": { "type": "string" },
+              "note": { "type": "string" }
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "mode": { "const": "script-new-file" } }, "required": ["mode"] },
+          "then": {
+            "required": ["compileRequired", "referencePaths"],
+            "properties": {
+              "compileRequired": { "const": true },
+              "referencePaths": { "minItems": 1 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "localization-new-file" } }, "required": ["mode"] },
+          "then": {
+            "required": ["pvfEncoding", "encodingRoundTripRequired", "referencePaths"],
+            "properties": {
+              "pvfEncoding": { "enum": ["Cn", "Tw"] },
+              "encodingRoundTripRequired": { "const": true },
+              "referencePaths": { "minItems": 1 }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "registry-lifecycle" } }, "required": ["mode"] },
+          "then": {
+            "required": ["registry"],
+            "properties": {
+              "registry": { "required": ["lstPath", "action"] }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "allowExistingRegistryEdit": { "const": true } }, "required": ["allowExistingRegistryEdit"] },
+          "then": {
+            "properties": {
+              "registry": {
+                "required": ["lstPath", "id", "expectedPvfPath", "action"],
+                "properties": { "action": { "const": "add" } }
+              }
+            }
+          }
+        },
+        {
+          "if": { "properties": { "mode": { "const": "worldmap-lifecycle" } }, "required": ["mode"] },
+          "then": {
+            "required": ["registry", "pairedEntries"],
+            "properties": {
+              "registry": {
+                "required": ["lstPath", "id", "expectedPvfPath", "action"],
+                "properties": {
+                  "lstPath": { "const": "worldmap/worldmap.lst" },
+                  "action": { "const": "add" }
+                }
+              },
+              "pairedEntries": {
+                "minItems": 3,
+                "allOf": [
+                  { "contains": { "properties": { "kind": { "const": "ui" } }, "required": ["kind"] }, "minContains": 1 },
+                  { "contains": { "properties": { "kind": { "const": "town-gate" } }, "required": ["kind"] }, "minContains": 1 },
+                  { "contains": { "properties": { "kind": { "const": "region-town" } }, "required": ["kind"] }, "minContains": 1 }
+                ]
+              }
+            }
+          }
+        }
+      ]
     }
   }
 }

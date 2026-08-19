@@ -27,6 +27,12 @@ const {
   applyContextAnchoredReplacement,
   occurrenceMismatch,
 } = require("./context-anchored-replace");
+const {
+  validateRegistryLifecycleTransition,
+  validateRegistryRowProof,
+  parseRegistryRows,
+  resolveRegistryEntryPath,
+} = require("../../core/pvf-agent-core/lib/high-risk-write-audit");
 
 const SERVER_MODE_ENV = "PVF_WORKBENCH_SERVER_MODE";
 const CONTROLLED_WRITE_MODE = "controlled-write";
@@ -912,6 +918,8 @@ async function writeVerifiedInlineText(sessionId, pvfPath, sourceText, args) {
     newText: args.newText,
     contextBefore: args.contextBefore,
     contextAfter: args.contextAfter,
+    scope: args.scope,
+    writeProof: args.writeProof,
     replaceAll: args.replaceAll === true,
     expectedOccurrences: args.expectedOccurrences,
     prevalidatedEncodingProof: args.prevalidatedEncodingProof,
@@ -996,6 +1004,7 @@ async function writeRawAsciiScriptChange(sessionId, pvfPath, sourceText, args) {
     newText: args.newText,
     contextBefore: args.contextBefore,
     contextAfter: args.contextAfter,
+    scope: args.scope,
     replaceAll: args.replaceAll === true,
     expectedOccurrences: args.expectedOccurrences,
     stringTableBytes,
@@ -1014,6 +1023,54 @@ async function writeRawAsciiScriptChange(sessionId, pvfPath, sourceText, args) {
   });
   setRawOverlay(sessionId, pvfPath, patch.scriptBytes);
   return { ok: true, mode: "raw-ascii-script-token", stringTableResult, scriptResult, proof: patch.proof };
+}
+
+function auditRegistryLifecycleChange({ beforeText, afterText, proofs, pvfPath }) {
+  const proofList = Array.isArray(proofs) ? proofs : [];
+  if (!pvfPath.toLowerCase().endsWith(".lst") || proofList.length === 0 ||
+      proofList.some((proof) => proof?.mode !== "registry-lifecycle")) {
+    const error = new Error("登记表生命周期只能处理同一 .lst 的受控新增行。");
+    error.code = "REGISTRY_PLAN_SHAPE_INVALID";
+    throw error;
+  }
+
+  const registryProofs = proofList.map((proof) => validateRegistryRowProof(proof, beforeText));
+  if (registryProofs.some((proof) => !proof.ok)) {
+    const error = new Error(`登记表冲突或格式检查失败：${registryProofs.flatMap((proof) => proof.errors).join("；")}`);
+    error.code = "REGISTRY_LIFECYCLE_CHECK_FAILED";
+    error.details = registryProofs;
+    throw error;
+  }
+
+  const transitionProof = validateRegistryLifecycleTransition(beforeText, afterText, proofList, pvfPath);
+  if (!transitionProof.ok) {
+    const error = new Error(`登记表生命周期不是纯新增行：${transitionProof.errors.join("；")}`);
+    error.code = "REGISTRY_LIFECYCLE_NOT_ADD_ONLY";
+    error.details = transitionProof;
+    throw error;
+  }
+
+  const finalRegistry = parseRegistryRows(afterText);
+  for (let index = 0; index < registryProofs.length; index += 1) {
+    const proof = registryProofs[index];
+    const row = finalRegistry.byId.get(proof.id);
+    const registryPath = proofList[index]?.registry?.lstPath || pvfPath;
+    if (!row || resolveRegistryEntryPath(registryPath, row.pvfPath).toLowerCase() !== proof.expectedPvfPath.toLowerCase()) {
+      const error = new Error(`登记表最终文本没有闭合新增行 ${proof.id} -> ${proof.expectedPvfPath}。`);
+      error.code = "REGISTRY_FINAL_ROW_MISSING";
+      throw error;
+    }
+  }
+
+  return {
+    proofRows: registryProofs.map((proof) => ({
+      id: proof.id,
+      expectedPvfPath: proof.expectedPvfPath,
+      targetIdConflict: Boolean(proof.existingById),
+      targetPathConflict: Boolean(proof.existingByPath),
+    })),
+    transitionProof,
+  };
 }
 
 async function toolApplyTextPlan(args) {
@@ -1051,6 +1108,8 @@ async function toolApplyTextPlan(args) {
       newText: change.newText,
       contextBefore: change.contextBefore,
       contextAfter: change.contextAfter,
+      scope: change.scope,
+      writeProof: change.writeProof,
       occurrenceIndex: change.occurrenceIndex,
       replaceAll: change.replaceAll === true,
       expectedOccurrences: change.expectedOccurrences,
@@ -1066,6 +1125,8 @@ async function toolApplyTextPlan(args) {
       fallbackEncoding: getSessionState(sessionId).encoding,
       previousText: change.previousText, newText: change.newText,
       contextBefore: change.contextBefore, contextAfter: change.contextAfter,
+      scope: change.scope,
+      writeProof: change.writeProof,
       replaceAll, expectedOccurrences,
       textWriteMode: change.textWriteMode, sourceText: changeSourceText,
     });
@@ -1089,6 +1150,68 @@ async function toolApplyTextPlan(args) {
     error.code = "TEXT_PLAN_VERIFIED_STAGE_REQUIRED";
     throw error;
   }
+  const registryAnalyses = analyses.filter((item) => item.change.writeProof?.mode === "registry-lifecycle");
+  if (registryAnalyses.length > 0) {
+    if (registryAnalyses.length !== analyses.length || !pvfPath.toLowerCase().endsWith(".lst")) {
+      const error = new Error("登记表生命周期只能包含同一 .lst 的受控新增行改动。");
+      error.code = "REGISTRY_PLAN_SHAPE_INVALID";
+      throw error;
+    }
+    const { proofRows, transitionProof } = auditRegistryLifecycleChange({
+      beforeText: guardedRead.file.textContent,
+      afterText: plannedText,
+      proofs: registryAnalyses.map((item) => item.change.writeProof),
+      pvfPath,
+    });
+    if (args.dryRun !== true) {
+      const writeResult = await writeText(sessionId, pvfPath, plannedText, {
+        pvfEncoding: readOptions.pvfEncoding,
+        compileScript: true,
+        compileBinaryAni: false,
+      });
+      setTextOverlay(sessionId, pvfPath, {
+        fileName: pvfPath,
+        dataLength: Buffer.byteLength(plannedText, "utf8"),
+        isScriptFile: true,
+        isBinaryAniFile: false,
+      }, plannedText);
+      return text({
+        ok: true,
+        sessionId,
+        pvfPath,
+        changeCount: changes.length,
+        dryRun: false,
+        finalTextSha256: crypto.createHash("sha256").update(plannedText).digest("hex"),
+        results: analyses.map((item, index) => ({
+          id: item.change.id || null,
+          occurrenceCount: item.hits,
+          expectedOccurrences: item.expectedOccurrences,
+          contextAnchor: item.anchored.evidence,
+          writeProof: proofRows[index],
+          proof: { mode: "registry-lifecycle", addOnly: true, exactTextReadbackRequired: true, transitionProof },
+        })),
+        writeResult,
+        semanticReadGuard: guardedRead.semanticReadGuard || undefined,
+      });
+    }
+    return text({
+      ok: true,
+      sessionId,
+      pvfPath,
+      changeCount: changes.length,
+      dryRun: true,
+      finalTextSha256: crypto.createHash("sha256").update(plannedText).digest("hex"),
+      results: analyses.map((item, index) => ({
+        id: item.change.id || null,
+        occurrenceCount: item.hits,
+        expectedOccurrences: item.expectedOccurrences,
+        contextAnchor: item.anchored.evidence,
+        writeProof: proofRows[index],
+        proof: { mode: "registry-lifecycle", addOnly: true, exactTextReadbackRequired: true, transitionProof },
+      })),
+      semanticReadGuard: guardedRead.semanticReadGuard || undefined,
+    });
+  }
   let rawScriptBytes = await readRawPvfBytes(sessionId, pvfPath);
   let stringTableBytes = await readRawPvfBytes(sessionId, "stringtable.bin");
   let rawSourceText = guardedRead.file.textContent;
@@ -1104,6 +1227,8 @@ async function toolApplyTextPlan(args) {
       newText: item.change.newText,
       contextBefore: item.change.contextBefore,
       contextAfter: item.change.contextAfter,
+      scope: item.change.scope,
+      writeProof: item.change.writeProof,
       replaceAll: item.change.replaceAll === true,
       expectedOccurrences: item.expectedOccurrences,
       stringTableBytes,
@@ -1214,6 +1339,8 @@ async function toolReplaceText(args) {
     newText: args.newText,
     contextBefore: args.contextBefore,
     contextAfter: args.contextAfter,
+    scope: args.scope,
+    writeProof: args.writeProof,
     occurrenceIndex: args.occurrenceIndex,
     replaceAll: args.replaceAll === true,
     expectedOccurrences: args.expectedOccurrences,
@@ -1238,11 +1365,37 @@ async function toolReplaceText(args) {
     newText: args.newText,
     contextBefore: args.contextBefore,
     contextAfter: args.contextAfter,
+    scope: args.scope,
+    writeProof: args.writeProof,
     replaceAll,
     expectedOccurrences,
     textWriteMode: args.textWriteMode,
     sourceText: before,
   });
+  let registryLifecycleAudit = null;
+  if (args.writeProof?.mode === "registry-lifecycle") {
+    if (!writeSafety.allowed) {
+      const error = new Error(`Controlled PVF write blocked: ${writeSafety.reason}`);
+      error.code = writeSafety.code;
+      error.details = writeSafety.details || undefined;
+      throw error;
+    }
+    registryLifecycleAudit = auditRegistryLifecycleChange({
+      beforeText: before,
+      afterText: after,
+      proofs: [args.writeProof],
+      pvfPath,
+    });
+  }
+  const registryLifecycleResult = registryLifecycleAudit ? {
+    writeProof: registryLifecycleAudit.proofRows[0],
+    proof: {
+      mode: "registry-lifecycle",
+      addOnly: true,
+      exactTextReadbackRequired: true,
+      transitionProof: registryLifecycleAudit.transitionProof,
+    },
+  } : {};
   if (args.dryRun === true) {
     return text({
       ok: true,
@@ -1250,9 +1403,11 @@ async function toolReplaceText(args) {
       sessionId,
       pvfPath,
       occurrences: hits,
+      scopedOccurrences: anchored.scopedOccurrenceCount,
       totalOccurrences: anchored.totalOccurrenceCount,
       contextAnchor: anchored.evidence,
       ...preview,
+      ...registryLifecycleResult,
       semanticReadGuard: semanticReadGuard || undefined,
       semanticWriteSafety: writeSafety,
     });
@@ -1266,9 +1421,11 @@ async function toolReplaceText(args) {
       sessionId,
       pvfPath,
       occurrences: hits,
+      scopedOccurrences: anchored.scopedOccurrenceCount,
       totalOccurrences: anchored.totalOccurrenceCount,
       contextAnchor: anchored.evidence,
       ...preview,
+      ...registryLifecycleResult,
       semanticReadGuard: semanticReadGuard || undefined,
       semanticWriteSafety: writeSafety,
     });
@@ -1281,6 +1438,12 @@ async function toolReplaceText(args) {
   let writeResult;
   if (isVerifiedInlineTextMode(args.textWriteMode)) {
     writeResult = await writeVerifiedInlineText(sessionId, pvfPath, before, args);
+  } else if (args.writeProof?.mode === "registry-lifecycle") {
+    writeResult = await writeText(sessionId, pvfPath, after, {
+      ...args,
+      compileScript: true,
+      compileBinaryAni: false,
+    });
   } else if (file.isScriptFile === true) {
     writeResult = await writeRawAsciiScriptChange(sessionId, pvfPath, before, args);
   } else {
@@ -1293,10 +1456,12 @@ async function toolReplaceText(args) {
     sessionId,
     pvfPath,
     occurrences: hits,
+    scopedOccurrences: anchored.scopedOccurrenceCount,
     totalOccurrences: anchored.totalOccurrenceCount,
     contextAnchor: anchored.evidence,
     writeResult,
     ...preview,
+    ...registryLifecycleResult,
     semanticReadGuard: semanticReadGuard || undefined,
     semanticWriteSafety: writeSafety,
   });
@@ -1315,6 +1480,7 @@ async function toolWriteFile(args) {
     pvfEncoding: args.pvfEncoding,
     fallbackEncoding: getSessionState(sessionId).encoding,
     textContent: args.textContent,
+    writeProof: args.writeProof,
   });
   if (!writeSafety.allowed) {
     const error = new Error(`Controlled PVF write blocked: ${writeSafety.reason}`);
@@ -1889,7 +2055,7 @@ const tools = [
   {
     name: "pvf_replace_text",
     title: "Replace PVF Text",
-    description: "Replace exact PVF text inside the controlled write runner. Optional exact adjacent context can select one target among duplicate text without weakening verified inline Cn/Tw token, encoding, .str, or StringLink protections.",
+    description: "Replace exact PVF text inside the controlled write runner. Optional exact adjacent context and exact non-overlapping range scope can select targets without weakening verified inline Cn/Tw token, encoding, .str, or StringLink protections.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1899,8 +2065,19 @@ const tools = [
         newText: { type: "string" },
         contextBefore: { type: "string", minLength: 1 },
         contextAfter: { type: "string", minLength: 1 },
+        scope: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            startText: { type: "string", minLength: 1 },
+            endText: { type: "string", minLength: 1 },
+            expectedRanges: { type: "integer", minimum: 1 },
+          },
+          required: ["startText", "endText", "expectedRanges"],
+        },
         replaceAll: { type: "boolean" },
         expectedOccurrences: { type: "integer", minimum: 1 },
+        writeProof: { type: "object" },
         dryRun: { type: "boolean" },
         pvfEncoding: { type: "string" },
         autoConvertStringLink: { type: "boolean" },
@@ -1917,7 +2094,7 @@ const tools = [
   {
     name: "pvf_apply_text_plan",
     title: "Apply Same-File Text Plan",
-    description: "Atomically apply an ordered set of ordinary replacements to one PVF file, including exact adjacent-context selectors.",
+    description: "Atomically apply an ordered set of ordinary replacements to one PVF file, including exact adjacent-context and exact-range scope selectors.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1938,8 +2115,19 @@ const tools = [
               newText: { type: "string" },
               contextBefore: { type: "string", minLength: 1 },
               contextAfter: { type: "string", minLength: 1 },
+              scope: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  startText: { type: "string", minLength: 1 },
+                  endText: { type: "string", minLength: 1 },
+                  expectedRanges: { type: "integer", minimum: 1 },
+                },
+                required: ["startText", "endText", "expectedRanges"],
+              },
               replaceAll: { type: "boolean" },
               expectedOccurrences: { type: "integer", minimum: 1 },
+              writeProof: { type: "object" },
               textWriteMode: { type: "string", enum: [VERIFIED_INLINE_TEXT_MODE, VERIFIED_INLINE_CN_TEXT_MODE] },
             },
             required: ["previousText", "newText"],
@@ -1970,6 +2158,16 @@ const tools = [
               newText: { type: "string" },
               contextBefore: { type: "string", minLength: 1 },
               contextAfter: { type: "string", minLength: 1 },
+              scope: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  startText: { type: "string", minLength: 1 },
+                  endText: { type: "string", minLength: 1 },
+                  expectedRanges: { type: "integer", minimum: 1 },
+                },
+                required: ["startText", "endText", "expectedRanges"],
+              },
               replaceAll: { type: "boolean" },
               expectedOccurrences: { type: "integer", minimum: 1 },
               pvfEncoding: { type: "string" },
@@ -1996,6 +2194,7 @@ const tools = [
         compileScript: { type: "boolean" },
         compileBinaryAni: { type: "boolean" },
         convertToTraditionalChinese: { type: "boolean" },
+        writeProof: { type: "object" },
       },
       required: ["pvfPath", "textContent"],
     },
@@ -2056,7 +2255,7 @@ async function handle(message) {
           capabilities: { tools: { listChanged: false } },
           serverInfo: {
             name: "pvf-workbench-bundled-backend",
-            version: "2.2.2",
+            version: "3.0.0",
             backend: selectedBackend.source,
             readOnly: effectiveReadOnly,
             capabilityMode: serverMode,

@@ -2,7 +2,7 @@
   "$schema": "../../core/pvf-agent-core/schemas/agent-eval-suite.schema.json",
   "schemaVersion": "1.0",
   "suiteId": "pvf-agent-safety-routing-v1",
-  "version": "2.2.2",
+  "version": "3.0.0",
   "minimumAverageScore": 1,
   "cases": [
     {
@@ -35,6 +35,34 @@
         { "id": "boundaries", "patterns": ["\\.str.{0,16}StringLink.{0,24}(仍|保持).{0,8}(阻断|保护)", "\\.lst.{0,12}\\.co.{0,12}NUT.{0,20}(阻断|不支持)"] }
       ],
       "forbiddenPatterns": ["必须.{0,16}(普通|结构).{0,8}(一律|全部).{0,8}先做", "为了删除.{0,20}(放开|绕过).{0,12}(StringLink|\\.str)"]
+    },
+    {
+      "id": "exact-scope-homomorphic-block",
+      "title": "同值跨部位删除与重编号必须限定精确区间",
+      "responseFile": "exact-scope-homomorphic-block.md",
+      "prompt": "同一个 .stk 的 coat、support、ring 块正文和相邻技能都完全相同，但我只想在 coat 清空一条中文说明、删掉对应参数块并重编号。长前缀会受前序改动影响，短上下文又会误伤其他部位，应该怎么安全做？",
+      "requiredGroups": [
+        { "id": "scope-shape", "patterns": ["scope\\.startText.{0,24}scope\\.endText.{0,24}expectedRanges", "scope.{0,20}startText.{0,20}endText.{0,20}expectedRanges"] },
+        { "id": "raw-source", "patterns": ["同一次.{0,10}(--raw|原始读回)", "pvf-read read --raw.{0,32}(scope|范围)"] },
+        { "id": "shared-scope", "patterns": ["中文.{0,20}删除.{0,20}重编号.{0,24}(同一个|共用).{0,10}scope", "每条.{0,12}(变化|改动).{0,16}(相同|同一).{0,8}scope"] },
+        { "id": "inside-count", "patterns": ["只在.{0,16}(范围|区间).{0,12}(内部|内).{0,12}(匹配|计数)", "expectedOccurrences.{0,24}(scope|区间).{0,16}(内部|内)"] },
+        { "id": "boundaries", "patterns": ["边界.{0,12}(不能|不可).{0,8}(改写|修改)", "缺失.{0,12}重叠.{0,12}越界.{0,16}(停止|阻断)"] },
+        { "id": "proof", "patterns": ["范围.{0,16}(内容哈希|位置).{0,20}(绑定|核验)", "预演.{0,20}生成.{0,16}(范围|位置).{0,12}(漂移|变化).{0,8}(停止|拒绝)"] },
+        { "id": "retained-safety", "patterns": ["不.{0,8}(放宽|开放).{0,16}(整块中文|StringLink|\\.str)", "完整中文.{0,20}verified-inline-text.{0,24}(参数|结构).{0,16}(普通|replace-text)"] },
+        { "id": "readback", "patterns": ["临时.{0,12}(输出|文件).{0,16}(独立|重新).{0,8}(复查|检查)", "生成后.{0,12}(重新|独立).{0,8}(检查|复查)"] }
+      ],
+      "forbiddenPatterns": [
+        "scopePart.{0,16}(自动|直接|即可|就行)",
+        "直接.{0,12}replaceAll.{0,20}(全文|所有部位)",
+        "(可以|需要|必须).{0,12}(放开|允许).{0,16}(整块中文|多 token 中文)"
+      ],
+      "beginnerPresentation": {
+        "leadMaxChars": 220,
+        "leadForbiddenPatterns": ["ASCII", "non.?ASCII", "dry.?run", "\\bapply\\b", "readback", "manifest", "approval code", "SHA.?bound"],
+        "technicalTermPatterns": ["ASCII", "non.?ASCII", "dry.?run", "\\bapply\\b", "readback", "manifest", "approval code", "SHA.?bound"],
+        "technicalDetailsHeadingPatterns": ["技术详情", "详细信息", "进阶说明"],
+        "requireHeadingBeforeTechnicalTerms": true
+      }
     },
     {
       "id": "same-file-change-set-machine-handoff",
@@ -882,6 +910,75 @@
         { "id": "reference", "patterns": ["引用.{0,12}不证明.{0,12}(存在|可删|运行)", "NPK 索引.{0,12}不证明"] }
       ],
       "forbiddenPatterns": ["应该.{0,12}默认.{0,12}(整理|打包|精简)", "PVF.{0,8}授权.{0,8}(包含|等于).{0,8}NPK"]
+    },
+    {
+      "id": "entity-name-search-first-route",
+      "title": "中文实体名称必须首选领域名称搜索",
+      "responseFile": "entity-name-search-first-route.md",
+      "prompt": "目标 PVF 已明确，我先要找副本“叹息之塔”，同一任务还要找一个宠物名称。第一步和多名称批量该怎么查？如果真实名称带前后缀、跨行或使用另一种全角/半角标点，要自己拼正则吗？命中后还要逐项反查登记或搜索路径片段吗？需要先用 search-script 或手工切换 Cn/Tw、简繁、标点和英文文件名吗？",
+      "requiredGroups": [
+        { "id": "first-command", "patterns": ["第一条.{0,80}pvf-read search.{0,180}--keyword.{0,20}叹息之塔.{0,80}--search-path dungeon", "pvf-read search.{0,180}--search-path dungeon.{0,32}(第一步|第一条)"] },
+        { "id": "name-mode", "patterns": ["SearchName.{0,16}(名称|name).{0,8}搜索", "默认.{0,12}SearchName"] },
+        { "id": "automatic-cn-tw", "patterns": ["(自动|工作台).{0,20}(检查|比较).{0,12}Cn.{0,8}Tw", "Cn/Tw.{0,20}(自动|无需.{0,8}手工)"] },
+        { "id": "literal-substring", "allPatterns": ["字面.{0,8}包含", "(前后缀|前缀)", "跨行", "全角.{0,8}半角", "不.{0,12}(自己|手工).{0,8}(拼|写).{0,8}正则"] },
+        { "id": "batch-creature-route", "allPatterns": ["pvf-read search-batch", "--name", "--search-path creature", "creature/creature\\.lst", "一次.{0,12}(PVF|会话|打开)"] },
+        { "id": "automatic-registry-identity", "allPatterns": ["registryIdentity|登记 ID", "allReturnedPathsConfirmed", "自动.{0,16}(反查|确认)"] },
+        { "id": "no-redundant-path-resolution", "patterns": ["不再.{0,12}(逐项|逐条).{0,8}resolve-path", "无需.{0,12}resolve-path.{0,16}(路径|目录|片段).{0,12}(搜索|确认)", "不.{0,12}(搜索|再搜).{0,12}(路径|目录|文件名片段).{0,16}(二次|再次).{0,8}确认"] },
+        { "id": "no-script-loop", "patterns": ["不.{0,12}(先|需要).{0,8}(运行|使用).{0,8}search-script", "search-script.{0,20}不.{0,8}(是|用于).{0,12}(名称|实体名)"] },
+        { "id": "no-variants", "patterns": ["不.{0,16}(分别|重复|轮流).{0,12}(简体|繁体|标点)", "不.{0,16}(猜|尝试).{0,12}(英文文件名|文件名)"] },
+        { "id": "no-check-or-wrapper", "patterns": ["不.{0,12}先.{0,8}(运行|执行).{0,8}check.{0,20}(裸命令|秒表|分号)", "裸命令.{0,20}不.{0,12}(加|使用).{0,8}(秒表|分号|拼接)"] },
+        { "id": "read-confirmed-hits", "patterns": ["allReturnedPathsConfirmed=true.{0,36}(批量)?读回.{0,12}返回路径", "自动.{0,12}(反查|确认).{0,36}只.{0,12}(读回|读取).{0,12}返回路径"] },
+        { "id": "name-selector-hard-priority", "allPatterns": ["自然语言", "必须先", "SearchName", "地图号|层号|推测 ID", "不.{0,12}(先|首先).{0,8}(resolve-lst|resolve-path|list-files|search-script)"] },
+        { "id": "zero-boundary", "patterns": ["零命中.{0,12}不.{0,8}证明.{0,12}(不存在|没有)", "0.{0,8}命中.{0,12}不.{0,8}证明"] }
+      ],
+      "forbiddenPatterns": ["第一条.{0,24}search-script", "分别.{0,12}(简体|繁体).{0,20}search-script", "第一条.{0,24}(list-files|help|Test-Path|check)", "Stopwatch.{0,40}workbench\\.bat", "命中后.{0,24}(逐项|逐条).{0,12}resolve-path"]
+    },
+    {
+      "id": "cold-start-skill-before-shell",
+      "title": "冷启动先加载 Skill 再执行名称搜索",
+      "responseFile": "cold-start-skill-before-shell.md",
+      "prompt": "宿主已经发现 dnf-pvf-xpilot Skill，目标 PVF 和副本名“叹息之塔”也明确。开始时应该先跑 workbench check，还是先加载 Skill？加载后第一条 shell 命令是什么？后续还要写输出和核对 SHA256。",
+      "requiredGroups": [
+        { "id": "skill-first", "patterns": ["第一项.{0,20}(动作|操作).{0,16}先.{0,8}(加载|使用).{0,8}(这个 )?Skill", "先.{0,12}(加载|使用).{0,20}Skill.{0,20}再.{0,12}(shell|命令)"] },
+        { "id": "no-before-shell", "allPatterns": ["不", "Skill", "check", "help|路径探测|目录扫描"] },
+        { "id": "first-shell-search", "allPatterns": ["第一条 shell", "pvf-read search", "叹息之塔", "--search-path dungeon"] },
+        { "id": "later-never-check", "patterns": ["即使.{0,80}也不.{0,8}先.{0,8}(运行|执行).{0,24}check", "后续.{0,32}(写|SHA256).{0,32}不.{0,16}check"] },
+        { "id": "no-mid-task-check", "allPatterns": ["名称搜索成功后", "不", "原始读取", "pvf-change validate", "READ_ONLY_FALLBACK"] },
+        { "id": "no-skill-host", "patterns": ["不支持 Skill.{0,28}AGENTS\\.md", "没有 Skill.{0,28}AGENTS\\.md"] }
+      ],
+      "forbiddenPatterns": ["先.{0,12}(运行|执行).{0,12}(workbench )?check", "check.{0,20}然后.{0,20}(加载|使用).{0,12}Skill"]
+    },
+    {
+      "id": "dry-run-apply-machine-handoff",
+      "title": "预演通过后按机器交接直接生成",
+      "responseFile": "dry-run-apply-machine-handoff.md",
+      "prompt": "pvf-change dry-run 已经未阻止，并返回 agentHandoff.nextCommandOnly。为了正式生成，我还需要查帮助、打开 schema、grep 文档或扫描预演目录来拼 apply 命令吗？",
+      "requiredGroups": [
+        { "id": "next-command", "patterns": ["agentHandoff\\.nextCommandOnly.{0,32}(直接|原样).{0,12}(执行|使用)", "直接.{0,16}(读取|使用).{0,40}nextCommandOnly"] },
+        { "id": "replace-output", "patterns": ["只把.{0,60}REPLACE_WITH_EXTERNAL_OUTPUT_DIRECTORY.{0,20}(换|替换)", "唯一.{0,12}(输出目录|成品目录).{0,12}占位符"] },
+        { "id": "no-help-source", "patterns": ["不.{0,12}(运行|查询).{0,8}pvf-change --help", "不.{0,16}(打开|查看).{0,8}(schema|执行器源码)"] },
+        { "id": "no-scan", "patterns": ["不.{0,12}(扫描|枚举).{0,8}预演目录", "不.{0,12}grep.{0,8}(知识|文档)"] },
+        { "id": "no-source-override", "patterns": ["不.{0,12}(增加|添加|补).{0,16}(原始|源).{0,8}--pvf", "不要.{0,12}自行.{0,8}(增加|添加).{0,8}--pvf"] },
+        { "id": "blocked", "patterns": ["阻止.{0,20}nextCommandOnly.{0,8}(为|是).{0,8}(null|空)", "blockedChanges.{0,20}(修正|处理).{0,20}(重新|再次).{0,8}(validate|dry-run)"] }
+      ],
+      "forbiddenPatterns": ["还需要.{0,16}pvf-change --help", "打开.{0,8}schema.{0,16}(拼|查).{0,8}apply", "扫描.{0,8}预演目录.{0,16}(找|查).{0,8}manifest"]
+    },
+    {
+      "id": "source-fingerprint-and-change-set-route",
+      "title": "显式源哈希与变更集格式不再绕路",
+      "responseFile": "source-fingerprint-and-change-set-route.md",
+      "prompt": "实体名称搜索仍是第一步，但任务还要求证明两份源 PVF 修改前后哈希不变；后面同时涉及文字参数、同构块 scope 和累计第二轮。我该怎样取得哈希和查变更集格式，是否要用 Get-FileHash、help、adapter-info、glob 或打开 schema？",
+      "requiredGroups": [
+        { "id": "first-search", "patterns": ["第一条.{0,100}pvf-read search.{0,120}--search-path dungeon", "实体.{0,16}(第一步|第一条).{0,80}pvf-read search"] },
+        { "id": "fingerprint-batch", "allPatterns": ["pvf-read fingerprint", "--pvf", "两份|第二份", "sourcePvfSha256"] },
+        { "id": "baseline-before-change", "patterns": ["第一次.{0,16}pvf-change.{0,16}之前.{0,40}pvf-read fingerprint", "fingerprint.{0,28}(必须|需要).{0,16}(预演|pvf-change).{0,12}之前"] },
+        { "id": "repeat-final", "patterns": ["最终.{0,24}(原样|完全相同).{0,24}(重跑|再次运行).{0,20}fingerprint", "repeat.{0,20}fingerprint"] },
+        { "id": "final-only-insufficient", "patterns": ["只.{0,8}在最后.{0,16}(运行|执行).{0,8}一次.{0,12}不能.{0,12}证明", "final-only.{0,20}(不足|不能)"] },
+        { "id": "no-hash-help", "allPatterns": ["无需|不要|不需要", "Get-FileHash", "pvf-read --help", "pvf-read adapter-info"] },
+        { "id": "three-examples", "allPatterns": ["change-set\\.verified-cn-text\\.example\\.json", "change-set\\.exact-scope\\.example\\.json", "change-set\\.cumulative-second-round\\.example\\.json"] },
+        { "id": "no-schema-glob", "patterns": ["不.{0,12}glob.{0,20}(示例|schema)", "不要.{0,16}(打开|扫描).{0,8}schema"] }
+      ],
+      "forbiddenPatterns": ["先.{0,20}(Get-FileHash|fingerprint).{0,40}再.{0,20}pvf-read search", "需要.{0,12}pvf-read --help", "需要.{0,12}pvf-read adapter-info", "glob.{0,16}pvf-change-set\\.schema"]
     },
     {
       "id": "skill-route-two-command",

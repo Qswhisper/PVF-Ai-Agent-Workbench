@@ -19,6 +19,8 @@ const workbenchRoot =
   rootArgIndex >= 0 && args[rootArgIndex + 1]
     ? path.resolve(args[rootArgIndex + 1])
     : path.resolve(__dirname, "../../..");
+const MAX_AGENTS_BYTES = 24 * 1024;
+const MAX_COMPAT_AGENT_BYTES = 4 * 1024;
 
 function rel(file) {
   return path.relative(workbenchRoot, file).replace(/\\/g, "/") || ".";
@@ -176,6 +178,7 @@ function checkRequiredPaths(errors) {
       "README.md",
       "README.zh-CN.md",
       "docs/CLEAN-COPY.zh-CN.md",
+      "docs/AGENT-INSTRUCTION-ARCHITECTURE.zh-CN.md",
       "docs/READONLY-FALLBACK.zh-CN.md",
       "docs/RESEARCH-INTAKE.zh-CN.md",
       "docs/NUT-API-CATALOG.zh-CN.md",
@@ -352,6 +355,7 @@ function checkRequiredPaths(errors) {
       "workspaces/examples/change-set.blocked-cn-text.example.json",
       "workspaces/examples/change-set.verified-cn-text.example.json",
       "workspaces/examples/change-set.context-anchored-text.example.json",
+      "workspaces/examples/change-set.exact-scope.example.json",
       "workspaces/examples/local-workspace-profile.example.json",
       "workspaces/examples/real-task-report-template.zh-CN.md",
       "workspaces/examples/real-task-summary.example.json",
@@ -501,6 +505,7 @@ function checkRequiredPaths(errors) {
     "workspaces/examples/change-set.blocked-cn-text.example.json",
     "workspaces/examples/change-set.verified-cn-text.example.json",
     "workspaces/examples/change-set.context-anchored-text.example.json",
+    "workspaces/examples/change-set.exact-scope.example.json",
     "workspaces/indexes/README.zh-CN.md",
     "workspaces/package-dry-runs/README.zh-CN.md",
   ];
@@ -541,6 +546,69 @@ function checkAgentWorkspaceRootLayout(errors, info) {
     errors.push(`Unexpected Workbench root file(s): ${unexpected.join(", ")}. Move implementation files into commands/, docs/, release/, core/, or another owned directory.`);
   }
   info.push(`Root layout: ${rootFiles.length}/${allowedFiles.size} allowed files`);
+}
+
+function checkAgentInstructionArchitecture(errors, info) {
+  const agentsFile = join("AGENTS.md");
+  if (!fs.existsSync(agentsFile)) return;
+  const text = fs.readFileSync(agentsFile, "utf8");
+  const bytes = Buffer.byteLength(text, "utf8");
+  if (bytes > MAX_AGENTS_BYTES) {
+    errors.push(`AGENTS.md exceeds the ${MAX_AGENTS_BYTES}-byte cold-start budget: ${bytes}.`);
+  }
+  for (const requiredText of [
+    "## Canonical Rule Ownership",
+    "## Cold Start Before Any Shell Action",
+    "## Exact Read-Only Fast Paths",
+    "knowledge-pack/safety/README.zh-CN.md",
+    "pvf-read search --keyword <name> --search-path <domain>",
+    "名称选择器有硬优先级",
+    "用户明确把数字 ID 或已登记路径作为选择器",
+    "do not search the same name again in another domain",
+    "do not feed a registered path, directory name, or path stem into `search-script`",
+    "search-batch",
+    "allReturnedPathsConfirmed=true",
+    "pvf-read resolve-lst",
+    "resolve-lst-batch",
+    "resolve-path --path <path> --registry <registry-or-domain>",
+    "resolve-path-batch",
+    "pvf-read resolve-skill",
+    "knowledge-query nut",
+    "tag-knowledge query --exact",
+    "dependency-plan plan",
+    "workspaces/examples/change-set.verified-cn-text.example.json",
+    "Do not read the Workbench root as a directory",
+    "open the CLI README",
+    "open schemas",
+    "agentHandoff.nextCommandOnly",
+    "pvf-change validate --file <change-set.json>",
+    "pvf-read fingerprint",
+    "baseline.applyManifest",
+    "client-pvf preview",
+    "StringLink display text",
+    "READ_ONLY_FALLBACK",
+    "workbench.bat check",
+    "do not run `Get-Date`",
+    "技术详情（通常不用看）",
+    "fresh authorized external-Agent black-box",
+  ]) {
+    if (!text.includes(requiredText)) errors.push(`AGENTS.md is missing required compact routing text: ${requiredText}`);
+  }
+  info.push(`Agent instructions: AGENTS.md ${bytes}/${MAX_AGENTS_BYTES} byte budget`);
+
+  for (const relativePath of ["agents/dnf-pvf-agent.md", "agents/pvf-safety-rules.md"]) {
+    const file = join(relativePath);
+    if (!fs.existsSync(file)) continue;
+    const adapterText = fs.readFileSync(file, "utf8");
+    const adapterBytes = Buffer.byteLength(adapterText, "utf8");
+    if (adapterBytes > MAX_COMPAT_AGENT_BYTES) {
+      errors.push(`${relativePath} exceeds the ${MAX_COMPAT_AGENT_BYTES}-byte compatibility-adapter budget: ${adapterBytes}.`);
+    }
+    if (!adapterText.includes("knowledge-pack/safety/README.zh-CN.md")) {
+      errors.push(`${relativePath} must point to the canonical safety policy.`);
+    }
+    info.push(`Agent compatibility: ${relativePath} ${adapterBytes}/${MAX_COMPAT_AGENT_BYTES} byte budget`);
+  }
 }
 
 function checkAgentWorkspaceRuntimePurity(errors, info) {
@@ -804,6 +872,9 @@ function checkWritePolicy(writePolicy, errors) {
     semanticSafety.verifiedInlineTextBatchRequiresExactExpectedOccurrences !== true ||
     semanticSafety.exactAdjacentContextAnchoringAllowed !== true ||
     semanticSafety.contextAnchorDoesNotRelaxTextSafety !== true ||
+    semanticSafety.exactRangeScopeAllowed !== true ||
+    semanticSafety.scopeBoundaryRewriteAllowed !== false ||
+    semanticSafety.scopeEvidenceBoundToDryRunAndApply !== true ||
     semanticSafety.sameFileChangesPlannedAsOneFinalText !== true ||
     semanticSafety.sameFileChangeOrderPreservedWhenRequired !== true ||
     semanticSafety.sameFileVerifiedInlineTextAppliedAsOneBatch !== true ||
@@ -811,6 +882,16 @@ function checkWritePolicy(writePolicy, errors) {
     semanticSafety.stringLinkTextWriteAllowed !== false ||
     semanticSafety.cnAndTwRoundTripProbeRequired !== true ||
     semanticSafety.numericOrAsciiMinimalWriteAllowed !== true ||
+    semanticSafety.highRiskNewFileProofRequired !== true ||
+    semanticSafety.highRiskNewFileRoundTripProbeRequired !== true ||
+    semanticSafety.highRiskFinalIndependentReadbackRequired !== true ||
+    semanticSafety.highRiskSameExtensionReferenceRequired !== true ||
+    semanticSafety.existingHighRiskFileProtectionRemains !== true ||
+    semanticSafety.registryLifecycleOnlyForExplicitRowAdd !== true ||
+    semanticSafety.registryLifecycleExistingTextPreserved !== true ||
+    semanticSafety.registryLifecycleTargetClosureRequired !== true ||
+    semanticSafety.worldmapLifecycleRequiresRegistryUiDungeonTownRegionClosure !== true ||
+    semanticSafety.worldmapLifecycleRequiresBothTownAndRegion !== true ||
     semanticSafety.clientTextSmokeCheckRequired !== true
   ) {
     errors.push("write-policy.json must allow only matching-encoding round-trip-verified inline Cn/Tw text while blocking .str, StringLink, and unverified non-ASCII writes.");
@@ -1028,12 +1109,17 @@ function main() {
   checkRequiredPaths(errors);
   if (agentWorkspaceMode) {
     checkAgentWorkspaceRootLayout(errors, info);
+    checkAgentInstructionArchitecture(errors, info);
     checkAgentWorkspaceRuntimePurity(errors, info);
     checkBundledRuntimeIntegrity(errors, warnings, info, runtimeRecovery);
     checkNativeBackendResolver(errors, warnings, info);
     const skillValidation = validateBundledSkill(workbenchRoot);
     errors.push(...skillValidation.errors.map((error) => `Bundled Agent Skill: ${error}`));
-    if (skillValidation.ok) info.push(`Bundled Agent Skill: ${skillValidation.skillName} (${skillValidation.sourceHash.slice(0, 12)})`);
+    if (skillValidation.ok) {
+      info.push(
+        `Bundled Agent Skill: ${skillValidation.skillName} (${skillValidation.sourceHash.slice(0, 12)}; ${skillValidation.skillBytes}/${skillValidation.maxSkillBytes} byte budget)`,
+      );
+    }
   }
 
   const opencodeConfig = agentWorkspaceMode ? null : readJson("config/opencode.json", errors);

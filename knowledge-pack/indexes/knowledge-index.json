@@ -80,6 +80,13 @@
         "encyclopedia/pvf-file-types/lst-registry-topology.zh-CN.md"
       ]
     },
+    "pvf-entity-name-search": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/pvf-entity-name-search-readonly.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
     "character-job-branch": {
       "status": "默认可用",
       "entries": [
@@ -168,6 +175,7 @@
       "status": "默认可用",
       "entries": [
         "task-cards/lst-registry-lifecycle-readonly-plan.zh-CN.md",
+        "task-cards/pvf-high-risk-new-file-controlled-change.zh-CN.md",
         "dictionaries/lst-registry-lifecycle-fields.zh-CN.md",
         "workflows/lst-registry-lifecycle.zh-CN.md",
         "task-cards/pvf-registry-lst-topology-readonly-audit.zh-CN.md",
@@ -352,6 +360,7 @@
       "status": "默认可用",
       "entries": [
         "task-cards/worldmap-dungeon-interface-layout-readonly-plan.zh-CN.md",
+        "task-cards/pvf-high-risk-new-file-controlled-change.zh-CN.md",
         "dictionaries/worldmap-dungeon-interface-layout-fields.zh-CN.md",
         "workflows/worldmap-dungeon-interface-layout.zh-CN.md",
         "task-cards/formal-region-town-worldmap-area-entry-readonly-audit.zh-CN.md",

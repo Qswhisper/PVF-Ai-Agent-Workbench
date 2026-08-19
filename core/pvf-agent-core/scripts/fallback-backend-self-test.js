@@ -21,12 +21,14 @@ const { StringTable, StringView, parseTokens } = require("../../../tools/pvf-bri
 const fallback = require(typescriptEntry);
 const { loadPvfBackend } = require("../../../tools/pvf-bridge/native-backend");
 const {
+  automaticChineseNameSearchPlan,
   containsStringLinkToken,
   chooseSemanticReadCandidate,
   directReadReason,
   directSearchReason,
   retryReadReason,
   retrySearchReason,
+  semanticWriteSafety,
   VERIFIED_INLINE_TEXT_MODE,
   VERIFIED_INLINE_CN_TEXT_MODE,
   isVerifiedInlineTextMode,
@@ -123,11 +125,65 @@ function createFixturePvf(targetPath, options = {}) {
   const cnAnchorSectionIndex = options.cnLocalized ? strings.length : null;
   if (options.cnLocalized) strings.push("[description]", "装备强化增幅");
   const cnAnchorValueIndex = options.cnLocalized ? cnAnchorSectionIndex + 1 : null;
+  const scopedStringIndexes = options.cnLocalized
+    ? {
+      check: strings.length,
+      coat: strings.length + 1,
+      support: strings.length + 2,
+      ring: strings.length + 3,
+      skill: strings.length + 4,
+      explain: strings.length + 5,
+      sameExplain: strings.length + 6,
+      retainedExplain: strings.length + 7,
+      checkEnd: strings.length + 8,
+    }
+    : null;
+  if (options.cnLocalized) {
+    strings.push("[check]", "coat", "support", "ring", "[skill]", "[explain]", "相同说明", "保留说明", "[/check]");
+  }
+  const worldmapStringIndexes = {
+    dungeon: strings.length,
+    dungeonEnd: strings.length + 1,
+    name: strings.length + 2,
+  };
+  strings.push("[dungeon]", "[/dungeon]", "亡者峽谷");
+  const creatureStringIndexes = {
+    path: strings.length,
+    name: strings.length + 1,
+  };
+  strings.push("test.cre", "測試寵物");
+  const dungeonPathIndex = strings.length;
+  const dungeonNameIndex = strings.length + 1;
+  strings.push("towers/towerofsighs.dgn", options.dungeonName || options.initialName || "fallback-fixture");
+  const questPathIndex = strings.length;
+  const questNameIndex = strings.length + 1;
+  const albertQuestPathIndex = strings.length + 2;
+  const albertQuestNameIndex = strings.length + 3;
+  const traditionalFixture = options.stringTableEncoding === "Tw";
+  strings.push(
+    "title/titlebook_70_despair1.8.qst",
+    traditionalFixture ? "[挑戰]\r\n最終副本(一)" : "[挑战]\r\n最终副本(一)",
+    "common/albert_condition_2.qst",
+    traditionalFixture ? "阿爾伯特的條件 (2/7)" : "阿尔伯特的条件 (2/7)",
+  );
   const testScriptTokens = [[5, 2], [7, 3], [5, 4], [9, 0], [10, 5], [5, 6], [5, 18], [2, 10]];
   const secondScriptTokens = [[5, 2], [7, 17]];
   if (options.cnLocalized) {
     testScriptTokens.push([5, cnAnchorSectionIndex], [7, cnAnchorValueIndex]);
     secondScriptTokens.push([5, cnAnchorSectionIndex], [7, cnAnchorValueIndex]);
+  }
+  const scopedScriptTokens = [];
+  if (scopedStringIndexes) {
+    for (const partIndex of [scopedStringIndexes.coat, scopedStringIndexes.support, scopedStringIndexes.ring]) {
+      scopedScriptTokens.push(
+        [5, scopedStringIndexes.check], [2, 0], [2, 1], [7, partIndex],
+        [5, scopedStringIndexes.skill], [2, 0], [2, 7],
+        [5, scopedStringIndexes.explain], [7, scopedStringIndexes.sameExplain],
+        [5, scopedStringIndexes.skill], [2, 1], [2, 8],
+        [5, scopedStringIndexes.explain], [7, scopedStringIndexes.retainedExplain],
+        [5, scopedStringIndexes.checkEnd],
+      );
+    }
   }
   const localizedStringView = options.cnLocalized
     ? Buffer.concat([
@@ -146,6 +202,28 @@ function createFixturePvf(targetPath, options = {}) {
       data: createScript(testScriptTokens),
     },
     { fileName: "itemshop/second.shp", data: createScript(secondScriptTokens) },
+    ...(scopedStringIndexes
+      ? [{ fileName: "stackable/scoped.stk", data: createScript(scopedScriptTokens) }]
+      : []),
+    {
+      fileName: "worldmap/towers.wdm",
+      data: createScript([
+        [5, worldmapStringIndexes.dungeon],
+        [2, 11000], [2, -1], [2, 11001], [2, -1], [2, 323], [2, -1],
+        [5, worldmapStringIndexes.dungeonEnd],
+        [5, 2], [7, worldmapStringIndexes.name],
+      ]),
+    },
+    { fileName: "creature/creature.lst", data: createScript([[2, 1], [7, creatureStringIndexes.path]]) },
+    { fileName: "creature/test.cre", data: createScript([[5, 2], [7, creatureStringIndexes.name]]) },
+    { fileName: "dungeon/dungeon.lst", data: createScript([[2, 323], [7, dungeonPathIndex]]) },
+    { fileName: "dungeon/towers/towerofsighs.dgn", data: createScript([[5, 2], [7, dungeonNameIndex]]) },
+    {
+      fileName: "n_quest/quest.lst",
+      data: createScript([[2, 9707], [7, questPathIndex], [2, 350], [7, albertQuestPathIndex]]),
+    },
+    { fileName: "n_quest/title/titlebook_70_despair1.8.qst", data: createScript([[5, 2], [7, questNameIndex]]) },
+    { fileName: "n_quest/common/albert_condition_2.qst", data: createScript([[5, 2], [7, albertQuestNameIndex]]) },
     { fileName: "etc/numeric.etc", data: createScript([[5, 18], [2, 10]]) },
     { fileName: "etc/numeric-sequence.etc", data: createScript([[5, 18], [2, 10]]) },
     { fileName: "character/character.lst", data: createScript([[2, 0], [7, 7]]) },
@@ -258,8 +336,8 @@ async function main() {
   let nativeAvailable = false;
   try {
     const expectedFiles = createFixturePvf(fixturePath);
-    createFixturePvf(cnFixturePath, { cnLocalized: true, stringTableEncoding: "Cn" });
-    createFixturePvf(twFixturePath, { stringTableEncoding: "Tw", initialName: "太陽" });
+    createFixturePvf(cnFixturePath, { cnLocalized: true, stringTableEncoding: "Cn", dungeonName: "叹息之塔" });
+    createFixturePvf(twFixturePath, { stringTableEncoding: "Tw", initialName: "太陽", dungeonName: "太陽" });
     const sourceSha = sha256File(fixturePath);
     const cnSourceSha = sha256File(cnFixturePath);
     const twSourceSha = sha256File(twFixturePath);
@@ -304,13 +382,26 @@ async function main() {
         directReadReason("n_quest/title/fixture.qst", { pvfEncoding: "Tw", semanticVerificationRead: true }, "Tw") === "verified-text-readback" &&
         directReadReason("itemshop/itemshop.kor.str", { pvfEncoding: "Tw" }, "Tw") === null &&
         directSearchReason({ keyword: "中文", searchType: "SearchScript", pvfEncoding: "Cn" }, "Tw") === "cn-semantic-search" &&
+        directSearchReason({ keyword: "中文", searchType: "SearchName", pvfEncoding: "Cn" }, "Tw") === "cn-semantic-search" &&
         directSearchReason({ keyword: "中文", searchType: "SearchStrings", pvfEncoding: "Cn" }, "Tw") === "cn-semantic-search" &&
         directSearchReason({ keyword: "9990001", searchType: "SearchScript", pvfEncoding: "Cn" }, "Tw") === null &&
         directSearchReason({ searchType: "SearchFileName", pvfEncoding: "Cn" }, "Tw") === null &&
+        automaticChineseNameSearchPlan({ keyword: "叹息之塔", searchType: "SearchName", pvfEncoding: "Cn" }, "Cn")?.alternateEncoding === "Tw" &&
+        automaticChineseNameSearchPlan({ keyword: "叹息之塔", searchType: "SearchName", pvfEncoding: "Cn", encodingExplicit: true }, "Cn") === null &&
+        automaticChineseNameSearchPlan({ keyword: "12345", searchType: "SearchName", pvfEncoding: "Cn" }, "Cn") === null &&
+        automaticChineseNameSearchPlan({ keyword: "叹息之塔", searchType: "SearchScript", pvfEncoding: "Cn" }, "Cn") === null &&
         containsStringLinkToken("<5::message_520`中文保护`>") &&
         retryReadReason({ isScriptFile: true, textContent: "<5::message_520`中文保护`>" }, { pvfEncoding: "Cn" }, "Tw") === "cn-stringlink-detected" &&
         retryReadReason({ isScriptFile: true, textContent: "[name]\r\n`中文保护`" }, { pvfEncoding: "Cn" }, "Tw") === "cn-nonascii-script-detected" &&
-        retrySearchReason({ items: [{ preview: "[name] 中文保护" }] }, { keyword: "name", searchType: "SearchScript", pvfEncoding: "Cn" }, "Tw") === "cn-nonascii-search-preview-detected",
+        retrySearchReason({ items: [{ preview: "[name] 中文保护" }] }, { keyword: "name", searchType: "SearchScript", pvfEncoding: "Cn" }, "Tw") === "cn-nonascii-search-preview-detected" &&
+        [".co", ".lst", ".nut", ".sqr", ".str", ".wdm"].every((extension) =>
+          semanticWriteSafety({
+            kind: "write-file",
+            pvfPath: `new/high-risk${extension}`,
+            pvfEncoding: "Tw",
+            textContent: "#PVF_File\r\n",
+          }).code === "PROTECTED_FILE_TYPE_WRITE_BLOCKED",
+        ),
     );
     const encodingConflictChoice = chooseSemanticReadCandidate(
       { isScriptFile: true, textContent: "[name]\r\n`太陽`\r\n" },
@@ -511,9 +602,76 @@ async function main() {
     const filenameSearch = await fallback.searchFiles(fallbackSessionId, { keyword: "test.shp", searchType: "SearchFileName", matchMode: "Like" });
     add("fallback-search-filename", filenameSearch.items.some((item) => item.fileName === "itemshop/test.shp"));
     const scriptSearch = await fallback.searchFiles(fallbackSessionId, { keyword: "fallback-fixture", searchType: "SearchScript", matchMode: "Like", pvfEncoding: "Utf8" });
-    add("fallback-search-script", scriptSearch.items.some((item) => item.fileName === "itemshop/test.shp"));
+    add(
+      "fallback-search-script",
+      scriptSearch.items.some((item) => item.fileName === "itemshop/test.shp") &&
+        scriptSearch.searchedCount < expectedFiles.size,
+    );
+    const worldmapNameSearch = await fallback.searchFiles(fallbackSessionId, {
+      keyword: "亡者峽谷",
+      searchPath: "worldmap",
+      searchType: "SearchName",
+      matchMode: "Like",
+      pvfEncoding: "Utf8",
+    });
+    add(
+      "fallback-search-name-includes-audited-worldmap-script-types",
+      worldmapNameSearch.items.some((item) => item.fileName === "worldmap/towers.wdm") &&
+        worldmapNameSearch.searchedCount === 1,
+    );
+    const creatureNameSearch = await fallback.searchFiles(fallbackSessionId, {
+      keyword: "測試寵物",
+      searchPath: "creature",
+      searchType: "SearchName",
+      matchMode: "Like",
+      pvfEncoding: "Utf8",
+    });
+    add(
+      "fallback-search-name-includes-creature-domain",
+      creatureNameSearch.items.some((item) => item.fileName === "creature/test.cre") &&
+        creatureNameSearch.searchedCount === 2,
+    );
+    const multilineQuestNameSearch = await fallback.searchFiles(fallbackSessionId, {
+      keyword: "最终副本",
+      searchPath: "n_quest",
+      searchType: "SearchName",
+      matchMode: "Like",
+      pvfEncoding: "Utf8",
+    });
+    const partialAlbertNameSearch = await fallback.searchFiles(fallbackSessionId, {
+      keyword: "阿尔伯特",
+      searchPath: "n_quest",
+      searchType: "SearchName",
+      matchMode: "Like",
+      pvfEncoding: "Utf8",
+    });
+    add(
+      "fallback-search-name-supports-multiline-and-partial-name-tokens",
+      multilineQuestNameSearch.items.some((item) =>
+        item.fileName === "n_quest/title/titlebook_70_despair1.8.qst" &&
+        item.displayName === "[挑战] 最终副本(一)") &&
+        partialAlbertNameSearch.items.some((item) => item.fileName === "n_quest/common/albert_condition_2.qst"),
+      { multilineQuestNameSearch, partialAlbertNameSearch },
+    );
     const stringSearch = await fallback.searchFiles(fallbackSessionId, { keyword: "fallback-fixture", searchType: "SearchStrings", matchMode: "Like" });
-    add("fallback-search-strings", stringSearch.items.some((item) => item.fileName === "itemshop/test.shp"));
+    add(
+      "fallback-search-strings",
+      stringSearch.items.some((item) => item.fileName === "itemshop/test.shp") &&
+        stringSearch.searchedCount < expectedFiles.size,
+    );
+    const absentStringSearch = await fallback.searchFiles(fallbackSessionId, {
+      keyword: "definitely-absent-string-table-value",
+      searchType: "SearchStrings",
+      matchMode: "Like",
+    });
+    add(
+      "fallback-search-strings-zero-index-short-circuit",
+      absentStringSearch.matchedCount === 0 &&
+        absentStringSearch.searchedCount === 0 &&
+        absentStringSearch.shortCircuited === true &&
+        absentStringSearch.stringTableMatchedCount === 0 &&
+        absentStringSearch.candidateCount < expectedFiles.size,
+    );
     const resolveSkillCli = childProcess.spawnSync(
       process.execPath,
       [
@@ -549,6 +707,40 @@ async function main() {
         resolveSkillResult?.result?.agentHandoff?.additionalDiscoveryRequired === false,
       resolveSkillCli.status === 0 ? undefined : { stderr: resolveSkillCli.stderr },
     );
+    const resolveLstAliasCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "resolve-lst",
+        "--pvf", fixturePath,
+        "--encoding", "Utf8",
+        "--pvf-encoding", "Utf8",
+        "--lst", "dungeon",
+        "--id", "323",
+        "--no-summary",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    let resolveLstAliasResult = null;
+    try { resolveLstAliasResult = JSON.parse(resolveLstAliasCli.stdout || "null"); } catch { /* assertion below */ }
+    add(
+      "cli-resolve-lst-expands-domain-alias",
+      resolveLstAliasCli.status === 0 &&
+        resolveLstAliasResult?.result?.registry?.path === "dungeon/dungeon.lst" &&
+        resolveLstAliasResult?.result?.entry?.pvfPath === "dungeon/towers/towerofsighs.dgn" &&
+        resolveLstAliasResult?.agentHandoff?.registryIdResolutionComplete === true &&
+        resolveLstAliasResult?.agentHandoff?.naturalLanguageNameMustUseSearchNameFirst === true &&
+        resolveLstAliasResult?.agentHandoff?.directRegistryResolutionAllowedFirstOnlyForExplicitSelector === true &&
+        resolveLstAliasResult?.agentHandoff?.guessedIdOrPathCannotAuthorizeFirstResolution === true &&
+        resolveLstAliasResult?.agentHandoff?.returnedPathOrStemSearchRequired === false,
+      resolveLstAliasResult || { stderr: resolveLstAliasCli.stderr },
+    );
     const searchScriptCli = childProcess.spawnSync(
       process.execPath,
       [
@@ -579,8 +771,503 @@ async function main() {
       searchScriptCli.status === 0 &&
         searchScriptResult?.result?.items?.some((item) => item.fileName === "itemshop/test.shp") &&
         searchScriptResult?.agentHandoff?.exactScriptSearchComplete === true &&
+        searchScriptResult?.agentHandoff?.exactScriptSymbolsOnly === true &&
+        searchScriptResult?.agentHandoff?.naturalLanguageNameSearchRequired === false &&
         searchScriptResult?.agentHandoff?.zeroMatchesProveRuntimeAbsence === false,
       searchScriptCli.status === 0 ? undefined : { stderr: searchScriptCli.stderr },
+    );
+    const searchNameCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "search",
+        "--pvf", fixturePath,
+        "--encoding", "Utf8",
+        "--pvf-encoding", "Utf8",
+        "--keyword", "fallback-fixture",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    let searchNameResult = null;
+    try { searchNameResult = JSON.parse(searchNameCli.stdout || "null"); } catch { /* assertion below */ }
+    add(
+      "cli-natural-language-search-name-handoff",
+      searchNameCli.status === 0 &&
+        searchNameResult?.result?.items?.some((item) => item.fileName === "itemshop/test.shp") &&
+        searchNameResult?.agentHandoff?.naturalLanguageNameSearchComplete === true &&
+        searchNameResult?.agentHandoff?.simplifiedTraditionalRetryRequired === false &&
+        searchNameResult?.agentHandoff?.automaticFullScriptRescanRequired === false &&
+        searchNameResult?.agentHandoff?.sourceIdentityWhenExplicitlyRequired?.finalUnchangedClaimIsBeforeAfterProof === true &&
+        searchNameResult?.agentHandoff?.sourceIdentityWhenExplicitlyRequired?.baselineMustBeNextWorkbenchCommandAfterRequiredFirstCommand === true &&
+        searchNameResult?.agentHandoff?.sourceIdentityWhenExplicitlyRequired?.baselineMustRunBeforeFirstPvfChange === true &&
+        searchNameResult?.agentHandoff?.sourceIdentityWhenExplicitlyRequired?.baselineIsInvalidIfFirstRunAfterAnyPvfChange === true &&
+        searchNameResult?.agentHandoff?.sourceIdentityWhenExplicitlyRequired?.doNotDeferBaselineUntilValidateDryRunOrApply === true &&
+        searchNameResult?.agentHandoff?.sourceIdentityWhenExplicitlyRequired?.finalOnlyFingerprintProvesUnchanged === false &&
+        searchNameResult?.agentHandoff?.nextAction?.includes("the next Workbench command now must be one pvf-read fingerprint") &&
+        searchNameResult?.agentHandoff?.nextAction?.includes("before any pvf-change command") &&
+        searchNameResult?.agentHandoff?.writeCapabilityPreflight?.routineEnvironmentCheckRequired === false &&
+        searchNameResult?.agentHandoff?.writeCapabilityPreflight?.controlledDryRunDiagnosesWriteCapability === true,
+      searchNameCli.status === 0 ? undefined : { stderr: searchNameCli.stderr },
+    );
+    const naturalSubstringNameSearchCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "search",
+        "--pvf", fixturePath,
+        "--encoding", "Utf8",
+        "--pvf-encoding", "Utf8",
+        "--keyword", "最终副本（一）",
+        "--search-path", "n_quest",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    let naturalSubstringNameSearchResult = null;
+    try { naturalSubstringNameSearchResult = JSON.parse(naturalSubstringNameSearchCli.stdout || "null"); } catch { /* assertion below */ }
+    add(
+      "cli-search-name-default-is-safe-literal-substring-with-width-folding",
+      naturalSubstringNameSearchCli.status === 0 &&
+        naturalSubstringNameSearchResult?.result?.items?.some((item) =>
+          item.fileName === "n_quest/title/titlebook_70_despair1.8.qst" &&
+          item.displayName === "[挑战] 最终副本(一)" &&
+          item.registryIdentity?.confirmed === true &&
+          item.registryIdentity?.entries?.some((entry) => entry.id === 9707)) &&
+        naturalSubstringNameSearchResult?.result?.registryResolution?.automatic === true &&
+        naturalSubstringNameSearchResult?.result?.registryResolution?.allReturnedPathsConfirmed === true &&
+        naturalSubstringNameSearchResult?.result?.nameSearch?.mode === "literal-substring" &&
+        naturalSubstringNameSearchResult?.result?.nameSearch?.safeLiteralEscaping === true &&
+        naturalSubstringNameSearchResult?.agentHandoff?.literalSubstringMatchApplied === true &&
+        naturalSubstringNameSearchResult?.agentHandoff?.multilineNameTokenSupported === true &&
+        naturalSubstringNameSearchResult?.agentHandoff?.widthAndPunctuationVariantsSupported === true &&
+        naturalSubstringNameSearchResult?.agentHandoff?.returnedRegistryIdentityAutomaticallyChecked === true &&
+        naturalSubstringNameSearchResult?.agentHandoff?.allReturnedPathsRegistryConfirmed === true &&
+        naturalSubstringNameSearchResult?.agentHandoff?.additionalResolvePathCommandsRequired === false &&
+        naturalSubstringNameSearchResult?.agentHandoff?.returnedPathOrStemSecondSearchRequired === false,
+      naturalSubstringNameSearchResult || { stderr: naturalSubstringNameSearchCli.stderr },
+    );
+    const autoCnNameSearchCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "search",
+        "--pvf", cnFixturePath,
+        "--encoding", "Tw",
+        "--keyword", "叹息之塔",
+        "--search-path", "dungeon",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    let autoCnNameSearchResult = null;
+    try { autoCnNameSearchResult = JSON.parse(autoCnNameSearchCli.stdout || "null"); } catch { /* assertion below */ }
+    add(
+      "cli-search-name-auto-checks-cn-and-tw-selects-cn",
+      autoCnNameSearchCli.status === 0 &&
+        autoCnNameSearchResult?.result?.items?.some((item) =>
+          item.fileName === "dungeon/towers/towerofsighs.dgn" &&
+          item.registryIdentity?.entries?.some((entry) => entry.id === 323)) &&
+        autoCnNameSearchResult?.result?.automaticEncodingSelection?.selectedEncoding === "Cn" &&
+        autoCnNameSearchResult?.result?.automaticEncodingSelection?.checkedEncodings?.join(",") === "Cn,Tw" &&
+        autoCnNameSearchResult?.result?.automaticEncodingSelection?.safeForWriteEncodingSelection === false &&
+        autoCnNameSearchResult?.result?.domainRoute?.registryPath === "dungeon/dungeon.lst" &&
+        autoCnNameSearchResult?.agentHandoff?.cnTwEncodingRetryRequired === false &&
+        autoCnNameSearchResult?.agentHandoff?.searchEncodingMayAuthorizeWrite === false,
+      autoCnNameSearchResult || { stderr: autoCnNameSearchCli.stderr },
+    );
+    const autoTwNameSearchCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "search",
+        "--pvf", twFixturePath,
+        "--encoding", "Tw",
+        "--keyword", "太陽",
+        "--search-path", "dungeon",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    let autoTwNameSearchResult = null;
+    try { autoTwNameSearchResult = JSON.parse(autoTwNameSearchCli.stdout || "null"); } catch { /* assertion below */ }
+    add(
+      "cli-search-name-auto-checks-cn-and-tw-selects-tw",
+      autoTwNameSearchCli.status === 0 &&
+        autoTwNameSearchResult?.result?.items?.some((item) => item.fileName === "dungeon/towers/towerofsighs.dgn") &&
+        autoTwNameSearchResult?.result?.automaticEncodingSelection?.selectedEncoding === "Tw" &&
+        autoTwNameSearchResult?.result?.automaticEncodingSelection?.selectionMode === "alternate-only-match" &&
+        autoTwNameSearchResult?.agentHandoff?.automaticCnTwEncodingChecked === true,
+      autoTwNameSearchResult || { stderr: autoTwNameSearchCli.stderr },
+    );
+    const explicitTwNameSearchCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "search",
+        "--pvf", twFixturePath,
+        "--encoding", "Tw",
+        "--pvf-encoding", "Tw",
+        "--keyword", "太陽",
+        "--search-path", "dungeon",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    let explicitTwNameSearchResult = null;
+    try { explicitTwNameSearchResult = JSON.parse(explicitTwNameSearchCli.stdout || "null"); } catch { /* assertion below */ }
+    add(
+      "cli-search-name-explicit-encoding-remains-single-pass",
+      explicitTwNameSearchCli.status === 0 &&
+        explicitTwNameSearchResult?.result?.items?.some((item) => item.fileName === "dungeon/towers/towerofsighs.dgn") &&
+        explicitTwNameSearchResult?.result?.automaticEncodingSelection === undefined &&
+        explicitTwNameSearchResult?.result?.searchPassCount === undefined,
+      explicitTwNameSearchResult || { stderr: explicitTwNameSearchCli.stderr },
+    );
+    const autoZeroNameSearchCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "search",
+        "--pvf", twFixturePath,
+        "--encoding", "Tw",
+        "--keyword", "不存在的副本",
+        "--search-path", "dungeon",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    let autoZeroNameSearchResult = null;
+    try { autoZeroNameSearchResult = JSON.parse(autoZeroNameSearchCli.stdout || "null"); } catch { /* assertion below */ }
+    add(
+      "cli-search-name-zero-match-confirms-both-encodings-without-retry",
+      autoZeroNameSearchCli.status === 0 &&
+        autoZeroNameSearchResult?.result?.matchedCount === 0 &&
+        autoZeroNameSearchResult?.result?.automaticEncodingSelection?.selectionMode === "no-match-both-checked" &&
+        autoZeroNameSearchResult?.agentHandoff?.cnTwEncodingRetryRequired === false &&
+        autoZeroNameSearchResult?.agentHandoff?.zeroMatchesProveTargetAbsence === false,
+      autoZeroNameSearchResult || { stderr: autoZeroNameSearchCli.stderr },
+    );
+    const batchNameSearchCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "search-batch",
+        "--pvf", twFixturePath,
+        "--encoding", "Tw",
+        "--name", "太陽",
+        "--search-path", "dungeon",
+        "--name", "測試寵物",
+        "--search-path", "creature",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    let batchNameSearchResult = null;
+    try { batchNameSearchResult = JSON.parse(batchNameSearchCli.stdout || "null"); } catch { /* assertion below */ }
+    add(
+      "cli-search-batch-reuses-session-and-routes-creature-registry",
+      batchNameSearchCli.status === 0 &&
+        batchNameSearchResult?.result?.requestedCount === 2 &&
+        batchNameSearchResult?.result?.matchedRequestCount === 2 &&
+        batchNameSearchResult?.result?.sessionReuse?.openedSessionCount === 1 &&
+        batchNameSearchResult?.result?.items?.[0]?.result?.automaticEncodingSelection?.selectedEncoding === "Tw" &&
+        batchNameSearchResult?.result?.items?.[0]?.result?.registryResolution?.allReturnedPathsConfirmed === true &&
+        batchNameSearchResult?.result?.items?.[1]?.result?.items?.some((item) => item.fileName === "creature/test.cre") &&
+        batchNameSearchResult?.result?.items?.[1]?.result?.items?.some((item) =>
+          item.registryIdentity?.entries?.some((entry) => entry.id === 1)) &&
+        batchNameSearchResult?.result?.items?.[1]?.domainRoute?.registryPath === "creature/creature.lst" &&
+        batchNameSearchResult?.agentHandoff?.naturalLanguageBatchSearchComplete === true &&
+        batchNameSearchResult?.agentHandoff?.onePvfSessionUsed === true &&
+        batchNameSearchResult?.agentHandoff?.returnedRegistryIdentityAutomaticallyChecked === true &&
+        batchNameSearchResult?.agentHandoff?.allReturnedRegistryPathsConfirmed === true &&
+        batchNameSearchResult?.agentHandoff?.additionalResolvePathCommandsRequired === false &&
+        batchNameSearchResult?.agentHandoff?.returnedPathOrStemSecondSearchRequired === false &&
+        batchNameSearchResult?.agentHandoff?.sourceIdentityWhenExplicitlyRequired?.baselineMustBeNextWorkbenchCommandAfterRequiredFirstCommand === true &&
+        batchNameSearchResult?.agentHandoff?.sourceIdentityWhenExplicitlyRequired?.runBaselineNowBeforeAnyDryRun === true &&
+        batchNameSearchResult?.agentHandoff?.nextAction?.includes("the next Workbench command now must be one pvf-read fingerprint") &&
+        batchNameSearchResult?.agentHandoff?.writeCapabilityPreflight?.checkBeforeRawReadRequired === false,
+      batchNameSearchResult || { stderr: batchNameSearchCli.stderr },
+    );
+    const invalidBatchNameSearchCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "search-batch",
+        "--pvf", twFixturePath,
+        "--encoding", "Tw",
+        "--name", "太陽",
+        "--name", "測試寵物",
+        "--search-path", "dungeon",
+        "--search-path", "creature",
+        "--search-path", "npc",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    add(
+      "cli-search-batch-path-count-mismatch-stops-safely",
+      invalidBatchNameSearchCli.status === 1 &&
+        /one shared --search-path or exactly one --search-path for every --name/i.test(invalidBatchNameSearchCli.stderr || "") &&
+        sha256File(twFixturePath) === twSourceSha,
+      { status: invalidBatchNameSearchCli.status, stderr: invalidBatchNameSearchCli.stderr },
+    );
+    const resolveLstBatchCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "resolve-lst-batch",
+        "--pvf", fixturePath,
+        "--encoding", "Utf8",
+        "--pvf-encoding", "Utf8",
+        "--lst", "quest",
+        "--id", "9707",
+        "--id", "350",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    let resolveLstBatchResult = null;
+    try { resolveLstBatchResult = JSON.parse(resolveLstBatchCli.stdout || "null"); } catch { /* assertion below */ }
+    add(
+      "cli-resolve-lst-batch-expands-domain-alias-and-reuses-session",
+      resolveLstBatchCli.status === 0 &&
+        resolveLstBatchResult?.result?.registryPath === "n_quest/quest.lst" &&
+        resolveLstBatchResult?.result?.requestedCount === 2 &&
+        resolveLstBatchResult?.result?.foundCount === 2 &&
+        resolveLstBatchResult?.result?.onePvfSessionUsed === true &&
+        resolveLstBatchResult?.result?.items?.[0]?.result?.entry?.pvfPath === "n_quest/title/titlebook_70_despair1.8.qst" &&
+        resolveLstBatchResult?.result?.items?.[1]?.result?.entry?.pvfPath === "n_quest/common/albert_condition_2.qst" &&
+        resolveLstBatchResult?.result?.recommendedReadBatchCommand?.includes("pvf-read read-batch") &&
+        resolveLstBatchResult?.agentHandoff?.batchRegistryIdResolutionComplete === true &&
+        resolveLstBatchResult?.agentHandoff?.naturalLanguageNameMustUseSearchNameFirst === true &&
+        resolveLstBatchResult?.agentHandoff?.directRegistryResolutionAllowedFirstOnlyForExplicitSelector === true &&
+        resolveLstBatchResult?.agentHandoff?.guessedIdOrPathCannotAuthorizeFirstResolution === true &&
+        resolveLstBatchResult?.agentHandoff?.additionalPerIdResolveRequired === false &&
+        resolveLstBatchResult?.agentHandoff?.returnedPathOrStemSearchRequired === false &&
+        resolveLstBatchResult?.agentHandoff?.nextCommandOnly === resolveLstBatchResult?.result?.recommendedReadBatchCommand,
+      resolveLstBatchResult || { stderr: resolveLstBatchCli.stderr },
+    );
+    const resolvePathBatchCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "resolve-path-batch",
+        "--pvf", fixturePath,
+        "--encoding", "Utf8",
+        "--pvf-encoding", "Utf8",
+        "--registry", "quest",
+        "--path", "n_quest/title/titlebook_70_despair1.8.qst",
+        "--path", "n_quest/common/albert_condition_2.qst",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    let resolvePathBatchResult = null;
+    try { resolvePathBatchResult = JSON.parse(resolvePathBatchCli.stdout || "null"); } catch { /* assertion below */ }
+    add(
+      "cli-resolve-path-batch-expands-domain-alias-and-reuses-session",
+      resolvePathBatchCli.status === 0 &&
+        resolvePathBatchResult?.result?.registryPaths?.join(",") === "n_quest/quest.lst" &&
+        resolvePathBatchResult?.result?.requestedCount === 2 &&
+        resolvePathBatchResult?.result?.confirmedCount === 2 &&
+        resolvePathBatchResult?.result?.onePvfSessionUsed === true &&
+        resolvePathBatchResult?.result?.items?.every((item) => item.result?.matchedCount === 1) &&
+        resolvePathBatchResult?.agentHandoff?.batchRegistryPathResolutionComplete === true &&
+        resolvePathBatchResult?.agentHandoff?.additionalPerPathResolveRequired === false &&
+        resolvePathBatchResult?.agentHandoff?.returnedPathOrStemSearchRequired === false,
+      resolvePathBatchResult || { stderr: resolvePathBatchCli.stderr },
+    );
+    const duplicateResolveLstBatchCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "resolve-lst-batch",
+        "--pvf", fixturePath,
+        "--encoding", "Utf8",
+        "--pvf-encoding", "Utf8",
+        "--lst", "quest",
+        "--id", "350",
+        "--id", "350",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    add(
+      "cli-resolve-lst-batch-duplicate-id-stops-safely",
+      duplicateResolveLstBatchCli.status === 1 &&
+        /does not accept duplicate --id/i.test(duplicateResolveLstBatchCli.stderr || "") &&
+        sha256File(fixturePath) === sourceSha,
+      { status: duplicateResolveLstBatchCli.status, stderr: duplicateResolveLstBatchCli.stderr },
+    );
+    const oneIdResolveLstBatchCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "resolve-lst-batch",
+        "--pvf", fixturePath,
+        "--lst", "quest",
+        "--id", "350",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    add(
+      "cli-resolve-lst-batch-single-id-stops-before-open",
+      oneIdResolveLstBatchCli.status === 1 &&
+        /requires at least two --id values/i.test(oneIdResolveLstBatchCli.stderr || "") &&
+        sha256File(fixturePath) === sourceSha,
+      { status: oneIdResolveLstBatchCli.status, stderr: oneIdResolveLstBatchCli.stderr },
+    );
+    const fingerprintCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "fingerprint",
+        "--pvf", fixturePath,
+        "--pvf", twFixturePath,
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    let fingerprintResult = null;
+    try { fingerprintResult = JSON.parse(fingerprintCli.stdout || "null"); } catch { /* assertion below */ }
+    add(
+      "cli-fingerprint-hashes-multiple-sources-without-backend-or-help",
+      fingerprintCli.status === 0 &&
+        fingerprintResult?.result?.requestedCount === 2 &&
+        fingerprintResult?.result?.completedCount === 2 &&
+        fingerprintResult?.result?.hashAlgorithm === "SHA256" &&
+        fingerprintResult?.result?.fullFileHash === true &&
+        fingerprintResult?.result?.items?.[0]?.sourcePvfSha256 === sourceSha &&
+        fingerprintResult?.result?.items?.[1]?.sourcePvfSha256 === twSourceSha &&
+        fingerprintResult?.result?.items?.every((item) => item.stableDuringFingerprint === true) &&
+        fingerprintResult?.agentHandoff?.repeatExactCommandAtFinalVerification === true &&
+        fingerprintResult?.agentHandoff?.beforeAfterProofRequiresTwoMatchingCommandResults === true &&
+        fingerprintResult?.agentHandoff?.baselineMustPrecedeFirstPvfChange === true &&
+        fingerprintResult?.agentHandoff?.baselineTimingMustBeCheckedAgainstCommandOrder === true &&
+        fingerprintResult?.agentHandoff?.firstFingerprintAfterAnyPvfChangeCannotProveStartingState === true &&
+        fingerprintResult?.agentHandoff?.additionalHashCommandRequired === false &&
+        fingerprintResult?.agentHandoff?.helpProbeRequired === false,
+      fingerprintResult || { stderr: fingerprintCli.stderr },
+    );
+    const duplicateFingerprintCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "fingerprint",
+        "--pvf", fixturePath,
+        "--pvf", fixturePath,
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    add(
+      "cli-fingerprint-duplicate-source-stops-before-hashing",
+      duplicateFingerprintCli.status === 1 &&
+        /same PVF more than once/i.test(duplicateFingerprintCli.stderr || "") &&
+        sha256File(fixturePath) === sourceSha,
+      { status: duplicateFingerprintCli.status, stderr: duplicateFingerprintCli.stderr },
+    );
+    const chineseMisroutedSearchCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "search-script",
+        "--pvf", cnFixturePath,
+        "--encoding", "Tw",
+        "--pvf-encoding", "Cn",
+        "--keyword", "不存在的中文实体",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    let chineseMisroutedSearchResult = null;
+    try { chineseMisroutedSearchResult = JSON.parse(chineseMisroutedSearchCli.stdout || "null"); } catch { /* assertion below */ }
+    add(
+      "cli-chinese-search-script-zero-routes-to-name-search-once",
+      chineseMisroutedSearchCli.status === 0 &&
+        chineseMisroutedSearchResult?.result?.matchedCount === 0 &&
+        chineseMisroutedSearchResult?.agentHandoff?.naturalLanguageNameSearchRequired === true &&
+        chineseMisroutedSearchResult?.agentHandoff?.repeatSimplifiedTraditionalScriptSearchRequired === false &&
+        chineseMisroutedSearchResult?.agentHandoff?.nextCommandOnly?.includes("pvf-read search") &&
+        chineseMisroutedSearchResult?.agentHandoff?.nextCommandOnly?.includes("不存在的中文实体"),
+      chineseMisroutedSearchCli.status === 0 ? undefined : { stderr: chineseMisroutedSearchCli.stderr },
     );
     const rawReadCli = childProcess.spawnSync(
       process.execPath,
@@ -614,7 +1301,23 @@ async function main() {
         rawReadResult?.textUsage?.mode === "canonical-change-source" &&
         rawReadResult?.textUsage?.safeForChangeSetSource === true &&
         rawReadResult?.textUsage?.canonicalTokenLayout === true &&
-        rawReadResult?.textUsage?.automaticEncodingSelection === undefined,
+        rawReadResult?.textUsage?.automaticEncodingSelection === undefined &&
+        rawReadResult?.agentHandoff?.changeSetFormatExamples?.linkedVerifiedTextAndParameters ===
+          "workspaces/examples/change-set.verified-cn-text.example.json" &&
+        rawReadResult?.agentHandoff?.changeSetFormatExamples?.exactHomomorphicBlockScope ===
+          "workspaces/examples/change-set.exact-scope.example.json" &&
+        rawReadResult?.agentHandoff?.changeSetFormatExamples?.cumulativeSecondRound ===
+          "workspaces/examples/change-set.cumulative-second-round.example.json" &&
+        rawReadResult?.agentHandoff?.sourceIdentityWhenExplicitlyRequired?.baselineCommandOnly?.includes("pvf-read fingerprint") &&
+        rawReadResult?.agentHandoff?.sourceIdentityWhenExplicitlyRequired?.baselineMustBeNextWorkbenchCommandAfterRequiredFirstCommand === true &&
+        rawReadResult?.agentHandoff?.sourceIdentityWhenExplicitlyRequired?.baselineMustRunBeforeFirstPvfChange === true &&
+        rawReadResult?.agentHandoff?.sourceIdentityWhenExplicitlyRequired?.baselineIsInvalidIfFirstRunAfterAnyPvfChange === true &&
+        rawReadResult?.agentHandoff?.sourceIdentityWhenExplicitlyRequired?.finalOnlyFingerprintProvesUnchanged === false &&
+        rawReadResult?.agentHandoff?.writeCapabilityPreflight?.checkBeforeValidateRequired === false &&
+        rawReadResult?.agentHandoff?.writeCapabilityPreflight?.runCheckOnlyAfterExplicitReadOnlyFallbackOrUnavailableCommand === true &&
+        rawReadResult?.agentHandoff?.schemaLookupRequired === false &&
+        rawReadResult?.agentHandoff?.examplesDirectoryScanRequired === false &&
+        rawReadResult?.agentHandoff?.helpProbeRequired === false,
       rawReadCli.status === 0 ? { result: rawReadResult } : { stderr: rawReadCli.stderr },
     );
 
@@ -1014,6 +1717,86 @@ async function main() {
           canonicalPlan: controlledCanonicalPlan,
         },
       );
+
+      const controlledRegistryRead = parseBackendTextResult(await controlledServerClient.callTool("pvf_read_file", {
+        sessionId: controlledPlanSessionId,
+        pvfPath: "itemshop/itemshop.lst",
+        pvfEncoding: "Utf8",
+        convertToSimplifiedChinese: false,
+        autoConvertStringLink: false,
+        semanticVerificationRead: true,
+      }));
+      const controlledRegistryText = String(controlledRegistryRead?.textContent || "");
+      const controlledRegistryRow = controlledRegistryText
+        .match(/(?:^|\r?\n)(-?\d+[\t ]+`test\.shp`[\t ]*)(?=\r?\n|$)/u)?.[1] || "";
+      const controlledRegistryNewline = controlledRegistryText.includes("\r\n") ? "\r\n" : "\n";
+      const controlledRegistryProof = {
+        mode: "registry-lifecycle",
+        allowExistingRegistryEdit: true,
+        registry: {
+          lstPath: "itemshop/itemshop.lst",
+          id: 2,
+          expectedPvfPath: "itemshop/new.shp",
+          action: "add",
+        },
+      };
+      const controlledRegistryRewrite = parseBackendTextResult(await controlledServerClient.callTool("pvf_replace_text", {
+        sessionId: controlledPlanSessionId,
+        pvfPath: "itemshop/itemshop.lst",
+        previousText: controlledRegistryRow,
+        newText: `99\t\`rewritten.shp\`${controlledRegistryNewline}2\t\`new.shp\``,
+        replaceAll: false,
+        expectedOccurrences: 1,
+        dryRun: false,
+        pvfEncoding: "Utf8",
+        convertToSimplifiedChinese: false,
+        writeProof: controlledRegistryProof,
+      }));
+      const controlledRegistryMisroute = parseBackendTextResult(await controlledServerClient.callTool("pvf_replace_text", {
+        sessionId: controlledPlanSessionId,
+        pvfPath: "itemshop/test.shp",
+        previousText: "fallback-fixture",
+        newText: "fallback-preview",
+        replaceAll: false,
+        expectedOccurrences: 1,
+        dryRun: false,
+        pvfEncoding: "Utf8",
+        convertToSimplifiedChinese: false,
+        writeProof: {
+          ...controlledRegistryProof,
+          registry: { ...controlledRegistryProof.registry, lstPath: "itemshop/test.shp" },
+        },
+      }));
+      const controlledRegistryAdd = parseBackendTextResult(await controlledServerClient.callTool("pvf_replace_text", {
+        sessionId: controlledPlanSessionId,
+        pvfPath: "itemshop/itemshop.lst",
+        previousText: controlledRegistryRow,
+        newText: `${controlledRegistryRow}${controlledRegistryNewline}2\t\`new.shp\``,
+        replaceAll: false,
+        expectedOccurrences: 1,
+        dryRun: false,
+        pvfEncoding: "Utf8",
+        convertToSimplifiedChinese: false,
+        writeProof: controlledRegistryProof,
+      }));
+      add(
+        "controlled-single-registry-route-is-add-only",
+        controlledRegistryRow.length > 0 &&
+          controlledRegistryRewrite?.data?.code === "REGISTRY_LIFECYCLE_NOT_ADD_ONLY" &&
+          controlledRegistryMisroute?.data?.code === "REGISTRY_PLAN_SHAPE_INVALID" &&
+          controlledRegistryAdd?.ok === true &&
+          controlledRegistryAdd?.writeProof?.id === 2 &&
+          controlledRegistryAdd?.proof?.mode === "registry-lifecycle" &&
+          controlledRegistryAdd?.proof?.addOnly === true &&
+          controlledRegistryAdd?.proof?.transitionProof?.ok === true &&
+          sha256File(fixturePath) === sourceSha,
+        {
+          registryRead: controlledRegistryRead,
+          rewrite: controlledRegistryRewrite,
+          misroute: controlledRegistryMisroute,
+          add: controlledRegistryAdd,
+        },
+      );
       await controlledServerClient.callTool("pvf_close", { sessionId: controlledPlanSessionId });
 
       const controlledCnOpened = parseBackendTextResult(await controlledServerClient.callTool("pvf_open", {
@@ -1059,6 +1842,18 @@ async function main() {
         convertToSimplifiedChinese: false,
         textWriteMode: VERIFIED_INLINE_CN_TEXT_MODE,
       }));
+      const controlledProtectedFileCreate = parseBackendTextResult(await controlledServerClient.callTool("pvf_write_file", {
+        sessionId: controlledCnSessionId,
+        pvfPath: "new/blocked.lst",
+        textContent: "#PVF_File\r\n",
+        pvfEncoding: "Tw",
+      }));
+      const controlledProtectedWorldmapCreate = parseBackendTextResult(await controlledServerClient.callTool("pvf_write_file", {
+        sessionId: controlledCnSessionId,
+        pvfPath: "worldmap/blocked.wdm",
+        textContent: "#PVF_File\r\n[map image]\r\n`WorldMap/Towers.img`\t0\r\n",
+        pvfEncoding: "Tw",
+      }));
       const controlledCnOutput = path.join(tempRoot, "controlled-cn-output.pvf");
       const controlledCnSave = parseBackendTextResult(await controlledServerClient.callTool("pvf_save", {
         sessionId: controlledCnSessionId,
@@ -1090,6 +1885,9 @@ async function main() {
         controlledCnScriptReplace?.ok === true &&
         controlledCnScriptReplace?.semanticReadGuard?.reason === "verified-text-readback" &&
         controlledDirectChineseReplace?.data?.code === "NON_ASCII_TEXT_WRITE_UNVERIFIED" &&
+        controlledProtectedFileCreate?.data?.code === "PROTECTED_FILE_TYPE_WRITE_BLOCKED" &&
+        controlledProtectedWorldmapCreate?.data?.code === "PROTECTED_FILE_TYPE_WRITE_BLOCKED" &&
+        (controlledProtectedWorldmapCreate?.error || "").includes("worldmap.lst") &&
         controlledVerifiedChineseReplace?.ok === true &&
         controlledVerifiedChineseReplace?.writeResult?.proof?.existingStringEntriesPreserved === true &&
         controlledCnSave?.ok === true &&
@@ -1108,6 +1906,8 @@ async function main() {
           strReplace: controlledCnStrReplace,
           scriptReplace: controlledCnScriptReplace,
           directChineseReplace: controlledDirectChineseReplace,
+          protectedFileCreate: controlledProtectedFileCreate,
+          protectedWorldmapCreate: controlledProtectedWorldmapCreate,
           verifiedChineseReplace: controlledVerifiedChineseReplace,
           save: controlledCnSave,
           strReadbackText: controlledCnStrReadback?.textContent,
@@ -1139,6 +1939,15 @@ async function main() {
             pvfPath: "etc/numeric.etc",
             previousText: "10",
             newText: "11",
+            replaceAll: false,
+            pvfEncoding: "Cn",
+          },
+          {
+            id: "worldmap-wdm-dungeon-list-extension",
+            type: "replace-text",
+            pvfPath: "worldmap/towers.wdm",
+            previousText: "11000\t-1\t11001\t-1\t323\t-1",
+            newText: "11000\t-1\t11001\t-1\t323\t-1\t120\t-1\t121\t-1",
             replaceAll: false,
             pvfEncoding: "Cn",
           },
@@ -1200,6 +2009,49 @@ async function main() {
             textWriteMode: VERIFIED_INLINE_CN_TEXT_MODE,
             pvfEncoding: "Cn",
           },
+          {
+            id: "scoped-cn-delete-explain-first",
+            type: "replace-text",
+            pvfPath: "stackable/scoped.stk",
+            previousText: "`相同说明`",
+            newText: "``",
+            scope: {
+              startText: "[check]\r\n0\t1\r\n`coat`\r\n",
+              endText: "[/check]",
+              expectedRanges: 1,
+            },
+            replaceAll: false,
+            textWriteMode: VERIFIED_INLINE_CN_TEXT_MODE,
+            pvfEncoding: "Cn",
+          },
+          {
+            id: "scoped-delete-structure-second",
+            type: "replace-text",
+            pvfPath: "stackable/scoped.stk",
+            previousText: "[skill]\r\n0\t7\r\n\r\n[explain]\r\n``\r\n\r\n",
+            newText: "",
+            scope: {
+              startText: "[check]\r\n0\t1\r\n`coat`\r\n",
+              endText: "[/check]",
+              expectedRanges: 1,
+            },
+            replaceAll: false,
+            pvfEncoding: "Cn",
+          },
+          {
+            id: "scoped-renumber-third",
+            type: "replace-text",
+            pvfPath: "stackable/scoped.stk",
+            previousText: "[skill]\r\n1\t8\r\n",
+            newText: "[skill]\r\n0\t8\r\n",
+            scope: {
+              startText: "[check]\r\n0\t1\r\n`coat`\r\n",
+              endText: "[/check]",
+              expectedRanges: 1,
+            },
+            replaceAll: false,
+            pvfEncoding: "Cn",
+          },
         ],
         safety: {
           writeModeEnabled: false,
@@ -1257,6 +2109,8 @@ async function main() {
       let endToEndText = null;
       let endToEndSkillText = null;
       let endToEndNumericText = null;
+      let endToEndScopedText = null;
+      let endToEndWdmText = null;
       let endToEndGuard = null;
       if (applyManifest?.outputPvf && fs.existsSync(applyManifest.outputPvf)) {
         const endToEndOpened = await fallback.openSession(applyManifest.outputPvf, "Tw");
@@ -1276,11 +2130,33 @@ async function main() {
             autoConvertStringLink: false,
           });
           endToEndNumericText = endToEndNumericRead.textContent;
+          const endToEndScopedRead = await fallback.readFile(endToEndOpened.sessionId, "stackable/scoped.stk", {
+            pvfEncoding: "Cn",
+            autoConvertStringLink: false,
+          });
+          endToEndScopedText = endToEndScopedRead.textContent;
+          const endToEndWdmRead = await fallback.readFile(endToEndOpened.sessionId, "worldmap/towers.wdm", {
+            pvfEncoding: "Cn",
+            autoConvertStringLink: false,
+          });
+          endToEndWdmText = endToEndWdmRead.textContent;
           endToEndGuard = applyManifest.readback?.find((item) => item.verifiedInlineText)?.semanticReadGuard || null;
         } finally {
           await fallback.closeSession(endToEndOpened.sessionId);
         }
       }
+      const scopedPartBlock = (source, part) => {
+        const text = String(source || "");
+        const partOffset = text.indexOf(`\`${part}\``);
+        const startOffset = partOffset < 0 ? -1 : text.lastIndexOf("[check]", partOffset);
+        const endMarkerOffset = partOffset < 0 ? -1 : text.indexOf("[/check]", partOffset);
+        return startOffset < 0 || endMarkerOffset < 0
+          ? null
+          : text.slice(startOffset, endMarkerOffset + "[/check]".length);
+      };
+      const scopedCoatText = scopedPartBlock(endToEndScopedText, "coat");
+      const scopedSupportText = scopedPartBlock(endToEndScopedText, "support");
+      const scopedRingText = scopedPartBlock(endToEndScopedText, "ring");
       const endToEndOk =
         dryRunProcess.status === 0 &&
         dryRunResult?.summary?.blockedCount === 0 &&
@@ -1290,20 +2166,27 @@ async function main() {
         applyManifest?.safety?.verifiedInlineTextRequiresExactIndependentReadback === true &&
         applyManifest?.safety?.sameFileChangesPlannedAsOneFinalText === true &&
         applyManifest?.safety?.sameFileChangeOrderPreservedWhenRequired === true &&
+        applyManifest?.safety?.exactRangeScopeAllowed === true &&
+        applyManifest?.safety?.scopeBoundaryRewriteAllowed === false &&
+        applyManifest?.safety?.scopeEvidenceBoundToDryRunAndApply === true &&
         applyManifest?.safety?.backupContentAddressed === true &&
         applyManifest?.safety?.backupCreatedThisRun === true &&
         applyManifest?.safety?.backupReused === false &&
         applyManifest?.safety?.backupSha256Verified === true &&
-        applyManifest?.summary?.changedCount === 7 &&
+        applyManifest?.summary?.changedCount === 11 &&
         applyManifest?.cumulative?.enabled === false &&
         applyManifest?.cumulative?.chainDepth === 0 &&
         applyManifest?.cumulative?.previousChangeCount === 0 &&
-        applyManifest?.cumulative?.currentChangeCount === 7 &&
-        applyManifest?.cumulative?.totalChangeCount === 7 &&
-        applyManifest?.readback?.length === 3 &&
+        applyManifest?.cumulative?.currentChangeCount === 11 &&
+        applyManifest?.cumulative?.totalChangeCount === 11 &&
+        applyManifest?.readback?.length === 5 &&
         applyManifest?.readback?.find((item) => item.pvfPath === "itemshop/test.shp")?.changeIds?.length === 3 &&
         applyManifest?.readback?.find((item) => item.pvfPath === "itemshop/second.shp")?.changeIds?.length === 3 &&
+        applyManifest?.readback?.find((item) => item.pvfPath === "stackable/scoped.stk")?.changeIds?.length === 3 &&
+        applyManifest?.readback?.find((item) => item.pvfPath === "worldmap/towers.wdm")?.changeIds?.length === 1 &&
         applyManifest?.results?.find((item) => item.id === "verified-cn-name")?.applyResult?.batch?.changeCount === 2 &&
+        applyManifest?.results?.find((item) => item.id === "scoped-cn-delete-explain-first")?.contextAnchor?.scope?.rangeCount === 1 &&
+        typeof applyManifest?.results?.find((item) => item.id === "scoped-cn-delete-explain-first")?.contextAnchor?.scope?.ranges?.[0]?.contentSha256 === "string" &&
         applyManifest.readback.every((item) => item.ok === true) &&
         applyManifest.readback.filter((item) => item.verifiedInlineText).every((item) => item.exactTextOk === true && item.independentSemanticRead === true) &&
         reuseApplyProcess?.status === 0 &&
@@ -1323,6 +2206,14 @@ async function main() {
         !(endToEndSkillText || "").includes("[description]") &&
         !(endToEndSkillText || "").includes("装备强化增幅") &&
         !(endToEndSkillText || "").includes("&#") &&
+        scopedCoatText ===
+          "[check]\r\n0\t1\r\n`coat`\r\n\r\n[skill]\r\n0\t8\r\n\r\n[explain]\r\n`保留说明`\r\n[/check]" &&
+        scopedSupportText ===
+          "[check]\r\n0\t1\r\n`support`\r\n\r\n[skill]\r\n0\t7\r\n\r\n[explain]\r\n`相同说明`\r\n\r\n[skill]\r\n1\t8\r\n\r\n[explain]\r\n`保留说明`\r\n[/check]" &&
+        scopedRingText ===
+          "[check]\r\n0\t1\r\n`ring`\r\n\r\n[skill]\r\n0\t7\r\n\r\n[explain]\r\n`相同说明`\r\n\r\n[skill]\r\n1\t8\r\n\r\n[explain]\r\n`保留说明`\r\n[/check]" &&
+        (endToEndWdmText || "").includes("11000\t-1\t11001\t-1\t323\t-1\t120\t-1\t121\t-1") &&
+        (endToEndWdmText || "").includes("`亡者峽谷`") &&
         /\b11\b/.test(endToEndNumericText || "") &&
         sha256File(cnFixturePath) === cnSourceSha;
       add("pvf-change-verified-inline-text-cn-end-to-end", endToEndOk, endToEndOk ? undefined : {
@@ -1341,8 +2232,63 @@ async function main() {
         endToEndText,
         endToEndSkillText,
         endToEndNumericText,
+        endToEndScopedText,
+        endToEndWdmText,
+        scopedCoatText,
+        scopedSupportText,
+        scopedRingText,
         sourceUnchanged: sha256File(cnFixturePath) === cnSourceSha,
       });
+
+      const scopeMismatchChangeSetFile = path.join(tempRoot, "exact-scope-count-mismatch-change-set.json");
+      const scopeMismatchDryRunRoot = path.join(tempRoot, "exact-scope-count-mismatch-dry-run");
+      fs.writeFileSync(scopeMismatchChangeSetFile, `${JSON.stringify({
+        schemaVersion: "1.0",
+        mode: "dry-run-only",
+        description: "Exact scope count mismatch must withhold authorization.",
+        target: { sourcePvf: cnFixturePath, pvfOpenEncoding: "Tw", pvfReadEncoding: "Cn" },
+        changes: [{
+          id: "scope-count-mismatch",
+          type: "replace-text",
+          pvfPath: "stackable/scoped.stk",
+          previousText: "`相同说明`",
+          newText: "`不得写入`",
+          scope: {
+            startText: "[check]\r\n0\t1\r\n`coat`\r\n",
+            endText: "[/check]",
+            expectedRanges: 2,
+          },
+          replaceAll: false,
+          textWriteMode: VERIFIED_INLINE_CN_TEXT_MODE,
+          pvfEncoding: "Cn",
+        }],
+        safety: {
+          writeModeEnabled: false,
+          requiresBackupBeforeApply: true,
+          requiresExplicitOutputPath: true,
+          requiresReadback: true,
+        },
+      }, null, 2)}\n`, "utf8");
+      const scopeMismatchDryRun = childProcess.spawnSync(process.execPath, [
+        pvfChangeCli, "--root", workbenchRoot, "dry-run", "--file", scopeMismatchChangeSetFile, "--out", scopeMismatchDryRunRoot,
+      ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: cliEnv });
+      let scopeMismatchResult = null;
+      try { scopeMismatchResult = JSON.parse(scopeMismatchDryRun.stdout || "null"); } catch { /* recorded below */ }
+      const scopeMismatchManifest = scopeMismatchResult?.manifestPath && fs.existsSync(scopeMismatchResult.manifestPath)
+        ? JSON.parse(fs.readFileSync(scopeMismatchResult.manifestPath, "utf8"))
+        : null;
+      add(
+        "pvf-change-exact-scope-count-mismatch-withholds-approval",
+        scopeMismatchDryRun.status === 2 &&
+          scopeMismatchResult?.approvalCode === null &&
+          scopeMismatchResult?.summary?.blockedCount === 1 &&
+          scopeMismatchResult?.blockedChanges?.[0]?.code === "SCOPE_RANGE_COUNT_MISMATCH" &&
+          scopeMismatchManifest?.binding?.approvalCode === null &&
+          scopeMismatchManifest?.binding?.authorizationWithheld === true &&
+          scopeMismatchManifest?.binding?.authorizationWithheldReason === "BLOCKED_DRY_RUN" &&
+          sha256File(cnFixturePath) === cnSourceSha,
+        scopeMismatchResult,
+      );
 
       const cumulativeChangeSetFile = path.join(tempRoot, "cumulative-second-round-change-set.json");
       const cumulativeDryRunRoot = path.join(tempRoot, "cumulative-second-round-dry-run");
@@ -1413,9 +2359,9 @@ async function main() {
         cumulativeApplyProcess?.status === 0 &&
         cumulativeApplyManifest?.cumulative?.enabled === true &&
         cumulativeApplyManifest?.cumulative?.chainDepth === 1 &&
-        cumulativeApplyManifest?.cumulative?.previousChangeCount === 7 &&
+        cumulativeApplyManifest?.cumulative?.previousChangeCount === 11 &&
         cumulativeApplyManifest?.cumulative?.currentChangeCount === 1 &&
-        cumulativeApplyManifest?.cumulative?.totalChangeCount === 8 &&
+        cumulativeApplyManifest?.cumulative?.totalChangeCount === 12 &&
         typeof cumulativeApplyManifest?.cumulative?.previousApplyManifestSha256 === "string" &&
         cumulativeApplyManifest?.cumulative?.previousApplyManifestSha256 === sha256File(applyResult.manifestPath) &&
         typeof cumulativeDryRunResult?.manifestPath === "string" &&

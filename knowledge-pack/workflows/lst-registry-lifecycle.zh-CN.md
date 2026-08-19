@@ -42,10 +42,11 @@
 
 用户明确授权后，分别从目标 raw no-simplified registry 和引用文件建立精确 change-set。dry-run 必须同时覆盖脚本、registry 和引用方；任一文件阻断则整个原子计划不 apply。
 
+新增完整 `.lst` 或给既有 `.lst` 加行时，使用 `task-cards/pvf-high-risk-new-file-controlled-change.zh-CN.md` 的 `registry-lifecycle` 证明。既有 registry 只允许 `action=add`；去掉证明的新行后，最终文本必须与原文逐字一致，不能顺带修改或重排旧行。
+
 ## 验收
 
 - 任意 `.lst` 都可按目标格式处理，不依赖硬编码四类 registry。
 - 重复与冲突在写前可见，不静默覆盖。
 - 新脚本、登记和引用闭合同时审阅。
 - 导出名称未被当作实体主键。
-

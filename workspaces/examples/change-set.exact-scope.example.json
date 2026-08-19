@@ -1,0 +1,65 @@
+{
+  "$schema": "../../core/pvf-agent-core/schemas/pvf-change-set.schema.json",
+  "schemaVersion": "1.0",
+  "mode": "dry-run-only",
+  "description": "同构部位正文与相邻上下文都相同时，在一个精确块内完成中文清空、结构删除和重编号",
+  "target": {
+    "sourcePvf": "D:\\MyDNFWork\\Script.pvf",
+    "pvfOpenEncoding": "Tw",
+    "pvfReadEncoding": "Cn"
+  },
+  "changes": [
+    {
+      "id": "coat-clear-one-explain",
+      "type": "replace-text",
+      "pvfPath": "stackable/example.stk",
+      "previousText": "`待删除说明`",
+      "newText": "``",
+      "scope": {
+        "startText": "[check]\r\n0\t1\t`coat`\r\n",
+        "endText": "[/check]",
+        "expectedRanges": 1
+      },
+      "replaceAll": false,
+      "textWriteMode": "verified-inline-text",
+      "pvfEncoding": "Cn",
+      "rationale": "previousText 和三个 scope 值必须逐字复制自同一次 pvf-read read --raw"
+    },
+    {
+      "id": "coat-delete-empty-option",
+      "type": "replace-text",
+      "pvfPath": "stackable/example.stk",
+      "previousText": "[skill]\r\n0\t7\r\n[explain]\r\n``\r\n",
+      "newText": "",
+      "scope": {
+        "startText": "[check]\r\n0\t1\t`coat`\r\n",
+        "endText": "[/check]",
+        "expectedRanges": 1
+      },
+      "replaceAll": false,
+      "pvfEncoding": "Cn",
+      "rationale": "只删除上一步清空后的完整数字、英文、标签和常见符号结构"
+    },
+    {
+      "id": "coat-renumber-retained-option",
+      "type": "replace-text",
+      "pvfPath": "stackable/example.stk",
+      "previousText": "[skill]\r\n1\t8\r\n",
+      "newText": "[skill]\r\n0\t8\r\n",
+      "scope": {
+        "startText": "[check]\r\n0\t1\t`coat`\r\n",
+        "endText": "[/check]",
+        "expectedRanges": 1
+      },
+      "replaceAll": false,
+      "pvfEncoding": "Cn",
+      "rationale": "同一路径、同一 scope、同一 change-set 内按声明顺序完成重编号"
+    }
+  ],
+  "safety": {
+    "writeModeEnabled": false,
+    "requiresBackupBeforeApply": true,
+    "requiresExplicitOutputPath": true,
+    "requiresReadback": true
+  }
+}

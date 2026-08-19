@@ -7,6 +7,7 @@ const path = require("path");
 
 const SKILL_NAME = "dnf-pvf-xpilot";
 const INSTALL_MARKER = ".workbench-skill-install.json";
+const MAX_SKILL_BYTES = 8 * 1024;
 
 function timestamp() {
   const now = new Date();
@@ -85,8 +86,13 @@ function validateBundledSkill(workbenchRoot) {
   }
 
   const skillFile = path.join(skillDir, "SKILL.md");
+  let skillBytes = null;
   if (fs.existsSync(skillFile)) {
     const text = fs.readFileSync(skillFile, "utf8");
+    skillBytes = Buffer.byteLength(text, "utf8");
+    if (skillBytes > MAX_SKILL_BYTES) {
+      errors.push(`SKILL.md exceeds the ${MAX_SKILL_BYTES}-byte thin-adapter budget: ${skillBytes}.`);
+    }
     const parsed = parseFrontmatter(text);
     if (!parsed) {
       errors.push("SKILL.md frontmatter is missing or malformed.");
@@ -95,7 +101,23 @@ function validateBundledSkill(workbenchRoot) {
       if (keys.join(",") !== "description,name") errors.push("SKILL.md frontmatter must contain only name and description.");
       if (parsed.fields.name !== SKILL_NAME) errors.push(`SKILL.md name must be ${SKILL_NAME}.`);
       if (!parsed.fields.description || parsed.fields.description.length > 1024) errors.push("SKILL.md description must be 1-1024 characters.");
-      for (const requiredText of ["release/AGENT-WORKSPACE-MANIFEST.json", "AGENTS.md", "knowledge-pack/indexes/knowledge-index.json", "pvf-read read --raw", "independent canonical token layout", "content-addressed source backup", "readback", "dry-run manifest and approval code", "Workbench-bundled native backend", "bundled TypeScript read-only backend", "without npm or a build step", "READ_ONLY_FALLBACK", "self-contained", "knowledge-query bookmark", "workbench.bat research", "external claim store", "workbench.bat client-pvf", "rollback-preview", "技术详情（通常不用看）"]) {
+      for (const requiredText of [
+        "release/AGENT-WORKSPACE-MANIFEST.json",
+        "AGENTS.md",
+        "knowledge-pack/safety/README.zh-CN.md",
+        "knowledge-pack/indexes/knowledge-index.json",
+        "first listed `workbench.bat` command",
+        "one bare `workbench.bat` command",
+        "pvf-read read --raw",
+        "agentHandoff.nextCommandOnly",
+        "READ_ONLY_FALLBACK",
+        "content-addressed source backup",
+        "baseline.applyManifest",
+        "workbench.bat client-pvf",
+        "workbench.bat research",
+        "external claim store",
+        "技术详情（通常不用看）",
+      ]) {
         if (!parsed.body.includes(requiredText)) errors.push(`SKILL.md is missing required routing or safety text: ${requiredText}`);
       }
     }
@@ -114,6 +136,8 @@ function validateBundledSkill(workbenchRoot) {
     ok: errors.length === 0,
     skillName: SKILL_NAME,
     skillDir,
+    skillBytes,
+    maxSkillBytes: MAX_SKILL_BYTES,
     sourceHash: fs.existsSync(skillFile) ? hashSkillDirectory(skillDir) : null,
     errors,
   };

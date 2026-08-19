@@ -57,9 +57,10 @@ const CACHE_LIMIT = RESOURCE_LIMITS.cacheBytes;
 const MAX_TREE_BYTES = RESOURCE_LIMITS.maxTreeBytes;
 const MAX_FILE_COUNT = RESOURCE_LIMITS.maxFileCount;
 const INFERRED_SCRIPT_EXTENSIONS = new Set([
-  ".act", ".ai", ".aic", ".atk", ".chr", ".co", ".dgn", ".equ", ".etc",
-  ".exp", ".job", ".key", ".lst", ".map", ".mob", ".obj", ".ptl", ".qst",
-  ".set", ".shp", ".skl", ".stk", ".tbl", ".ui",
+  ".act", ".ai", ".aic", ".atk", ".chr", ".co", ".cre", ".dgn", ".equ",
+  ".etc", ".exp", ".job", ".key", ".lst", ".map", ".mm", ".mob", ".msn",
+  ".npc", ".obj", ".ptl", ".qst", ".rgn", ".set", ".shp", ".skl", ".stk",
+  ".tbl", ".twn", ".ui", ".wdm",
 ]);
 const PLAIN_TEXT_EXTENSIONS = new Set([
   ".als", ".cfg", ".csv", ".ini", ".json", ".lua", ".nut", ".sqr", ".str",
@@ -380,7 +381,10 @@ async function readFile(sessionId: string, fileName: string, options: ReadFileOp
 function makeMatcher(keyword: string, mode: string): { test: (value: unknown) => boolean; preview: (value: unknown) => string } {
   if (mode === "Regex") {
     const regex = new RegExp(keyword, "i");
-    return { test: (value) => regex.test(value), preview: (value) => value.match(regex)?.[0] || keyword };
+    return {
+      test: (value) => regex.test(String(value)),
+      preview: (value) => String(value).match(regex)?.[0]?.replace(/\s+/g, " ").trim() || keyword,
+    };
   }
   const needle = keyword.toLowerCase();
   return {
@@ -391,6 +395,18 @@ function makeMatcher(keyword: string, mode: string): { test: (value: unknown) =>
       return index < 0 ? keyword : text.slice(Math.max(0, index - 80), Math.min(text.length, index + keyword.length + 80)).replace(/\s+/g, " ");
     },
   };
+}
+
+function extractNameField(text: unknown): string {
+  const source = String(text || "");
+  const marker = /\[name\][ \t]*(?:\r?\n)+/iu.exec(source);
+  if (!marker) return "";
+  const tail = source.slice(marker.index + marker[0].length);
+  const stringLink = /^\s*<[^>`\r\n]{0,1024}`([^`]*)`>/u.exec(tail);
+  if (stringLink) return stringLink[1];
+  const inline = /^\s*`([^`]*)`/u.exec(tail);
+  if (inline) return inline[1];
+  return /^\s*([^\r\n]*)/u.exec(tail)?.[1]?.trim() || "";
 }
 
 async function searchFiles(sessionId: string, query: SearchQuery = {}): Promise<Record<string, any>> {
@@ -405,15 +421,20 @@ async function searchFiles(sessionId: string, query: SearchQuery = {}): Promise<
   }
   const matcher = makeMatcher(keyword, query.matchMode || "Like");
   const searchPath = normalizePvfPath(query.searchPath || "");
+  const searchType = String(query.searchType || "SearchName");
   const allowed = Array.isArray(query.sourceFiles) && query.sourceFiles.length > 0
     ? new Set(query.sourceFiles.map(normalizePvfPath))
     : null;
   const candidates = session.entries.filter((entry) => {
     if (allowed && !allowed.has(entry.fileName)) return false;
-    if (!searchPath) return true;
-    return query.isUseLikeSearchPath ? entry.fileName.includes(searchPath) : entry.fileName.startsWith(searchPath);
+    if (searchPath && !(query.isUseLikeSearchPath ? entry.fileName.includes(searchPath) : entry.fileName.startsWith(searchPath))) {
+      return false;
+    }
+    if (searchType === "SearchFileName") return true;
+    if (searchType === "SearchStrings") return entry.isScriptFile;
+    if (searchType === "SearchNutText") return entry.fileName.endsWith(".nut");
+    return entry.isScriptFile || likelyText(entry.fileName);
   });
-  const searchType = String(query.searchType || "SearchName");
   const items = [];
   let matchedCount = 0;
   let errorCount = 0;
@@ -431,10 +452,27 @@ async function searchFiles(sessionId: string, query: SearchQuery = {}): Promise<
   }
 
   let stringIndices = null;
+  let searchStringTable = null;
   if (searchType === "SearchStrings") {
-    const table = await session.ensureStringTable(query.pvfEncoding || session.encoding);
+    searchStringTable = await session.ensureStringTable(query.pvfEncoding || session.encoding);
     stringIndices = new Set();
-    for (let index = 0; index < table.count; index += 1) if (matcher.test(table.get(index, false))) stringIndices.add(index);
+    for (let index = 0; index < searchStringTable.count; index += 1) {
+      if (matcher.test(searchStringTable.get(index, false))) stringIndices.add(index);
+    }
+    if (stringIndices.size === 0) {
+      return {
+        matchedCount: 0,
+        searchedCount: 0,
+        candidateCount: candidates.length,
+        stringTableMatchedCount: 0,
+        shortCircuited: true,
+        items: [],
+        truncated: false,
+        errorCount: 0,
+        errors: [],
+        errorsTruncated: false,
+      };
+    }
   }
 
   for (const entry of candidates) {
@@ -442,11 +480,12 @@ async function searchFiles(sessionId: string, query: SearchQuery = {}): Promise<
       const bytes = await session.readDecrypted(entry);
       let matched = false;
       let preview = keyword;
+      let displayName = "";
       if (searchType === "SearchStrings" && entry.isScriptFile) {
         for (const token of parseTokens(bytes)) {
           if ([5, 6, 7, 8, 10].includes(token.type) && stringIndices.has(token.value)) {
             matched = true;
-            preview = (await session.ensureStringTable(query.pvfEncoding || session.encoding)).get(token.value);
+            preview = searchStringTable.get(token.value);
             break;
           }
         }
@@ -463,7 +502,8 @@ async function searchFiles(sessionId: string, query: SearchQuery = {}): Promise<
         });
         const text = read.textContent || "";
         if (searchType === "SearchName") {
-          const nameBlock = text.match(/\[name\]\s*\r?\n([^\r\n]*)/i)?.[1] || "";
+          const nameBlock = extractNameField(text);
+          displayName = nameBlock.replace(/\s+/g, " ").trim();
           matched = matcher.test(nameBlock); preview = matcher.preview(nameBlock);
         } else {
           matched = matcher.test(text); preview = matcher.preview(text);
@@ -471,7 +511,14 @@ async function searchFiles(sessionId: string, query: SearchQuery = {}): Promise<
       }
       if (!matched) continue;
       matchedCount += 1;
-      if (items.length < RESOURCE_LIMITS.maxSearchResults) items.push({ fileName: entry.fileName, shortName: shortName(entry.fileName), preview });
+      if (items.length < RESOURCE_LIMITS.maxSearchResults) {
+        items.push({
+          fileName: entry.fileName,
+          shortName: shortName(entry.fileName),
+          ...(searchType === "SearchName" ? { displayName } : {}),
+          preview,
+        });
+      }
     } catch (error: any) {
       errorCount += 1;
       if (errors.length < RESOURCE_LIMITS.maxReportedSearchErrors) {

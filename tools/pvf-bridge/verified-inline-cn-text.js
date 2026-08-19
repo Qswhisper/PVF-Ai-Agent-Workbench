@@ -46,7 +46,7 @@ const RAW_TOKEN_PATCH_EXTENSIONS = new Set([
   ".aic",
   ".atk",
   ".chr",
-  ".co",
+  ".cre",
   ".dgn",
   ".equ",
   ".etc",
@@ -54,16 +54,22 @@ const RAW_TOKEN_PATCH_EXTENSIONS = new Set([
   ".job",
   ".key",
   ".map",
+  ".mm",
   ".mob",
+  ".msn",
+  ".npc",
   ".obj",
   ".ptl",
   ".qst",
+  ".rgn",
   ".set",
   ".shp",
   ".skl",
   ".stk",
   ".tbl",
+  ".twn",
   ".ui",
+  ".wdm",
 ]);
 const ALLOWED_VISIBLE_TEXT_TAGS = new Set([
   "basic explain",
@@ -289,6 +295,7 @@ function analyzeVerifiedInlineTextChange(input = {}) {
     newText,
     contextBefore: input.contextBefore,
     contextAfter: input.contextAfter,
+    scope: input.scope,
     occurrenceIndex: input.occurrenceIndex,
     replaceAll: input.replaceAll === true,
     expectedOccurrences: input.expectedOccurrences,
@@ -329,6 +336,7 @@ function analyzeVerifiedInlineTextChange(input = {}) {
     occurrenceCount,
     occurrenceOffsets: occurrences.map((item) => item.offset),
     totalOccurrenceCount: anchored.totalOccurrenceCount,
+    scopedOccurrenceCount: anchored.scopedOccurrenceCount,
     contextAnchor: anchored.evidence,
     previousValue,
     newValue,
@@ -594,6 +602,7 @@ function buildVerifiedInlineTextPatch(input = {}) {
       occurrenceCount: candidates.length,
       expectedOccurrences: analysis.expectedOccurrences,
       totalOccurrenceCount: analysis.totalOccurrenceCount,
+      scopedOccurrenceCount: analysis.scopedOccurrenceCount,
       contextAnchor: analysis.contextAnchor,
       originalStringCount: appended.originalCount,
       outputStringCount: appended.outputCount,
@@ -811,6 +820,7 @@ function buildVerifiedInlineTextBatchPatch(input = {}) {
       newText: change.newText,
       contextBefore: change.contextBefore,
       contextAfter: change.contextAfter,
+      scope: change.scope,
       replaceAll: change.replaceAll === true,
       expectedOccurrences: change.expectedOccurrences,
     }));
@@ -861,6 +871,7 @@ function buildVerifiedInlineTextBatchPatch(input = {}) {
       occurrenceCount: item.candidates.length,
       expectedOccurrences: item.analysis.expectedOccurrences,
       totalOccurrenceCount: item.analysis.totalOccurrenceCount,
+      scopedOccurrenceCount: item.analysis.scopedOccurrenceCount,
       contextAnchor: item.analysis.contextAnchor,
       originalStringCount: appended.originalCount,
       outputStringCount: appended.outputCount,
@@ -1122,6 +1133,7 @@ function buildRawAsciiScriptPatch(input = {}) {
     newText,
     contextBefore: input.contextBefore,
     contextAfter: input.contextAfter,
+    scope: input.scope,
     occurrenceIndex: input.occurrenceIndex,
     replaceAll: input.replaceAll === true,
     expectedOccurrences: input.expectedOccurrences,
@@ -1162,6 +1174,11 @@ function buildRawAsciiScriptPatch(input = {}) {
     newText: normalizedNewText,
     contextBefore: anchored.contextBefore === null ? undefined : normalize(anchored.contextBefore),
     contextAfter: anchored.contextAfter === null ? undefined : normalize(anchored.contextAfter),
+    scope: anchored.scope === null ? undefined : {
+      startText: normalize(anchored.scope.startText),
+      endText: normalize(anchored.scope.endText),
+      expectedRanges: anchored.scope.expectedRanges,
+    },
     replaceAll: anchored.replaceAll,
     expectedOccurrences,
   });
@@ -1264,6 +1281,7 @@ function buildRawAsciiScriptPatch(input = {}) {
       occurrenceCount: actualOccurrences,
       expectedOccurrences,
       totalOccurrenceCount: anchored.totalOccurrenceCount,
+      scopedOccurrenceCount: anchored.scopedOccurrenceCount,
       contextAnchor: anchored.evidence,
       changedTokenIndexes,
       changedTokenCount: changedTokenIndexes.length,
@@ -1547,6 +1565,101 @@ function verifiedInlineTextSelfTest() {
       rawPatch.proof.outputTokenCount > rawPatch.proof.originalTokenCount && rawPatch.proof.exactIndependentTextReadback === true,
   });
 
+  const wdmTable = createFixtureStringTable(["[dungeon]", "[/dungeon]", "[name]", "亡者峽谷"], "Tw");
+  const wdmScript = createFixtureScript([
+    [5, 0], [2, 11000], [2, -1], [2, 11001], [2, -1], [2, 323], [2, -1],
+    [5, 1], [5, 2], [7, 3],
+  ]);
+  const wdmSource = "#PVF_File\r\n[dungeon]\r\n11000\t-1\t11001\t-1\t323\t-1\r\n[/dungeon]\r\n\r\n[name]\r\n`亡者峽谷`\r\n";
+  const wdmNext = "#PVF_File\r\n[dungeon]\r\n11000\t-1\t11001\t-1\t323\t-1\t120\t-1\t121\t-1\r\n[/dungeon]\r\n\r\n[name]\r\n`亡者峽谷`\r\n";
+  const wdmPatch = buildRawAsciiScriptPatch({
+    pvfPath: "worldmap/towers.wdm",
+    pvfEncoding: "Tw",
+    sourceText: wdmSource,
+    previousText: "11000\t-1\t11001\t-1\t323\t-1",
+    newText: "11000\t-1\t11001\t-1\t323\t-1\t120\t-1\t121\t-1",
+    replaceAll: false,
+    stringTableBytes: wdmTable,
+    scriptBytes: wdmScript,
+  });
+  checks.push({
+    id: "raw-ascii-worldmap-wdm-dungeon-list-extension-roundtrip",
+    ok:
+      wdmPatch.expectedText === wdmNext &&
+      wdmPatch.proof.encoding === "Tw" &&
+      wdmPatch.proof.occurrenceCount === 1 &&
+      wdmPatch.proof.originalTokenCount === 10 &&
+      wdmPatch.proof.outputTokenCount === 14 &&
+      wdmPatch.proof.stringTableUntouched === true &&
+      wdmPatch.proof.existingStringEntriesPreserved === true,
+  });
+
+  for (const [extension, pvfPath] of [
+    [".cre", "creature/fixture.cre"],
+    [".mm", "region/minimap/fixture.mm"],
+    [".msn", "pvp_mission/fixture.msn"],
+    [".npc", "npc/fixture.npc"],
+    [".rgn", "region/fixture.rgn"],
+    [".twn", "town/fixture.twn"],
+  ]) {
+    const patch = buildRawAsciiScriptPatch({
+      pvfPath,
+      pvfEncoding: "Cn",
+      sourceText: "#PVF_File\r\n[value]\r\n10\r\n",
+      previousText: "10",
+      newText: "20",
+      replaceAll: false,
+      stringTableBytes: rawTable,
+      scriptBytes: createFixtureScript([[5, 0], [2, 10]]),
+    });
+    checks.push({
+      id: `raw-ascii-${extension.slice(1)}-canonical-script-parameter-roundtrip`,
+      ok: patch.expectedText === "#PVF_File\r\n[value]\r\n20\r\n" && patch.proof.changedTokenCount === 1,
+    });
+  }
+
+  let rawRegistryCode = null;
+  try {
+    buildRawAsciiScriptPatch({
+      pvfPath: "dungeon/dungeon.lst",
+      pvfEncoding: "Cn",
+      sourceText: "#PVF_File\r\n[value]\r\n10\r\n",
+      previousText: "10",
+      newText: "20",
+      replaceAll: false,
+      stringTableBytes: rawTable,
+      scriptBytes: createFixtureScript([[5, 0], [2, 10]]),
+    });
+  } catch (error) {
+    rawRegistryCode = error.code;
+  }
+  checks.push({
+    id: "raw-ascii-lst-registry-remains-protected",
+    ok: rawRegistryCode === "RAW_ASCII_FILE_TYPE_UNSUPPORTED",
+    code: rawRegistryCode,
+  });
+
+  let rawClientLogicCode = null;
+  try {
+    buildRawAsciiScriptPatch({
+      pvfPath: "clientonly/eventmaker/growdialog.co",
+      pvfEncoding: "Cn",
+      sourceText: "#PVF_File\r\n[value]\r\n10\r\n",
+      previousText: "10",
+      newText: "20",
+      replaceAll: false,
+      stringTableBytes: rawTable,
+      scriptBytes: createFixtureScript([[5, 0], [2, 10]]),
+    });
+  } catch (error) {
+    rawClientLogicCode = error.code;
+  }
+  checks.push({
+    id: "raw-ascii-co-client-logic-remains-protected",
+    ok: rawClientLogicCode === "RAW_ASCII_FILE_TYPE_UNSUPPORTED",
+    code: rawClientLogicCode,
+  });
+
   const rawBatchSource = "#PVF_File\r\n[value]\r\n10\r\n[value]\r\n10\r\n";
   const rawBatchScript = createFixtureScript([[5, 0], [2, 10], [5, 0], [2, 10]]);
   const rawBatchPatch = buildRawAsciiScriptPatch({
@@ -1571,6 +1684,78 @@ function verifiedInlineTextSelfTest() {
       rawAnchoredPatch.proof.totalOccurrenceCount === 2 &&
       rawAnchoredPatch.proof.occurrenceCount === 1 &&
       rawAnchoredPatch.proof.contextAnchor?.anchored === true,
+  });
+
+  const scopedStrings = ["[check]", "coat", "[value]", "[explain]", "同值说明", "[/check]", "support", "ring"];
+  const scopedTable = createFixtureStringTable(scopedStrings, "Cn");
+  const scopedTokens = [];
+  for (const partStringIndex of [1, 6, 7]) {
+    scopedTokens.push(
+      [5, 0], [2, 0], [2, 1], [7, partStringIndex],
+      [5, 2], [2, 10], [5, 3], [7, 4], [5, 5],
+    );
+  }
+  const scopedScript = createFixtureScript(scopedTokens);
+  const scopedTextBlock = (part, value = 10, explain = "同值说明") =>
+    `[check]\r\n0\t1\t\`${part}\`\r\n[value]\r\n${value}\r\n[explain]\r\n\`${explain}\`\r\n[/check]\r\n`;
+  const scopedSource = scopedTextBlock("coat") + scopedTextBlock("support") + scopedTextBlock("ring");
+  const coatScope = {
+    startText: "[check]\r\n0\t1\t`coat`\r\n",
+    endText: "[/check]",
+    expectedRanges: 1,
+  };
+  const scopedVerifiedBatchPatch = buildVerifiedInlineTextBatchPatch({
+    pvfPath: "stackable/scoped-batch.stk",
+    pvfEncoding: "Cn",
+    sourceText: scopedSource,
+    changes: [{
+      id: "scoped-explain",
+      textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+      pvfEncoding: "Cn",
+      previousText: "`同值说明`",
+      newText: "`目标说明`",
+      scope: coatScope,
+      replaceAll: false,
+    }],
+    stringTableBytes: scopedTable,
+    scriptBytes: scopedScript,
+  });
+  const scopedVerifiedOutputTable = StringTable.parse(scopedVerifiedBatchPatch.stringTableBytes, "Cn");
+  const scopedVerifiedOutputTokens = parseTokens(scopedVerifiedBatchPatch.scriptBytes);
+  checks.push({
+    id: "verified-batch-exact-scope-changes-only-target-homomorphic-block",
+    ok:
+      scopedVerifiedBatchPatch.sourceText ===
+        scopedTextBlock("coat", 10, "目标说明") + scopedTextBlock("support") + scopedTextBlock("ring") &&
+      scopedVerifiedOutputTable.get(scopedVerifiedOutputTokens[7].value) === "目标说明" &&
+      scopedVerifiedOutputTable.get(scopedVerifiedOutputTokens[16].value) === "同值说明" &&
+      scopedVerifiedOutputTable.get(scopedVerifiedOutputTokens[25].value) === "同值说明" &&
+      scopedVerifiedBatchPatch.proofs[0]?.contextAnchor?.scopeApplied === true &&
+      scopedVerifiedBatchPatch.proofs[0]?.contextAnchor?.scope?.rangeCount === 1 &&
+      scopedVerifiedBatchPatch.proofs[0]?.totalOccurrenceCount === 3,
+  });
+
+  const scopedRawPatch = buildRawAsciiScriptPatch({
+    pvfPath: "stackable/scoped-raw.stk",
+    pvfEncoding: "Cn",
+    sourceText: scopedSource,
+    previousText: "[value]\r\n10",
+    newText: "[value]\r\n20",
+    scope: coatScope,
+    replaceAll: false,
+    stringTableBytes: scopedTable,
+    scriptBytes: scopedScript,
+  });
+  checks.push({
+    id: "raw-ascii-exact-scope-changes-only-target-homomorphic-block",
+    ok:
+      scopedRawPatch.expectedText ===
+        scopedTextBlock("coat", 20) + scopedTextBlock("support") + scopedTextBlock("ring") &&
+      scopedRawPatch.proof.occurrenceCount === 1 &&
+      scopedRawPatch.proof.totalOccurrenceCount === 3 &&
+      scopedRawPatch.proof.contextAnchor?.scopeApplied === true &&
+      scopedRawPatch.proof.contextAnchor?.scope?.ranges?.[0]?.contentSha256 &&
+      scopedRawPatch.proof.exactIndependentTextReadback === true,
   });
 
   const rawNewTokenSource = "#PVF_File\r\n[skill]\r\n13\r\n`[swordman]`\t72\r\n[/skill]\r\n";

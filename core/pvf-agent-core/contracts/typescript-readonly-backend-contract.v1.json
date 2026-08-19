@@ -70,9 +70,9 @@
     "The bundled native backend remains the automatic first choice.",
     "The TypeScript backend opens source PVFs with read-only file handles and never creates PVF, backup, extraction, client, or cache output.",
     "Write-capable tools are absent from tools/list in TypeScript mode and direct calls fail with READ_ONLY_FALLBACK before filesystem mutation.",
-    "pvf_replace_text is callable in TypeScript mode only when dryRun=true and never mutates the session or source PVF.",
+    "pvf_replace_text is callable in TypeScript mode only when dryRun=true, uses the same exact adjacent-context and exact-range scope analysis as controlled write, and never mutates the session or source PVF.",
     "Malformed archives, unsafe entry paths, duplicate normalized paths, checksum failures, and resource-limit violations fail closed.",
-    "Search truncation and per-file read errors remain visible to callers.",
+    "SearchName reads complete inline or StringLink name tokens, including embedded newlines; search truncation and per-file read errors remain visible to callers.",
     "No npm package, network fetch, transpiler, VS Code runtime, or external parser is required."
   ]
 }

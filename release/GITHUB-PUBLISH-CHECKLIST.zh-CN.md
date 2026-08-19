@@ -1,4 +1,4 @@
-# GitHub 2.2.2 发布清单
+# GitHub 3.0.0 发布清单
 
 本清单用于把当前干净目录同步到 GitHub。Gate 报告、真实 PVF、客户端、
 本机 profile 和研究目录都不进入仓库。
@@ -22,15 +22,19 @@
 
 4. 运行 `workbench.bat release all`，只提交 Gate 全通过的源码树；外部
    runtime state 中的报告不提交。
-5. 确认 `runtime/node/node.exe` 是普通 Git blob，不是 Git LFS pointer。
+5. 如果修改过 `AGENTS.md`、随包 Skill 或安全路由，必须再用全新会话完成
+   一次真实外部 Agent 黑盒；内置 `eval self-test` 不能代替。报告留在工作台
+   外，并确认第一工具、第一命令、源指纹时序、错误安全停止、连续修改、
+   最终读回及无帮助/目录/`check` 绕路。
+6. 确认 `runtime/node/node.exe` 是普通 Git blob，不是 Git LFS pointer。
    它会触发 GitHub 的 50 MiB 警告，但低于 100 MiB 单文件硬限制。保留
    普通 Git blob 才能让 GitHub 自动生成的 Source code zip 开箱即用。
-6. 检查 `git status --short`，确认没有真实 `.pvf/.npk/.img`、本机路径、
+7. 检查 `git status --short`，确认没有真实 `.pvf/.npk/.img`、本机路径、
    secret、数据库、压缩包、缓存目录或 Gate 输出。
-7. 提交并推送后，在远端 tag 对应的 Source code zip 中再次运行
+8. 提交并推送后，在远端 tag 对应的 Source code zip 中再次运行
    `workbench.bat check`、`workbench.bat pvf-change self-test`、
    `workbench.bat client-pvf self-test`、`workbench.bat fallback-self-test` 和
-   `workbench.bat release gate3`，再创建 `v2.2.2`
+   `workbench.bat release gate3`，再创建 `v3.0.0`
    Release。
 
 ## 发布措辞边界
@@ -50,6 +54,11 @@
   批量，参数与中文可在同文件联动验证。不能宣传成任意中文都可写；
   `Cn .str`、StringLink 显示文本、部分中文 token、未计数批量和无法编码
   字符仍必须失败关闭，最终仍需游戏内文字检查。
+- 可以声明新增 `.co`、`.lst`、`.nut`、`.sqr`、`.str`、`.wdm` 支持受控
+  `writeProof` 生命周期；它们必须通过目标格式、冲突/引用闭合、脚本结构、
+  临时写出或编码往返和独立读回。既有高风险文件的普通修改仍被阻止；新增 worldmap
+  还必须原子核对 registry、UI、dungeon、town/region，不能把静态核验宣传
+  成客户端或游戏内功能验证。
 - 可以声明已复查的独立输出 PVF 可在单独预览和确认后部署到 profile 指定
   的测试客户端，并可恢复部署前版本；不能把这项权限扩大为 NPK、IMG、UI
   或其他客户端资源写入，也不能把文件部署成功宣传为实机功能通过。

@@ -6,7 +6,7 @@
   "controlledApplyEnabled": true,
   "permissionModel": {
     "readOnlyAdapter": "config/pvf-adapter.json launches only the Workbench-bundled read backend for ordinary inspection.",
-    "controlledWriteRunner": "core/pvf-agent-core/cli/pvf-change-set.js is the only local PVF-generation lane. It may call bundled backend write operations during apply with explicit output, a SHA256-verified content-addressed protected-source backup, readback, and final-output SHA256 binding; an identical protected-source backup is reused only after its hash is rechecked. A cumulative next round must explicitly bind the previous successful apply manifest. verified-inline-text dry-run may additionally create and delete an isolated temporary output for encoding proof. Client installation remains a separate client-pvf lane.",
+    "controlledWriteRunner": "core/pvf-agent-core/cli/pvf-change-set.js is the only local PVF-generation lane. It may call bundled backend write operations during apply with explicit output, a SHA256-verified content-addressed protected-source backup, readback, and final-output SHA256 binding; an identical protected-source backup is reused only after its hash is rechecked. Exact-range scope selectors bind marker hashes, non-overlapping range locations and content hashes without allowing boundary writes. A cumulative next round must explicitly bind the previous successful apply manifest. verified-inline-text dry-run may additionally create and delete an isolated temporary output for encoding proof. Client installation remains a separate client-pvf lane.",
     "hostExposedWriteToolsEnabled": false,
     "sourceOverwriteAllowed": false,
     "clientWriteAllowed": false
@@ -25,6 +25,9 @@
       "verifiedInlineTextBatchRequiresExactExpectedOccurrences": true,
       "exactAdjacentContextAnchoringAllowed": true,
       "contextAnchorDoesNotRelaxTextSafety": true,
+      "exactRangeScopeAllowed": true,
+      "scopeBoundaryRewriteAllowed": false,
+      "scopeEvidenceBoundToDryRunAndApply": true,
       "sameFileChangesPlannedAsOneFinalText": true,
       "sameFileChangeOrderPreservedWhenRequired": true,
       "sameFileVerifiedInlineTextAppliedAsOneBatch": true,
@@ -32,6 +35,36 @@
       "stringLinkTextWriteAllowed": false,
       "cnAndTwRoundTripProbeRequired": true,
       "numericOrAsciiMinimalWriteAllowed": true,
+      "rawTokenFileTypePolicy": "audited-explicit-allowlist",
+      "auditedCanonicalConfigurationExtensions": [
+        ".cre",
+        ".npc",
+        ".msn",
+        ".wdm",
+        ".twn",
+        ".rgn",
+        ".mm"
+      ],
+      "protectedNewWorldmapExtensions": [
+        ".wdm"
+      ],
+      "protectedLogicRegistryAndLocalizationExtensions": [
+        ".co",
+        ".lst",
+        ".nut",
+        ".sqr",
+        ".str"
+      ],
+      "highRiskNewFileProofRequired": true,
+      "highRiskNewFileRoundTripProbeRequired": true,
+      "highRiskFinalIndependentReadbackRequired": true,
+      "highRiskSameExtensionReferenceRequired": true,
+      "existingHighRiskFileProtectionRemains": true,
+      "registryLifecycleOnlyForExplicitRowAdd": true,
+      "registryLifecycleExistingTextPreserved": true,
+      "registryLifecycleTargetClosureRequired": true,
+      "worldmapLifecycleRequiresRegistryUiDungeonTownRegionClosure": true,
+      "worldmapLifecycleRequiresBothTownAndRegion": true,
       "clientTextSmokeCheckRequired": true
     },
     "allowedBridgeTools": [

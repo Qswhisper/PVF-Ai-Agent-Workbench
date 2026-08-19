@@ -269,8 +269,8 @@
     },
     {
       "dest": "dictionaries/text-stringlink-encoding-fields.zh-CN.md",
-      "bytes": 7138,
-      "sha256": "7f10cb936d18b55bb6851de13f00f6531fb82e0c25ad7f1f8267fa9ab337c4f5"
+      "bytes": 7568,
+      "sha256": "564b0642a9015826a8b4baf213d73a131c593e5fac2f0b38f5daa337c8f338ae"
     },
     {
       "dest": "dictionaries/unified-knowledge-query-boundary-quick.zh-CN.md",
@@ -404,8 +404,8 @@
     },
     {
       "dest": "encyclopedia/pvf-file-types/text-stringlink-localization.zh-CN.md",
-      "bytes": 3392,
-      "sha256": "c3809d141b4bc485b272611ea0991daa2aa20b920176c6cac2ad68b810251287"
+      "bytes": 3596,
+      "sha256": "99ab7ff6a43ec0b74df91bccfc777fe6939e03af489ecf520122cd8d8602aab8"
     },
     {
       "dest": "encyclopedia/pvf-file-types/upgrade-reinforce-amplify-enchant-recipe.zh-CN.md",
@@ -634,8 +634,8 @@
     },
     {
       "dest": "indexes/knowledge-index.json",
-      "bytes": 25788,
-      "sha256": "c6e133a2a2b851bb9caf5af0730b40c1ed11d89be9a855cbf5ec84fd9862c24e"
+      "bytes": 26126,
+      "sha256": "8cec7a77707ec40dcdc983cc2154a61e4038ca2dbf39a05b2b2f962e33e2ab4b"
     },
     {
       "dest": "indexes/knowledge-topic-routes.full.json",
@@ -949,8 +949,8 @@
     },
     {
       "dest": "indexes/text-stringlink-encoding-localization-boundary.zh-CN.md",
-      "bytes": 8079,
-      "sha256": "7aed3177bbea225779962acd5756fb4fa5c4d17ee6ac1a5579d593227c78e7a2"
+      "bytes": 8351,
+      "sha256": "d9ded1a858525621203c25d818296b34b5a97c0d9ea2e73d139060cdffed338d"
     },
     {
       "dest": "indexes/upgrade-reinforce-amplify-enchant-recipe-boundary.zh-CN.md",
@@ -964,8 +964,8 @@
     },
     {
       "dest": "safety/README.zh-CN.md",
-      "bytes": 9934,
-      "sha256": "482445ea77def2a2690069f247ee17e5c9537aee4b6af920f7a0f63b7e2ac3a1"
+      "bytes": 12351,
+      "sha256": "0b214d21a22d5e50934929cace34a6622f8601696c9a4ad55fb7e0ffceac96b6"
     },
     {
       "dest": "task-cards/action-combat-cross-version-porting.zh-CN.md",
@@ -1079,8 +1079,8 @@
     },
     {
       "dest": "task-cards/equipment-stackable-controlled-change.zh-CN.md",
-      "bytes": 1528,
-      "sha256": "ff4cbaa6e80f72bc0a5ba2bd0cb70b0a96694368f3baf8c5aedb201bb0333c8b"
+      "bytes": 1729,
+      "sha256": "1699486e05e4a9939bd63e59807859778de2401166275c875f7df8b145a83fc3"
     },
     {
       "dest": "task-cards/equipment-stackable-readonly-audit.zh-CN.md",
@@ -1173,14 +1173,24 @@
       "sha256": "e1782912d5bbd1c88687ba2529bdc77f282a1ebca6dd02a97ab5ad3a5b70e691"
     },
     {
+      "dest": "task-cards/pvf-entity-name-search-readonly.zh-CN.md",
+      "bytes": 6305,
+      "sha256": "d970c8d132bd2fd36a93f8fe7eea6f0a6375dad488055abd95278cb1d53a0948"
+    },
+    {
+      "dest": "task-cards/pvf-high-risk-new-file-controlled-change.zh-CN.md",
+      "bytes": 3752,
+      "sha256": "373f2e37e118aeddf28f8f708f9cd91db13cbcfa0e3d036302528bb292943e8a"
+    },
+    {
       "dest": "task-cards/pvf-package-quality-audit-readonly.zh-CN.md",
       "bytes": 1166,
       "sha256": "2b40f12c0382c12d38b468f9c09099374815fdb6132d2615f5f8075b9448be7f"
     },
     {
       "dest": "task-cards/pvf-registry-lst-topology-readonly-audit.zh-CN.md",
-      "bytes": 2637,
-      "sha256": "696332019a425ae75dcc021c582e7467a4f67b0bffeb2a4b858efb52179d9b90"
+      "bytes": 3428,
+      "sha256": "df628f6f83aa323a6ff69317d9ff420557dcb9e4a26cdc04a148a8e6d23f5536"
     },
     {
       "dest": "task-cards/pvf-semantic-compare-workset-readonly.zh-CN.md",
@@ -1249,8 +1259,8 @@
     },
     {
       "dest": "task-cards/text-stringlink-encoding-readonly-audit.zh-CN.md",
-      "bytes": 4665,
-      "sha256": "c2d6c6fc673516a4dc037df4a3543bc8415206e2568630d7d19598e429a786b3"
+      "bytes": 5118,
+      "sha256": "16a66fb53659c1e6e84bc4acd97fe1d8c71c97fcb26fe6f9b6dca86fd5c34be7"
     },
     {
       "dest": "task-cards/unified-dependency-planner-readonly-preview.zh-CN.md",
@@ -1344,8 +1354,8 @@
     },
     {
       "dest": "workflows/lst-registry-lifecycle.zh-CN.md",
-      "bytes": 2177,
-      "sha256": "ace5f4747e18ec2ac61c68884231c350f047ec7e7921bf7f83f51de4c0cac514"
+      "bytes": 2480,
+      "sha256": "db31dddaf5409af56827e6109171927f917ddaae9134662af7b84c9b48da9e72"
     },
     {
       "dest": "workflows/map-widescreen-structural-migration.zh-CN.md",
@@ -1424,12 +1434,12 @@
     },
     {
       "dest": "workflows/worldmap-dungeon-interface-layout.zh-CN.md",
-      "bytes": 2857,
-      "sha256": "50789631188bef0b60e50d45d1c39501bd516fc51ab8a2febe14327d61c3dbf0"
+      "bytes": 3545,
+      "sha256": "2c54b73f06fd23d85569fcc71c15652d767490b3403db900e48ebf28ec53fb63"
     }
   ],
   "summary": {
-    "entryCount": 285,
-    "totalBytes": 5523131
+    "entryCount": 287,
+    "totalBytes": 5539285
   }
 }

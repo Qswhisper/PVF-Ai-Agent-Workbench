@@ -1,0 +1,1 @@
+预演已经未阻止时，直接读取返回的 `agentHandoff.nextCommandOnly`，只把 `REPLACE_WITH_EXTERNAL_OUTPUT_DIRECTORY` 换成本次独立成品目录，然后执行。变更集路径、DRY-RUN-MANIFEST、许可码和 apply 语法都已经填好，不运行 `pvf-change --help`，不打开 schema 或执行器源码，不 grep 知识文件，也不扫描预演目录；同时不要自行增加指向原始源的 `--pvf`。如果预演被阻止，`nextCommandOnly` 会是 null，应按 blockedChanges 修正后重新 validate 和 dry-run，不能 apply。
