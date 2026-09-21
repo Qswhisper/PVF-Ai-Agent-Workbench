@@ -6,9 +6,11 @@
 ## 总规则
 
 - 任务入口以 `n_quest/quest.lst` 为准；注册表没有挂到的 `.qst` 不能默认当作可接任务。
+- `-1` 只能按所在字段解释为边界值，不能当作“删除任务”或“保证隐藏”。只要 `.qst` 仍在 `quest.lst` 登记，任务身份就仍然存在；NPC 归属与列表可见性要分开核查。
 - `[type]` 决定 `[int data]` 的解释域；不能把 `[int data]` 裸数字直接猜成物品、NPC、怪物或副本。
 - `[sub type]` 只在同一个 `[type]` 下解释；不同 `[type]` 下相同数字不共享语义。
 - 静态只读只能证明文件写了条件、引用和候选目标；不能证明任务可接、可完成、UI 正常、服务端放行或计数器实机生效。
+- 条件物品已从正确 registry 移除、无法解析或没有当前可获得来源时，只能标记“静态不可达候选”，不能仅凭文件存在写成可完成任务。删除或退役物品前要反向审计所有活跃 `[seeking]` / `[use item]` 条件，不能只查商店、礼包、奖励和掉落。修复或改型审计要把 `[type]`、`[sub type]`、`[int data]`、`[check count]`、`[limit showing msg]`、`[condition message]` 和 `[condition data]` 当作一个字段族；优先同时参考官方同登记任务与目标版本同类型正样本，再用客户端进度显示、实际计数与奖励发放闭环。
 
 ## 入口字段
 
@@ -27,6 +29,8 @@
 | --- | --- | --- | --- |
 | `[npc index]` | 接任务/展示 NPC 候选 | `npc/npc.lst` | 需在当前目标 PVF 中只读确认 |
 | `[complete npc index]` | 完成任务 NPC 候选；`-1` 可表示非指定完成 NPC / 非 NPC 完成边界 | `npc/npc.lst` | 需在当前目标 PVF 中只读确认 |
+| `[exposed by npc]` | 是否在 NPC 任务界面暴露的静态候选；目标与官方样本可见 `0` | 与 `[npc index]`、任务 grade/event 和目标客户端共同解释 | 不能由静态 `0/1` 单独证明最终 UI 行为；目标实机已出现只改 NPC 为 `-1` 仍未隐藏的负样本。 |
+| `[first exposed by npc]` | 首次暴露/初始显示的静态候选；目标样本可见与 `[exposed by npc]` 成对使用 | 同一 `.qst` 可见性上下文 | 不等于删除登记；需接取前、前置完成后和重登分别实机。 |
 | `[show npc on clear]` | 清除后显示 NPC 候选 | `npc/npc.lst` | 需在当前目标 PVF 中只读确认 |
 | `[pre required quest]` | 前置任务 ID 列表 | `n_quest/quest.lst` | 需在当前目标 PVF 中只读确认 |
 | `[level]` | 等级区间 | 数字区间 | 需在当前目标 PVF 中只读确认 |

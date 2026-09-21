@@ -508,6 +508,35 @@ async function runCheck() {
       };
     });
 
+    await recordTest(tests, "text.read-character-page", async () => {
+      const common = {
+        sessionId: openedSessionId,
+        pvfPath: fixture.readPath,
+        pvfEncoding: fixtureEncoding.read || adapterConfig.defaults.pvfReadEncoding,
+        decompileScript: true,
+        decompileBinaryAni: false,
+        useCompatibleDecompiler: true,
+        convertToSimplifiedChinese: true,
+      };
+      const full = await callAndParse(client, "pvf_read_file", { ...common, maxChars: 1000000 });
+      assertCondition(typeof full.textContent === "string" && full.textContent.length > 8, `${fixture.readPath} is too short for character pagination coverage.`);
+      const startChar = 3;
+      const maxChars = Math.min(11, full.textContent.length - startChar);
+      const page = await callAndParse(client, "pvf_read_file", { ...common, startChar, maxChars });
+      assertCondition(page.textContent === full.textContent.slice(startChar, startChar + maxChars), "character page content does not match the full read slice.");
+      assertCondition(page.returnedRange?.startChar === startChar, "character page start range is missing or wrong.");
+      assertCondition(page.returnedRange?.endCharExclusive === startChar + maxChars, "character page end range is missing or wrong.");
+      assertCondition(page.sourceCharCount === full.textContent.length, "character page sourceCharCount is wrong.");
+      assertCondition(page.returnedCharCount === maxChars, "character page returnedCharCount is wrong.");
+      assertCondition(page.nextStartChar === startChar + maxChars, "character page nextStartChar is wrong.");
+      return {
+        pvfPath: fixture.readPath,
+        returnedRange: page.returnedRange,
+        sourceCharCount: page.sourceCharCount,
+        remainingCharCount: page.remainingCharCount,
+      };
+    });
+
     if (fixture.semanticReadPath) {
       await recordTest(tests, "text.semantic-cn-parity", async () => {
         const semanticReadPath = normalizePvfPath(fixture.semanticReadPath);
@@ -580,6 +609,33 @@ async function runCheck() {
       assertCondition(Number(read.readCount) === 2 && Number(read.errorCount) === 0, "batch read did not read both fixture paths cleanly.");
       assertCondition((read.items || []).every((item) => typeof item.textContent === "string"), "batch read did not return text for every fixture path.");
       return { requestedCount: read.requestedCount, readCount: read.readCount, errorCount: read.errorCount, returnedCharCount: read.returnedCharCount };
+    });
+
+    await recordTest(tests, "text.read-batch-character-page", async () => {
+      const startChar = 2;
+      const maxCharsPerFile = 9;
+      const read = await callAndParse(client, "pvf_read_files", {
+        sessionId: openedSessionId,
+        pvfPaths: [fixture.readPath],
+        pvfEncoding: fixtureEncoding.read || adapterConfig.defaults.pvfReadEncoding,
+        decompileScript: true,
+        decompileBinaryAni: false,
+        useCompatibleDecompiler: true,
+        convertToSimplifiedChinese: true,
+        startChar,
+        maxCharsPerFile,
+        maxTotalChars: maxCharsPerFile,
+      });
+      const item = read.items?.[0];
+      assertCondition(item?.returnedRange?.startChar === startChar, "batch character page start range is missing or wrong.");
+      assertCondition(item?.returnedCharCount === maxCharsPerFile, "batch character page returned length is wrong.");
+      assertCondition(item?.nextStartChar === startChar + maxCharsPerFile, "batch character page continuation offset is wrong.");
+      return {
+        pvfPath: fixture.readPath,
+        returnedRange: item.returnedRange,
+        sourceCharCount: item.sourceCharCount,
+        remainingCharCount: item.remainingCharCount,
+      };
     });
 
     await recordTest(tests, "registry.resolve-path", async () => {

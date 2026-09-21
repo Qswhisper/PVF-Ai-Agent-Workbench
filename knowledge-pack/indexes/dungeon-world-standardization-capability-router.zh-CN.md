@@ -4,9 +4,9 @@
 
 ## 用途
 
-把副本与世界相关任务先分成八个稳定能力，再读取对应的字段词典、工作流和任务卡。这个路由只保存可独立执行的 PVF 结构知识，不依赖任何外部软件、资料目录或历史研究文件。
+把副本与世界相关任务先分成十个稳定能力，再读取对应的字段词典、工作流和任务卡。这个路由只保存可独立执行的 PVF 结构知识，不依赖任何外部软件、资料目录或历史研究文件。
 
-## 八项能力
+## 十项能力
 
 | 用户诉求 | 首选入口 | 处理结果 |
 | --- | --- | --- |
@@ -18,6 +18,8 @@
 | 城镇预览 | `task-cards/formal-region-town-worldmap-area-entry-readonly-audit.zh-CN.md` | 复核 region、town、worldmap、移动区、入口和预览资源候选。 |
 | 城镇副本 ANI | `task-cards/client-assets-imagepacks-ui-readonly-audit.zh-CN.md` | 复核 `.ani/.act/.img/.til/.ui` 候选及客户端边界，不默认写客户端。 |
 | 地图宽屏补全 | `task-cards/map-widescreen-structural-migration-readonly-plan.zh-CN.md` | 对同路径 `.map` 做玩法兼容审计，只迁移布局层并生成差异计划。 |
+| 已验收副本数值微调 | `task-cards/validated-dungeon-numeric-tuning-readonly.zh-CN.md` | 不预设副本的版本地位或内容组合；保护已通过结构，只为一个反馈选择一个最小数值入口。 |
+| 复杂副本机制壳移植 | `task-cards/complex-dungeon-mechanism-shell-readonly-audit.zh-CN.md` | 分开运行机制壳、战斗内容和显示身份；同名多 registry 身份、起始阶段例外和特殊机制覆盖均保留为显式风险。 |
 
 ## 路由原则
 
@@ -33,6 +35,7 @@
 - 新增副本入口：先做“副本编辑器”静态闭合，再做“副本接口布局”，最后做客户端资源候选检查。
 - 移植深渊副本：先做“深渊组可视化”，再做“地图宽屏补全”；玩法块冲突时停止自动迁移。
 - 调整高难副本：把“副本难度系数”和“地狱副本列表”分开审阅，不能把入选名单当倍率表。
+- 移植塔式、事件或其他特殊副本：先证明机制壳可以完成完整循环，再逐批替换战斗内容和显示身份；第一阶段与后续阶段分开测。
 - 城镇与入口移植：组合“城镇预览”“副本接口布局”“城镇副本 ANI”，三者分别验收。
 
 ## 实机预算

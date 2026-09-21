@@ -101,6 +101,12 @@ function compactCommunityComment(item, blockedAuthors = []) {
     .replace(/^[-*]\s+/, "")
     .replace(/^`+|`+$/g, "")
     .trim();
+  const removeRepeatedSectionPrefix = (value) => {
+    const line = cleanLine(value);
+    const match = line.match(/^\[([^\]]+)\]\s*(.+)$/);
+    if (match && comparableText(match[1]) === section) return cleanLine(match[2]);
+    return line;
+  };
   const usable = (value) => {
     const line = cleanLine(value);
     if (!line || line.length > 160 || disclosure.test(line) || irrelevant.test(line)) return false;
@@ -123,6 +129,19 @@ function compactCommunityComment(item, blockedAuthors = []) {
   const lines = raw.split("\n");
   const titleIndex = lines.findIndex((line) => /^\s*标题\s*[:：]/.test(line));
   const candidates = [];
+  if (titleIndex < 0) {
+    const firstRawLine = lines.find((line) => line.trim());
+    if (firstRawLine) {
+      const cleanedFirstLine = cleanLine(firstRawLine).replace(/[，,]?\s*(?:比如|例如)[：:]?$/, "").trim();
+      const withoutSection = removeRepeatedSectionPrefix(cleanedFirstLine);
+      const repeatedSectionWasRemoved = withoutSection !== cleanedFirstLine;
+      const decisiveIntro = /(?:未转职|命中率|每分钟.{0,8}恢复|最高等级|添加.{0,8}限制|赋予.{0,8}技能|技能指令|选择状态)/.test(withoutSection);
+      if (usable(withoutSection) && comparableText(withoutSection) !== section
+        && (lines.filter((line) => line.trim()).length === 1 || decisiveIntro || (repeatedSectionWasRemoved && withoutSection.length >= 8))) {
+        return withoutSection;
+      }
+    }
+  }
   if (titleIndex >= 0) {
     const title = cleanLine(lines[titleIndex].replace(/^\s*标题\s*[:：]\s*/, ""));
     if (usable(title) && comparableText(title) !== section) return title;

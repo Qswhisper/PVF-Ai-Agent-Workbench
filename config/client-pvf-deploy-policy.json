@@ -4,6 +4,13 @@
   "mode": "explicit-preview-authorize-deploy-rollback",
   "controlledDeployEnabled": true,
   "defaultClientWriteEnabled": false,
+  "persistentAuthorization": {
+    "explicitOptInRequired": true,
+    "scope": "verified-script-pvf-only",
+    "clientLocalVersionBackupAllowed": true,
+    "automaticProcessCheckRequired": true,
+    "automaticBaselineSwitchAllowed": false
+  },
   "targetFileName": "Script.pvf",
   "permissionModel": {
     "profileClientRootRequired": true,
@@ -20,7 +27,7 @@
     "source-pvf-sha256-unchanged",
     "profile-client-target",
     "current-client-pvf-sha256-binding",
-    "current-client-matches-apply-input-or-explicit-baseline-switch",
+    "current-client-matches-apply-input-verified-ancestor-or-explicit-baseline-switch",
     "verified-protected-source-anchor-before-client-origin-replacement",
     "explicit-deploy-authorization-code",
     "client-and-launcher-confirmed-closed",

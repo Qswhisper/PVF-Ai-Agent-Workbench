@@ -116,6 +116,61 @@ function parseRegistryRows(text) {
   };
 }
 
+function parsedRegistryRows(value) {
+  return value && typeof value === "object" && Array.isArray(value.rows) && value.byId instanceof Map && value.byPath instanceof Map
+    ? value
+    : parseRegistryRows(value);
+}
+
+function countRegistryKeys(rows, keyFn) {
+  const counts = new Map();
+  for (const row of rows) {
+    const key = keyFn(row);
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  return counts;
+}
+
+function duplicateRegistrySummary(registry, sampleLimit = 20) {
+  const idCounts = countRegistryKeys(registry.rows, (row) => String(row.id));
+  const pathCounts = countRegistryKeys(registry.rows, (row) => row.pvfPath.toLowerCase());
+  const idGroups = [...idCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([id, count]) => ({ id: Number(id), count }));
+  const pathGroups = [...pathCounts.entries()]
+    .filter(([, count]) => count > 1)
+    .map(([pvfPath, count]) => ({ pvfPath, count }));
+  return {
+    duplicateIdGroupCount: idGroups.length,
+    duplicatePathGroupCount: pathGroups.length,
+    duplicateIds: idGroups.slice(0, sampleLimit),
+    duplicatePaths: pathGroups.slice(0, sampleLimit),
+    sampleLimit,
+    truncated: idGroups.length > sampleLimit || pathGroups.length > sampleLimit,
+  };
+}
+
+function duplicateRegistryExpansions(before, after) {
+  const beforeIdCounts = countRegistryKeys(before.rows, (row) => String(row.id));
+  const afterIdCounts = countRegistryKeys(after.rows, (row) => String(row.id));
+  const beforePathCounts = countRegistryKeys(before.rows, (row) => row.pvfPath.toLowerCase());
+  const afterPathCounts = countRegistryKeys(after.rows, (row) => row.pvfPath.toLowerCase());
+  const expansions = [];
+  for (const [id, afterCount] of afterIdCounts.entries()) {
+    const beforeCount = beforeIdCounts.get(id) || 0;
+    if (afterCount > 1 && afterCount > beforeCount) {
+      expansions.push({ kind: "id", value: Number(id), beforeCount, afterCount });
+    }
+  }
+  for (const [pvfPath, afterCount] of afterPathCounts.entries()) {
+    const beforeCount = beforePathCounts.get(pvfPath) || 0;
+    if (afterCount > 1 && afterCount > beforeCount) {
+      expansions.push({ kind: "path", value: pvfPath, beforeCount, afterCount });
+    }
+  }
+  return expansions;
+}
+
 function parseWorldmapText(text) {
   const dungeonBody = sectionBody(text, "dungeon");
   const dungeonTokens = allNumbers(dungeonBody || "");
@@ -492,6 +547,116 @@ function pathMentionInsideFunctionCall(text, pvfPath) {
   return false;
 }
 
+// Explicit opt-in. No arbitrary loader call, dynamic path, or cross-job registration.
+function directStateRegistration(link) {
+  const source = String(link?.requiredText || "").trim();
+  const match = /^IRDSQRCharacter\.pushState\(\s*(ENUM_CHARACTERJOB_[A-Z_]+)\s*,\s*"([A-Za-z0-9_/]+\.nut)"\s*,\s*"([A-Za-z_][A-Za-z0-9_]*)"\s*,\s*(STATE_[A-Z0-9_]+)\s*,\s*(SKILL_[A-Z0-9_]+)\s*\);$/u.exec(source);
+  const loader = /^sqr\/character\/([a-z0-9]+)_load_state\.nut$/u.exec(normalizePvfPath(link?.fromPvfPath).toLowerCase());
+  if (!match || !loader) return null;
+  const target = normalizePvfPath(link?.toPvfPath).toLowerCase();
+  if (match[1].slice("ENUM_CHARACTERJOB_".length).replaceAll("_", "").toLowerCase() !== loader[1] ||
+      target !== `sqr/${match[2].toLowerCase()}` ||
+      !target.startsWith(`sqr/character/${loader[1]}/`)) return null;
+  return { callbackSuffix: match[3], jobSymbol: match[1], stateSymbol: match[4], skillSymbol: match[5] };
+}
+
+function directStateReferencePresent(text, link) {
+  return directRegistrationReferencePresent(text, link, directStateRegistration);
+}
+
+// Only the existing skill-use hooks in the same character's canonical common file.
+function directSkillUseRegistration(link) {
+  const loader = /^sqr\/character\/([a-z0-9]+)_load_state\.nut$/u.exec(normalizePvfPath(link?.fromPvfPath).toLowerCase());
+  const match = /^IRDSQRCharacter\.pushScriptFiles\(\s*"(Character\/([A-Za-z0-9]+)\/([A-Za-z0-9]+)_common\.nut)"\s*\);$/iu.exec(String(link?.requiredText || "").trim());
+  if (!loader || !match || !String(link.requiredText).trim().startsWith("IRDSQRCharacter.pushScriptFiles(")) return null;
+  if (match[2].toLowerCase() !== loader[1] || match[3].toLowerCase() !== loader[1] ||
+      normalizePvfPath(link.toPvfPath).toLowerCase() !== `sqr/${match[1].toLowerCase()}`) return null;
+  return { job: loader[1] };
+}
+
+function directSkillUseReferencePresent(text, link) {
+  return directRegistrationReferencePresent(text, link, directSkillUseRegistration);
+}
+
+// A single existing skill proc, reached unconditionally from the same-job dispatcher.
+function directSkillProcRegistration(proof) {
+  const common = directSkillUseRegistration(proof?.loadChain?.[0]);
+  const evidence = proof?.skillProc;
+  const state = directStateRegistration(evidence?.stateRegistration);
+  if (!common || !state || !evidence) return null;
+  const loader = normalizePvfPath(proof.loadChain[0].fromPvfPath).toLowerCase();
+  const header = evidence.headerRegistration;
+  const headerMatch = /^IRDSQRCharacter\.pushScriptFiles\(\s*"(Character\/([A-Za-z0-9]+)\/([A-Za-z0-9]+)_header\.nut)"\s*\);$/u.exec(String(header?.requiredText || "").trim());
+  if (normalizePvfPath(evidence.stateRegistration.fromPvfPath).toLowerCase() !== loader ||
+      normalizePvfPath(header?.fromPvfPath).toLowerCase() !== loader || !headerMatch ||
+      headerMatch[2].toLowerCase() !== common.job || headerMatch[3].toLowerCase() !== common.job ||
+      normalizePvfPath(header.toPvfPath).toLowerCase() !== `sqr/${headerMatch[1].toLowerCase()}` ||
+      normalizePvfPath(evidence.skillRegistryPath).toLowerCase() !== `skill/${common.job}skill.lst` ||
+      !new RegExp(`^skill/${common.job}/[a-z0-9_/]+\\.skl$`, "u").test(normalizePvfPath(evidence.skillPvfPath).toLowerCase()) ||
+      !Number.isSafeInteger(evidence.skillId) || evidence.skillId < 0 || evidence.skillId > 2147483647 ||
+      !/^procSkill_[A-Za-z0-9]+$/u.test(String(evidence.dispatcher || "")) ||
+      evidence.dispatcher.slice("procSkill_".length).toLowerCase() !== common.job ||
+      evidence.requiredCall !== `procSkill_${state.callbackSuffix}(obj);`) return null;
+  return { job: common.job, ...state, callee: `procSkill_${state.callbackSuffix}`, dispatcher: evidence.dispatcher };
+}
+
+function directSkillProcEvidence(proof, { commonText, loaderText, headerText, registryText, skillText, stateText }) {
+  const errors = [];
+  const registration = directSkillProcRegistration(proof);
+  if (!registration) return { ok: false, errors: ["invalid direct-character-skill-proc registration"] };
+  const evidence = proof.skillProc;
+  if (!directSkillUseReferencePresent(loaderText, proof.loadChain[0]) ||
+      !directStateReferencePresent(loaderText, evidence.stateRegistration) ||
+      !directRegistrationReferencePresent(loaderText, evidence.headerRegistration, () => registration)) errors.push("skill-proc loader evidence is not executable top-level registration");
+  const structure = scanSquirrelStructure(commonText);
+  const dispatchers = structure.functions.filter((fn) => fn.name === registration.dispatcher);
+  const callees = structure.functions.filter((fn) => fn.name === registration.callee);
+  if (dispatchers.length !== 1 || callees.length !== 1) errors.push("skill-proc dispatcher and callee must already exist exactly once");
+  else {
+    const fn = dispatchers[0];
+    const body = structure.masked.slice(fn.bodyStart + 1, fn.end - 1);
+    const calls = [...body.matchAll(/\bprocSkill_[A-Za-z0-9_]+\s*\(\s*obj\s*\)\s*;/gu)];
+    if (body.replace(/\bprocSkill_[A-Za-z0-9_]+\s*\(\s*obj\s*\)\s*;/gu, "").trim() ||
+        calls.filter((item) => item[0].replace(/\s/gu, "") === evidence.requiredCall).length !== 1 ||
+        !/^function\s+\w+\s*\(\s*obj\s*\)\s*\{/u.test(fn.text)) errors.push("skill-proc dispatcher must contain only unconditional standalone obj calls, including the declared callee once");
+    const calleeCode = maskSquirrelNonCode(callees[0].text).masked;
+    if (!new RegExp(`\\bsq_Get(?:LevelData|IntData|SkillLevel)\\s*\\(\\s*(?:obj\\s*,\\s*)?${registration.skillSymbol}\\b`, "u").test(calleeCode)) errors.push("skill-proc callee lacks an existing skill-data API call using the registered skill symbol");
+  }
+  const headerCode = maskSquirrelNonCode(headerText).masked;
+  const declaration = new RegExp(`^\\s*${registration.skillSymbol}[ \\t]*<-[ \\t]*${evidence.skillId}[ \\t]*;?[ \\t]*$`, "mu").exec(headerCode);
+  if ([...headerCode.matchAll(new RegExp(`\\b${registration.skillSymbol}\\b`, "gu"))].length !== 1 || !declaration ||
+      /[{}()]/u.test(headerCode.slice(0, declaration?.index || 0))) errors.push("skill-proc header must contain one top-level literal skill ID declaration");
+  const registry = parseRegistryRows(registryText);
+  const rows = registry.rows.filter((row) => row.id === evidence.skillId);
+  if (!registry.headerPresent || registry.malformed.length || rows.length !== 1 ||
+      resolveRegistryEntryPath(evidence.skillRegistryPath, rows[0]?.rawPath || "").toLowerCase() !== normalizePvfPath(evidence.skillPvfPath).toLowerCase()) errors.push("skill-proc skill registry ID/path evidence does not match");
+  if (!String(skillText || "").startsWith("#PVF_File") || !/\[name\]/u.test(skillText)) errors.push("skill-proc registered skill must be read back");
+  if (!scanSquirrelStructure(stateText).functions.some((fn) => fn.name.endsWith(`_${registration.callbackSuffix}`))) errors.push("skill-proc registered state script lacks its callback");
+  return { ok: errors.length === 0, errors, ...registration, skillId: evidence.skillId };
+}
+
+function directRegistrationReferencePresent(text, link, parseRegistration) {
+  if (!parseRegistration(link) || !containsExecutableFragment(text, link.requiredText)) return false;
+  const needle = String(link.requiredText);
+  const source = String(text);
+  const offset = source.indexOf(needle);
+  if (offset < 0 || source.indexOf(needle, offset + 1) >= 0) return false;
+  const code = maskSquirrelNonCode(source).masked;
+  // Registration must be a standalone top-level statement, never a conditional body,
+  // function, loop, assignment, or expression hidden behind an executable prefix.
+  const prefix = code.slice(0, offset);
+  if (/[{}()\[\]]/u.test(prefix.replace(/[^{}()\[\]]/gu, ""))) {
+    const stack = [];
+    for (const ch of prefix) {
+      if ("{([".includes(ch)) stack.push(ch);
+      else if ("})]".includes(ch) && stack.pop() !== ({"}": "{", ")": "(", "]": "["})[ch]) return false;
+    }
+    if (stack.length) return false;
+  }
+  const priorStatement = prefix.slice(Math.max(prefix.lastIndexOf(";"), prefix.lastIndexOf("}")) + 1);
+  return !priorStatement.trim();
+}
+
 function validateExistingNutWriteProofShape(pvfPath, proof) {
   const errors = [];
   const normalizedTarget = normalizePvfPath(pvfPath);
@@ -506,7 +671,18 @@ function validateExistingNutWriteProofShape(pvfPath, proof) {
     if (proof[field] !== true) errors.push(`writeProof.${field} must be true`);
   }
   const loadChain = Array.isArray(proof.loadChain) ? proof.loadChain : [];
-  if (loadChain.length < 2) errors.push("writeProof.loadChain must contain load_state -> passive -> target links");
+  const directState = proof.loadChainKind === "direct-character-state";
+  const directSkillUse = proof.loadChainKind === "direct-character-skill-use";
+  const directSkillProc = proof.loadChainKind === "direct-character-skill-proc";
+  if (proof.loadChainKind !== undefined && !["appendage", "direct-character-state", "direct-character-skill-use", "direct-character-skill-proc"].includes(proof.loadChainKind)) errors.push("unknown writeProof.loadChainKind");
+  if ((directState || directSkillUse || directSkillProc) ? loadChain.length !== 1 : loadChain.length < 2) errors.push("writeProof.loadChain has invalid length for its declared kind");
+  const skillProcRegistration = directSkillProc ? directSkillProcRegistration(proof) : null;
+  if (directSkillProc && !skillProcRegistration) errors.push("direct-character-skill-proc requires same-job common, state, header and skill registry evidence");
+  if (!directSkillProc && proof.skillProc !== undefined) errors.push("writeProof.skillProc requires direct-character-skill-proc");
+  const registration = directState ? directStateRegistration(loadChain[0]) : null;
+  const skillUseRegistration = directSkillUse ? directSkillUseRegistration(loadChain[0]) : null;
+  if (directSkillUse && !skillUseRegistration) errors.push("direct-character-skill-use requires a literal same-job canonical common-file registration");
+  if (directState && !registration) errors.push("direct-character-state requires a literal same-job IRDSQRCharacter.pushState registration");
   for (const [index, link] of loadChain.entries()) {
     const fromPvfPath = normalizePvfPath(link?.fromPvfPath);
     const toPvfPath = normalizePvfPath(link?.toPvfPath);
@@ -526,7 +702,7 @@ function validateExistingNutWriteProofShape(pvfPath, proof) {
   }
   const firstFrom = normalizePvfPath(loadChain[0]?.fromPvfPath).toLowerCase();
   if (loadChain.length && !/(?:^|\/)\w*_?load_state\.nut$/u.test(firstFrom)) errors.push("writeProof.loadChain must start from a load_state .nut");
-  if (loadChain.length && !loadChain.some((link) => /(?:^|\/)passive_skill_[^/]+\.nut$/u.test(normalizePvfPath(link?.fromPvfPath).toLowerCase()))) {
+  if (!directState && !directSkillUse && !directSkillProc && loadChain.length && !loadChain.some((link) => /(?:^|\/)passive_skill_[^/]+\.nut$/u.test(normalizePvfPath(link?.fromPvfPath).toLowerCase()))) {
     errors.push("writeProof.loadChain must include a passive_skill_*.nut source link");
   }
   const finalTo = normalizePvfPath(loadChain[loadChain.length - 1]?.toPvfPath).toLowerCase();
@@ -536,6 +712,12 @@ function validateExistingNutWriteProofShape(pvfPath, proof) {
   if (!touchedFunctions.length) errors.push("writeProof.touchedFunctions must name every added or modified function");
   if (touchedFunctions.some((name) => !identifierPattern(name))) errors.push("writeProof.touchedFunctions contains an invalid function name");
   if (new Set(touchedFunctions).size !== touchedFunctions.length) errors.push("writeProof.touchedFunctions contains duplicates");
+  if (skillProcRegistration && (touchedFunctions.length !== 1 || touchedFunctions[0] !== skillProcRegistration.callee)) errors.push("direct-character-skill-proc may only edit the one registered existing proc callee");
+  if (registration && touchedFunctions.some((name) => !name.endsWith(`_${registration.callbackSuffix}`))) errors.push("direct-character-state may only edit registered callback functions");
+  if (skillUseRegistration && touchedFunctions.some((name) => {
+    const match = /^useSkill_(before|after)_([A-Za-z0-9]+)$/u.exec(name);
+    return !match || match[2].toLowerCase() !== skillUseRegistration.job;
+  })) errors.push("direct-character-skill-use may only edit same-job useSkill_before/after hooks");
 
   const apiSymbols = Array.isArray(proof.apiSymbols) ? proof.apiSymbols : [];
   if (!apiSymbols.length) errors.push("writeProof.apiSymbols must contain at least one DNF API or constant");
@@ -599,8 +781,28 @@ function validateExistingNutTextTransition(pvfPath, beforeText, afterText, proof
   }
   const beforeStructure = scanSquirrelStructure(before);
   const afterStructure = scanSquirrelStructure(after);
-  if (!beforeStructure.ok) errors.push(...beforeStructure.errors.map((item) => `source:${item}`));
-  if (!afterStructure.ok) errors.push(...afterStructure.errors.map((item) => `final:${item}`));
+  // The skill-use lane may retain legacy duplicate empty stubs, never edit them.
+  // Do not let the name-keyed maps below hide a changed or newly added duplicate.
+  const retainedEmptyDuplicates = [];
+  if (shape.ok && ["direct-character-skill-use", "direct-character-skill-proc"].includes(proof.loadChainKind)) {
+    for (const issue of beforeStructure.errors) {
+      if (!issue.startsWith("duplicate-function:")) continue;
+      const name = issue.slice("duplicate-function:".length);
+      const oldFns = beforeStructure.functions.filter((fn) => fn.name === name);
+      const newFns = afterStructure.functions.filter((fn) => fn.name === name);
+      const oldOrder = beforeStructure.functions.map((fn) => fn.name);
+      const newOrder = afterStructure.functions.map((fn) => fn.name);
+      if (!proof.touchedFunctions.includes(name) && oldFns.length > 1 &&
+          oldFns.length === newFns.length && JSON.stringify(oldOrder) === JSON.stringify(newOrder) &&
+          oldFns.every((fn, index) => /^\s*$/u.test(before.slice(fn.bodyStart + 1, fn.end - 1)) && fn.text === newFns[index].text)) {
+        retainedEmptyDuplicates.push(name);
+      }
+    }
+  }
+  const retainedIssue = (item) => retainedEmptyDuplicates.some((name) => item === `duplicate-function:${name}`);
+  const sourceErrors = beforeStructure.errors.filter((item) => !retainedIssue(item));
+  const finalErrors = afterStructure.errors.filter((item) => !retainedIssue(item));
+  errors.push(...sourceErrors.map((item) => `source:${item}`), ...finalErrors.map((item) => `final:${item}`));
   const beforeFunctions = new Map(beforeStructure.functions.map((fn) => [fn.name, fn]));
   const afterFunctions = new Map(afterStructure.functions.map((fn) => [fn.name, fn]));
   const touched = new Set(Array.isArray(proof?.touchedFunctions) ? proof.touchedFunctions : []);
@@ -624,6 +826,7 @@ function validateExistingNutTextTransition(pvfPath, beforeText, afterText, proof
     }
   }
   for (const name of touched) {
+    if (["direct-character-skill-use", "direct-character-skill-proc"].includes(proof?.loadChainKind) && !beforeFunctions.has(name)) errors.push(`common hook must already exist: ${name}`);
     if (!afterFunctions.has(name)) errors.push(`declared touched function is missing from final script: ${name}`);
     else if (!changedFunctions.includes(name) && !addedFunctions.includes(name)) errors.push(`declared touched function did not change: ${name}`);
   }
@@ -651,8 +854,9 @@ function validateExistingNutTextTransition(pvfPath, beforeText, afterText, proof
     errors,
     sourceTextSha256: beforeSha256,
     finalTextSha256: afterSha256,
-    sourceStructureOk: beforeStructure.ok,
-    finalStructureOk: afterStructure.ok,
+    sourceStructureOk: sourceErrors.length === 0,
+    finalStructureOk: finalErrors.length === 0,
+    retainedEmptyDuplicates,
     sourceFunctionCount: beforeStructure.functions.length,
     finalFunctionCount: afterStructure.functions.length,
     changedFunctions,
@@ -743,10 +947,10 @@ function validateWriteProofShape(pvfPath, proof) {
 
 function validateRegistryRowProof(proof, registryText, pendingPath = null) {
   const errors = [];
-  const registry = parseRegistryRows(registryText);
+  const registry = parsedRegistryRows(registryText);
+  const preExistingDuplicateSummary = duplicateRegistrySummary(registry);
   if (!registry.headerPresent) errors.push("target registry is missing #PVF_File");
   if (registry.malformed.length) errors.push("target registry contains malformed rows");
-  if (registry.duplicateIds.length || registry.duplicatePaths.length) errors.push("target registry already contains duplicate IDs or paths");
   const row = proof?.registry || {};
   const id = Number(row.id);
   const registryPath = normalizePvfPath(row.lstPath || proof?.registry?.lstPath || "");
@@ -756,10 +960,45 @@ function validateRegistryRowProof(proof, registryText, pendingPath = null) {
   const existingById = registry.byId.get(id);
   const existingByPath = registry.rows.find((candidate) =>
     resolveRegistryEntryPath(registryPath, candidate.pvfPath).toLowerCase() === expectedPath.toLowerCase()) || null;
-  if (existingById && resolveRegistryEntryPath(registryPath, existingById.pvfPath).toLowerCase() !== expectedPath.toLowerCase()) errors.push("registry ID conflict");
-  if (existingByPath && existingByPath.id !== id) errors.push("registry path conflict");
+  const existingByIdResolvedPath = existingById
+    ? resolveRegistryEntryPath(registryPath, existingById.pvfPath)
+    : null;
+  const existingByPathResolvedPath = existingByPath
+    ? resolveRegistryEntryPath(registryPath, existingByPath.pvfPath)
+    : null;
+  if (existingById && existingByIdResolvedPath.toLowerCase() !== expectedPath.toLowerCase()) {
+    errors.push(`registry ID ${id} is already registered at line ${existingById.line}: ${existingByIdResolvedPath}`);
+  }
+  if (existingByPath && existingByPath.id !== id) {
+    errors.push(
+      `registry path is already registered as ID ${existingByPath.id} at line ${existingByPath.line}: ${existingByPathResolvedPath}; reuse the existing ID instead of adding a duplicate row`,
+    );
+  }
   if (pendingPath && expectedPath.toLowerCase() !== normalizePvfPath(pendingPath).toLowerCase()) errors.push("registry row does not point at the new file");
-  return { ok: errors.length === 0, errors, id, expectedPvfPath: expectedPath, existingById, existingByPath, registry, registryPath };
+  return {
+    ok: errors.length === 0,
+    errors,
+    id,
+    expectedPvfPath: expectedPath,
+    existingById,
+    existingByIdResolvedPath,
+    existingByPath,
+    existingByPathResolvedPath,
+    conflicts: {
+      id: Boolean(existingById && existingByIdResolvedPath.toLowerCase() !== expectedPath.toLowerCase()),
+      path: Boolean(existingByPath && existingByPath.id !== id),
+      exactExisting: Boolean(existingByPath && existingByPath.id === id),
+    },
+    preExistingDuplicateSummary,
+    preExistingDuplicatesPresent:
+      preExistingDuplicateSummary.duplicateIdGroupCount > 0 ||
+      preExistingDuplicateSummary.duplicatePathGroupCount > 0,
+    preExistingDuplicatesIgnoredForAddOnly:
+      preExistingDuplicateSummary.duplicateIdGroupCount > 0 ||
+      preExistingDuplicateSummary.duplicatePathGroupCount > 0,
+    registry,
+    registryPath,
+  };
 }
 
 /**
@@ -777,10 +1016,15 @@ function validateRegistryLifecycleTransition(beforeText, afterText, proofs, pvfP
 
   if (!before.headerPresent || !after.headerPresent) errors.push("registry header must remain #PVF_File");
   if (before.malformed.length || after.malformed.length) errors.push("registry lifecycle cannot contain malformed rows");
-  if (before.duplicateIds.length || before.duplicatePaths.length || after.duplicateIds.length || after.duplicatePaths.length) {
-    errors.push("registry lifecycle cannot contain duplicate IDs or paths");
-  }
   if (!proofList.length) errors.push("registry lifecycle requires at least one explicit row-add proof");
+  const preExistingDuplicateSummary = duplicateRegistrySummary(before);
+  const finalDuplicateSummary = duplicateRegistrySummary(after);
+  const duplicateExpansions = duplicateRegistryExpansions(before, after);
+  for (const expansion of duplicateExpansions) {
+    errors.push(
+      `registry lifecycle introduced or expanded duplicate ${expansion.kind} ${expansion.value}: ${expansion.beforeCount} -> ${expansion.afterCount}`,
+    );
+  }
 
   const additions = [];
   const proofIds = new Set();
@@ -814,36 +1058,24 @@ function validateRegistryLifecycleTransition(beforeText, afterText, proofs, pvfP
     }
   }
 
-  for (const row of before.rows) {
-    const finalRow = after.byId.get(row.id);
-    if (!finalRow || finalRow.rawPath !== row.rawPath) {
-      errors.push(`existing registry row changed or disappeared: ${row.id} -> ${row.rawPath}`);
-    }
-  }
-  const finalExistingOrder = after.rows
-    .filter((row) => before.byId.has(row.id))
-    .map((row) => `${row.id}\u0000${row.rawPath}`);
-  const originalOrder = before.rows.map((row) => `${row.id}\u0000${row.rawPath}`);
-  if (JSON.stringify(finalExistingOrder) !== JSON.stringify(originalOrder)) errors.push("existing registry row order changed");
-
-  const extraRows = after.rows.filter((row) => !before.byId.has(row.id));
-  if (extraRows.length !== additions.length) {
-    errors.push(`registry lifecycle expected ${additions.length} added row(s), found ${extraRows.length}`);
+  const additionKeys = new Set(additions.map((addition) => `${addition.id}\u0000${addition.expectedPvfPath.toLowerCase()}`));
+  const addedKeyCounts = new Map();
+  for (const row of after.rows) {
+    const key = `${row.id}\u0000${resolveRegistryEntryPath(registryPath, row.pvfPath).toLowerCase()}`;
+    if (additionKeys.has(key)) addedKeyCounts.set(key, (addedKeyCounts.get(key) || 0) + 1);
   }
   for (const addition of additions) {
     const row = after.byId.get(addition.id);
     if (!row || resolveRegistryEntryPath(registryPath, row.pvfPath).toLowerCase() !== addition.expectedPvfPath.toLowerCase()) {
       errors.push(`proved registry row missing from final text: ${addition.id} -> ${addition.expectedPvfPath}`);
     }
-  }
-  for (const row of extraRows) {
-    const resolved = resolveRegistryEntryPath(registryPath, row.pvfPath).toLowerCase();
-    if (!additions.some((addition) => addition.id === row.id && addition.expectedPvfPath.toLowerCase() === resolved)) {
-      errors.push(`unproved registry row added: ${row.id} -> ${row.rawPath}`);
+    const key = `${addition.id}\u0000${addition.expectedPvfPath.toLowerCase()}`;
+    const addedCount = addedKeyCounts.get(key) || 0;
+    if (addedCount !== 1) {
+      errors.push(`proved registry row must appear exactly once in final text: ${addition.id} -> ${addition.expectedPvfPath}; found ${addedCount}`);
     }
   }
 
-  const additionKeys = new Set(additions.map((addition) => `${addition.id}\u0000${addition.expectedPvfPath.toLowerCase()}`));
   const strippedAfter = normalizeText(afterText).split("\n").filter((line) => {
     const match = /^\s*(-?\d+)[\t ]+`([^`]+)`[\t ]*$/u.exec(line);
     if (!match) return true;
@@ -861,6 +1093,12 @@ function validateRegistryLifecycleTransition(beforeText, afterText, proofs, pvfP
     originalRowCount: before.rows.length,
     finalRowCount: after.rows.length,
     addedRows: additions,
+    preExistingDuplicateSummary,
+    finalDuplicateSummary,
+    duplicateExpansions,
+    preExistingDuplicatesIgnoredForAddOnly:
+      preExistingDuplicateSummary.duplicateIdGroupCount > 0 ||
+      preExistingDuplicateSummary.duplicatePathGroupCount > 0,
     originalTextSha256: sha256(normalizeText(beforeText)),
     finalTextSha256: sha256(normalizeText(afterText)),
   };
@@ -890,6 +1128,12 @@ module.exports = {
   containsExactInteger,
   containsExactIntegerInFunctionCall,
   containsExecutableFragment,
+  directStateRegistration,
+  directStateReferencePresent,
+  directSkillUseRegistration,
+  directSkillUseReferencePresent,
+  directSkillProcRegistration,
+  directSkillProcEvidence,
   validateExistingNutTextTransition,
   validateExistingNutWriteProofShape,
   validateNewFileText,

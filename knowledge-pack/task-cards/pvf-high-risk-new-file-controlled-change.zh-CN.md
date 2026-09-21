@@ -22,6 +22,8 @@
 
 这里的 `compileRequired` 表示必须执行适合该类型的结构检查、临时 PVF 写出和独立读回；`.nut/.sqr` 是源脚本时，不宣称已经做完整 Squirrel 字节码编译。
 
+新增文件含中文等非 ASCII 文字（包括脚本注释）时，还须在 change 上明确填写目标样本确认的 `pvfEncoding: "Cn"` 或 `"Tw"`，并在 `writeProof` 中声明 `encodingRoundTripRequired: true`。新增 `.nut/.sqr/.str` 按该文件编码写入原始字节，临时输出与最终输出均独立读回；容器打开编码不能代替文件文字编码。
+
 新 `.str`：
 
 ```json
@@ -67,7 +69,7 @@
 }
 ```
 
-删除证明行后，最终 registry 必须与原文逐字一致；旧行修改、重排、额外新增、注释或空白顺带变化都会停止。
+提交变更前先用声明的 registry 反查目标路径；`resolve-path` 可接受 registry 行内相对路径或完整 PVF 路径。若已经命中，复用返回的 ID，不得重复登记。真正未登记但已经存在的目标文件可以补登记；`expectedPvfPath` 必须填写完整 PVF 路径。删除证明行后，最终 registry 必须与原文逐字一致；旧行修改、重排、额外新增、注释或空白顺带变化都会停止。
 
 ## 新 worldmap 原子证明
 

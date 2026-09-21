@@ -30,11 +30,12 @@
 ## 阶段三：组定义闭合
 
 1. 读取 `etc/hellparty.etc` 的 `[difficulty]`、`[hellparty monster group]`、`[group index]` 和 `[group]`。
-2. 每个 map group ID 必须在 `[group index]` 闭合。
-3. 组成员按 `member_id / kind` 二元组读取。
-4. kind `0` 通过 `monster/monster.lst` 解析；kind `1` 通过 `aicharacter/aicharacter.lst` 解析。
-5. 其他 kind、缺 registry、缺定义或重复定义全部标记 unresolved，不把 APC ID 当 monster ID。
-6. A-E 等档位标签原样显示；未知列只显示 raw 值和位置，不替 Agent 猜语义。
+2. 从当前目标的实际 map/group 引用建立成员范围，不从历史变更集、设计名单或旧守卫清单恢复范围。旧清单只用于找差集。
+3. 每个 map group ID 必须在 `[group index]` 闭合。
+4. 组成员按 `member_id / kind` 二元组读取。
+5. kind `0` 通过 `monster/monster.lst` 解析；kind `1` 通过 `aicharacter/aicharacter.lst` 解析。
+6. 其他 kind、缺 registry、缺定义或重复定义全部标记 unresolved，不把 APC ID 当 monster ID。
+7. A-E 等档位标签原样显示；未知列只显示 raw 值和位置，不替 Agent 猜语义。
 
 ## 输出视图
 

@@ -18,6 +18,7 @@
 - `dictionaries/skill-static-level-parameter-columns.zh-CN.md`
 - `indexes/skill-registry-routing.zh-CN.md`
 - `indexes/skill-state-nut-runtime-api-group-boundary.zh-CN.md`
+- `indexes/nut-runtime-callback-data-ui-act-boundary.zh-CN.md`
 - `dictionaries/nut-runtime-api-boundary.zh-CN.md`
 - `workflows/skill-derivative-and-cancel.zh-CN.md`
 - `workflows/skill-runtime-parameter-edit.zh-CN.md`
@@ -45,6 +46,10 @@
 16. 遇到 PO 在 `procAppend` / `setCustomData` 里读取父 state/substate、等待动画帧或切换攻击包，闭合父状态来源、动画帧、读包字段和切换条件；不要把静态等待逻辑写成实机命中或最终时序。
 17. 遇到 skill-load 或再次施放逻辑，区分“首次进入角色 state”和“再次命令已有 PO/appendage”；闭合 `sq_AddSkillLoad`、`sq_GetSkillLoad`、`use/isCooling`、`sq_RemoveSkillLoad` 和冷却启动条件。
 18. 遇到一个明确 NUT API，先运行一次精确 `knowledge-query nut --group dnf --exact`，再运行一次目标 `pvf-read search-script --keyword <symbol>`；这两步已完成声明与目标调用观察，不探测 help 或目录。没有候选就写“未找到相关函数”，不要补函数名。
+18.1. 遇到 `onSetState_*`、`onProc_*`、`onAttack_*` 等回调家族，检查同一加载范围内是否已有同名定义；不要直接追加第二份函数并假设会合并。
+18.2. 遇到 state、PassiveObject 或自定义数据传递，逐项闭合写入和读取的数量、类型与顺序；对象变量、timer 和网络包不能互相代替。
+18.3. 遇到绘制或调试函数，区分 DNF 内置 API 与目标自定义 helper，并单独核查客户端资源。
+18.4. 遇到 `.act` 语句，只读核对目标最近邻的块结构和引用；ACT 与 NUT 不互相替代。
 
 只读闭合后如确需修改已经存在的 appendage NUT，只进入 `pvf-existing-nut-controlled-change.zh-CN.md` 的专用路线；静态预演不会把命中、状态抗性、持续时间、刷新/叠加或同步提升为已验证行为。
 

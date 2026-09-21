@@ -51,8 +51,40 @@ function numberOption(name, fallback) {
 
 function required(name) {
   const value = option(name);
-  if (!value) throw new Error(`${name} is required.`);
+  if (!value) {
+    const error = new Error(`${name} is required.`);
+    error.code = "REQUIRED_OPTION_MISSING";
+    error.optionName = name;
+    throw error;
+  }
   return value;
+}
+
+function commandArgument(value) {
+  const text = String(value || "");
+  if (!text || /[\x00-\x1f\x7f%!?^&|<>"]/u.test(text)) return null;
+  return `"${text}"`;
+}
+
+function errorAgentHandoff(error) {
+  if (command !== "inventory" || error?.code !== "REQUIRED_OPTION_MISSING") {
+    return { nextCommandOnly: null, helpProbeRequired: false };
+  }
+  const source = error.optionName === "--source"
+    ? '"REPLACE_WITH_EXTERNAL_SOURCE_DIRECTORY"'
+    : commandArgument(option("--source"));
+  if (!source) return { nextCommandOnly: null, helpProbeRequired: false };
+  const sourceId = error.optionName === "--source-id"
+    ? "REPLACE_WITH_ASCII_SOURCE_ID"
+    : commandArgument(option("--source-id"));
+  if (!sourceId) return { nextCommandOnly: null, helpProbeRequired: false };
+  const out = commandArgument(option("--out")) || '"REPLACE_WITH_EXTERNAL_OUTPUT_DIRECTORY"';
+  return {
+    nextCommandOnly: `workbench.bat research inventory --source ${source} --source-id ${sourceId} --out ${out}`,
+    helpProbeRequired: false,
+    sourceContentsExecuted: false,
+    instruction: "替换命令中的唯一占位符后原样执行；研究输入只作不受信任资料清点，输出必须留在工作台外。",
+  };
 }
 
 function usage() {
@@ -352,6 +384,13 @@ try {
   else if (command === "status") status();
   else throw new Error(`Unknown research command: ${command}\n\n${usage()}`);
 } catch (error) {
-  process.stderr.write(`ERROR ${error.message}\n`);
+  process.stdout.write(`${JSON.stringify({
+    ok: false,
+    command,
+    code: error.code || "RESEARCH_COMMAND_FAILED",
+    error: error.message,
+    missingOption: error.optionName || null,
+    agentHandoff: errorAgentHandoff(error),
+  }, null, 2)}\n`);
   process.exitCode = 1;
 }

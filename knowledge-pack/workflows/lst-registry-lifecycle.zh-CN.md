@@ -19,6 +19,7 @@
 2. 忽略空行、`#` 和 `//` 注释行，但在 preview 中报告忽略数量。
 3. 数字必须符合目标 registry 的约定；通常要求正整数，特殊 0 值以目标样本为准。
 4. 规范化斜杠只用于比较，最终写回保持目标原格式。
+5. 新增前先按声明的 registry 反查候选路径；反查命令可接受 registry 行内相对路径或完整 PVF 路径。若已登记则复用现有 ID；若文件存在但确实未登记，再进入 clean-add 和引用闭合审阅。
 
 ## 冲突预览
 
@@ -43,6 +44,8 @@
 用户明确授权后，分别从目标 raw no-simplified registry 和引用文件建立精确 change-set。dry-run 必须同时覆盖脚本、registry 和引用方；任一文件阻断则整个原子计划不 apply。
 
 新增完整 `.lst` 或给既有 `.lst` 加行时，使用 `task-cards/pvf-high-risk-new-file-controlled-change.zh-CN.md` 的 `registry-lifecycle` 证明。既有 registry 只允许 `action=add`；去掉证明的新行后，最终文本必须与原文逐字一致，不能顺带修改或重排旧行。
+
+`writeProof.registry.expectedPvfPath` 使用完整 PVF 路径，不照抄 registry 行内的相对路径。现有目标文件只要确实未登记，就不需要伪造一次新文件创建；ID 或路径已被占用时仍阻断，并保留冲突行号和既有 ID。
 
 ## 验收
 

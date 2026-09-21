@@ -19,6 +19,7 @@ const {
 const {
   compareChineseEncodingCandidates,
 } = require("../../../tools/pvf-bridge/fallback/codec.ts");
+const { exportEvidence, verifyEvidence, DEFAULT_MAX_CHARS } = require("../lib/pvf-evidence-export");
 
 const rawArgs = process.argv.slice(2);
 const workbenchRoot = resolveWorkbenchRoot(rawArgs, path.resolve(__dirname, "../../.."));
@@ -65,6 +66,20 @@ function usage() {
   workbench.bat pvf-read profiles
   workbench.bat pvf-read tools
   workbench.bat pvf-read fingerprint [--profile <name> | --pvf <Script.pvf> [--pvf <another Script.pvf>]]
+  workbench.bat pvf-read export-evidence --pvf <Script.pvf> --path <known/path.ext> [--path <...>] --out <new-external-dir> --purpose <boundary-only|rebuild-evidence> [--pvf-encoding Cn|Tw] [--max-chars-per-file 16777216]
+  workbench.bat pvf-read verify-evidence --pvf <Script.pvf> --manifest <EVIDENCE.json> --manifest-sha256 <recorded-sha256>
+  workbench.bat pvf-read evidence-self-test
+  workbench.bat pvf-read scope-audit --pvf <Script.pvf> --path <known/script.stk> --section "[exact section]" --out <external-report.json>
+  workbench.bat pvf-read scope-compare --pvf <protected-source.pvf> --candidate-pvf <independent-output.pvf> --path <known/script.stk> --section "[exact section]" --out <external-report.json>
+  workbench.bat pvf-read scope-self-test
+  workbench.bat pvf-read skill-identity-audit --pvf <Script.pvf> --out <external-graph.json>
+  workbench.bat pvf-read skill-identity-check --pvf <Script.pvf> --claims <identity-claims.json> --out <external-report.json>
+  workbench.bat pvf-read skill-identity-self-test
+  workbench.bat pvf-read skill-learning-audit --pvf <Script.pvf> --out <external-learning-evidence.json>
+  workbench.bat pvf-read skill-learning-self-test
+  workbench.bat pvf-read equipment-eligibility-audit --pvf <Script.pvf> --out <new-external-directory>
+  workbench.bat pvf-read equipment-eligibility-self-test
+  workbench.bat pvf-read package-compare --pvf <protected-source.pvf> --candidate-pvf <independent-output.pvf> --path <only-changed-script.stk> --section "[exact section]" --out <external-report.json>
   workbench.bat pvf-read open [--profile <name> | --pvf <Script.pvf>] [--encoding Tw]
   workbench.bat pvf-read list-registries [--profile <name> | --pvf <Script.pvf>] [--include-counts] [--raw]
   workbench.bat pvf-read list-files [--profile <name> | --pvf <Script.pvf>] [--prefix itemshop] [--contains shp] [--limit 20]
@@ -72,18 +87,20 @@ function usage() {
   workbench.bat pvf-read search [--profile <name> | --pvf <Script.pvf>] --keyword <name> [--search-type SearchName] [--search-path dungeon] [--pvf-encoding Cn] [--limit 20] [--raw]
   workbench.bat pvf-read search-batch [--profile <name> | --pvf <Script.pvf>] --name <name> --search-path <domain> [--name <name> --search-path <domain>] [--pvf-encoding Cn] [--limit 20]
   workbench.bat pvf-read search-script [--profile <name> | --pvf <Script.pvf>] --keyword <symbol> [--search-path script] [--limit 50] [--raw]
-  workbench.bat pvf-read read [--profile <name> | --pvf <Script.pvf>] --path <pvf/path.ext> [--start-line 1] [--end-line 20] [--max-chars 30000] [--raw]
-  workbench.bat pvf-read read-batch [--profile <name> | --pvf <Script.pvf>] --path <pvf/path.ext> --path <...> [--max-chars-per-file 30000] [--max-total-chars 300000] [--raw]
+  workbench.bat pvf-read read [--profile <name> | --pvf <Script.pvf>] --path <pvf/path.ext> [--pvf-encoding Cn] [--start-char 0] [--max-chars 30000] [--offset 0 --limit 30000] [--raw]
+  workbench.bat pvf-read read-batch [--profile <name> | --pvf <Script.pvf>] --path <pvf/path.ext> --path <...> [--pvf-encoding Cn] [--start-char 0] [--max-chars-per-file 30000] [--max-total-chars 300000] [--offset 0 --limit 30000] [--raw]
   workbench.bat pvf-read resolve-lst [--profile <name> | --pvf <Script.pvf>] --lst <registry.lst> --id <number> [--no-summary] [--raw]
   workbench.bat pvf-read resolve-lst-batch [--profile <name> | --pvf <Script.pvf>] --lst <registry.lst> --id <number> --id <number> [--include-summary]
   workbench.bat pvf-read resolve-skill [--profile <name> | --pvf <Script.pvf>] (--job <job-token> | --character-id <number>) --id <skill-id> [--raw]
-  workbench.bat pvf-read resolve-path [--profile <name> | --pvf <Script.pvf>] --path <pvf/path.ext> [--registry <registry.lst>]... [--include-secondary] [--include-errors] [--raw]
-  workbench.bat pvf-read resolve-path-batch [--profile <name> | --pvf <Script.pvf>] --registry <registry.lst> --path <pvf/path.ext> --path <pvf/path.ext>
+  workbench.bat pvf-read resolve-path [--profile <name> | --pvf <Script.pvf>] --path <pvf/path.ext | registry-relative/path.ext> [--registry <registry.lst>]... [--include-secondary] [--include-errors] [--raw]
+  workbench.bat pvf-read resolve-path-batch [--profile <name> | --pvf <Script.pvf>] --registry <registry.lst> --path <pvf/path.ext | registry-relative/path.ext> --path <...>
 
 Raw text:
   --raw is the write-preparation display mode. It uses the same independent
   canonical token layout as pvf-change, disables simplified-Chinese conversion
   and StringLink auto-conversion. --no-simplified remains supported.
+  --pvf-encoding controls script text decoding. --encoding only controls how
+  the PVF container is opened and is not a text-encoding alias.
 `;
 }
 
@@ -118,6 +135,174 @@ function numberOption(name, fallback) {
     throw new Error(`${name} must be a number.`);
   }
   return number;
+}
+
+function argumentSchema({ value = [], flag: flags = [], repeatable = [] } = {}) {
+  return {
+    valueOptions: new Set([...value, ...repeatable]),
+    flagOptions: new Set(flags),
+    repeatableOptions: new Set(repeatable),
+  };
+}
+
+const SESSION_VALUE_OPTIONS = ["--profile", "--pvf", "--encoding"];
+const TEXT_VALUE_OPTIONS = ["--pvf-encoding"];
+const TEXT_FLAGS = ["--raw", "--no-simplified"];
+const READ_FLAGS = [
+  ...TEXT_FLAGS,
+  "--string-link",
+  "--no-decompile-script",
+  "--no-decompile-ani",
+  "--no-compatible-decompiler",
+];
+
+const COMMAND_ARGUMENT_SCHEMAS = new Map([
+  ["adapter-info", argumentSchema()],
+  ["profiles", argumentSchema()],
+  ["tools", argumentSchema()],
+  ["fingerprint", argumentSchema({ value: ["--profile"], repeatable: ["--pvf"] })],
+  ["export-evidence", argumentSchema({
+    value: ["--pvf", "--encoding", "--pvf-encoding", "--out", "--purpose", "--max-chars-per-file"], repeatable: ["--path"],
+  })],
+  ["verify-evidence", argumentSchema({ value: ["--pvf", "--encoding", "--manifest", "--manifest-sha256"] })],
+  ["evidence-self-test", argumentSchema()],
+  ["scope-audit", argumentSchema({ value: ["--pvf", "--path", "--section", "--out"] })],
+  ["scope-compare", argumentSchema({ value: ["--pvf", "--candidate-pvf", "--path", "--section", "--out"] })],
+  ["scope-self-test", argumentSchema()],
+  ["skill-identity-audit", argumentSchema({ value: ["--pvf", "--out"] })],
+  ["skill-identity-check", argumentSchema({ value: ["--pvf", "--claims", "--out"] })],
+  ["skill-identity-self-test", argumentSchema()],
+  ["skill-learning-audit", argumentSchema({ value: ["--pvf", "--out"] })],
+  ["skill-learning-self-test", argumentSchema()],
+  ["equipment-eligibility-audit", argumentSchema({ value: ["--pvf", "--out"] })],
+  ["equipment-eligibility-self-test", argumentSchema()],
+  ["package-compare", argumentSchema({ value: ["--pvf", "--candidate-pvf", "--path", "--section", "--out"] })],
+  ["open", argumentSchema({ value: SESSION_VALUE_OPTIONS })],
+  ["list-registries", argumentSchema({
+    value: [...SESSION_VALUE_OPTIONS, ...TEXT_VALUE_OPTIONS],
+    flag: ["--include-counts", "--include-secondary", ...TEXT_FLAGS],
+  })],
+  ["list-files", argumentSchema({
+    value: [...SESSION_VALUE_OPTIONS, "--prefix", "--contains", "--limit"],
+  })],
+  ["list-files-page", argumentSchema({
+    value: [...SESSION_VALUE_OPTIONS, "--prefix", "--contains", "--offset", "--limit"],
+  })],
+  ["search", argumentSchema({
+    value: [
+      ...SESSION_VALUE_OPTIONS,
+      ...TEXT_VALUE_OPTIONS,
+      "--keyword",
+      "--search-type",
+      "--search-path",
+      "--limit",
+      "--match-mode",
+    ],
+    flag: [...TEXT_FLAGS, "--start-match", "--like-search-path"],
+  })],
+  ["search-batch", argumentSchema({
+    value: [...SESSION_VALUE_OPTIONS, ...TEXT_VALUE_OPTIONS, "--limit", "--match-mode"],
+    flag: [...TEXT_FLAGS, "--start-match", "--like-search-path"],
+    repeatable: ["--name", "--search-path"],
+  })],
+  ["search-script", argumentSchema({
+    value: [
+      ...SESSION_VALUE_OPTIONS,
+      ...TEXT_VALUE_OPTIONS,
+      "--keyword",
+      "--search-path",
+      "--limit",
+      "--match-mode",
+    ],
+    flag: [...TEXT_FLAGS, "--start-match", "--like-search-path"],
+  })],
+  ["read", argumentSchema({
+    value: [
+      ...SESSION_VALUE_OPTIONS,
+      ...TEXT_VALUE_OPTIONS,
+      "--path",
+      "--start-char",
+      "--max-chars",
+      "--offset",
+      "--limit",
+      "--start-line",
+      "--end-line",
+    ],
+    flag: READ_FLAGS,
+  })],
+  ["read-batch", argumentSchema({
+    value: [
+      ...SESSION_VALUE_OPTIONS,
+      ...TEXT_VALUE_OPTIONS,
+      "--start-char",
+      "--max-chars-per-file",
+      "--max-total-chars",
+      "--offset",
+      "--limit",
+      "--start-line",
+      "--end-line",
+    ],
+    flag: READ_FLAGS,
+    repeatable: ["--path"],
+  })],
+  ["resolve-lst", argumentSchema({
+    value: [...SESSION_VALUE_OPTIONS, ...TEXT_VALUE_OPTIONS, "--lst", "--id"],
+    flag: ["--no-summary", ...TEXT_FLAGS],
+  })],
+  ["resolve-lst-batch", argumentSchema({
+    value: [...SESSION_VALUE_OPTIONS, ...TEXT_VALUE_OPTIONS, "--lst"],
+    flag: ["--include-summary", ...TEXT_FLAGS],
+    repeatable: ["--id"],
+  })],
+  ["resolve-skill", argumentSchema({
+    value: [...SESSION_VALUE_OPTIONS, ...TEXT_VALUE_OPTIONS, "--job", "--character-id", "--id"],
+    flag: TEXT_FLAGS,
+  })],
+  ["resolve-path", argumentSchema({
+    value: [...SESSION_VALUE_OPTIONS, ...TEXT_VALUE_OPTIONS, "--path"],
+    flag: ["--include-secondary", "--include-errors", ...TEXT_FLAGS],
+    repeatable: ["--registry"],
+  })],
+  ["resolve-path-batch", argumentSchema({
+    value: [...SESSION_VALUE_OPTIONS, ...TEXT_VALUE_OPTIONS],
+    flag: ["--include-secondary", "--include-errors", ...TEXT_FLAGS],
+    repeatable: ["--registry", "--path"],
+  })],
+]);
+
+function unknownOptionMessage(commandName, token) {
+  if (token === "--count" && (commandName === "read" || commandName === "read-batch")) {
+    const canonical = commandName === "read" ? "--max-chars" : "--max-chars-per-file";
+    return `Unknown option for pvf-read ${commandName}: --count. Use ${canonical}, or compatibility alias --limit, for the character limit.`;
+  }
+  return `Unknown option for pvf-read ${commandName}: ${token}.`;
+}
+
+function validateCommandArguments(commandName) {
+  const schema = COMMAND_ARGUMENT_SCHEMAS.get(commandName);
+  if (!schema) return;
+  const seen = new Map();
+  for (let index = 1; index < args.length; index += 1) {
+    const token = args[index];
+    if (!String(token).startsWith("--")) {
+      throw new Error(`Unexpected positional argument for pvf-read ${commandName}: ${token}. Use named --option value arguments only.`);
+    }
+    const isValue = schema.valueOptions.has(token);
+    const isFlag = schema.flagOptions.has(token);
+    if (!isValue && !isFlag) throw new Error(unknownOptionMessage(commandName, token));
+    const count = (seen.get(token) || 0) + 1;
+    seen.set(token, count);
+    if (count > 1 && !schema.repeatableOptions.has(token)) {
+      throw new Error(`Option ${token} may appear only once for pvf-read ${commandName}.`);
+    }
+    if (isValue) {
+      const value = args[index + 1];
+      if (value === undefined || String(value).startsWith("--")) {
+        throw new Error(`Option ${token} requires an explicit value for pvf-read ${commandName}.`);
+      }
+      index += 1;
+    }
+  }
 }
 
 function requireOption(name) {
@@ -224,9 +409,14 @@ function writeCapabilityAgentHandoff() {
   };
 }
 
-function rawReadAgentHandoff() {
+function rawReadAgentHandoff(result) {
+  const bindings = rawTextBindings(result);
+  const allComplete = bindings.length > 0 && bindings.every((binding) => binding.complete === true);
   return {
-    canonicalChangeSourceReady: true,
+    canonicalChangeSourceReady: allComplete,
+    partialCanonicalSegmentsAvailable: bindings.some((binding) => binding.segmentTextSha256),
+    fullSourceBindingRequiredBeforeChangeSet: !allComplete,
+    readContinuation: readContinuationHandoff(result),
     changeSetFormatExamples: {
       linkedVerifiedTextAndParameters: "workspaces/examples/change-set.verified-cn-text.example.json",
       exactHomomorphicBlockScope: "workspaces/examples/change-set.exact-scope.example.json",
@@ -262,25 +452,105 @@ function selectedReadEncodings(result, requestedEncoding) {
 function rawTextBindings(result) {
   const hash = (value) => crypto.createHash("sha256").update(String(value), "utf8").digest("hex");
   const lineSliceRequested = option("--start-line") !== undefined || option("--end-line") !== undefined;
-  if (command === "read") {
-    const complete = !lineSliceRequested && result?.truncated !== true && typeof result?.textContent === "string";
-    return [{
-      pvfPath: normalizePvfPath(result?.fileName || option("--path", "")),
+  const requestedStartChar = Number(option("--start-char", option("--offset", 0)) || 0);
+  const bindingFor = (item, fallbackPath) => {
+    const textAvailable = typeof item?.textContent === "string";
+    const complete =
+      !lineSliceRequested &&
+      requestedStartChar === 0 &&
+      item?.truncated !== true &&
+      textAvailable;
+    return {
+      pvfPath: normalizePvfPath(item?.fileName || item?.pvfPath || fallbackPath || ""),
       complete,
-      sourceTextSha256: complete ? hash(result.textContent) : null,
-    }];
+      sourceTextSha256: complete ? hash(item.textContent) : null,
+      segmentTextSha256: textAvailable ? hash(item.textContent) : null,
+      returnedRange: item?.returnedRange || null,
+      sourceCharCount: Number.isSafeInteger(item?.sourceCharCount) ? item.sourceCharCount : null,
+      remainingCharCount: Number.isSafeInteger(item?.remainingCharCount) ? item.remainingCharCount : null,
+      hasMore: item?.hasMore === true,
+      nextStartChar: Number.isSafeInteger(item?.nextStartChar) ? item.nextStartChar : null,
+    };
+  };
+  if (command === "read") {
+    return [bindingFor(result, option("--path", ""))];
   }
   if (command === "read-batch") {
-    return (result?.items || []).map((item, index) => {
-      const complete = !lineSliceRequested && result?.truncatedByTotalLimit !== true && item?.truncated !== true && typeof item?.textContent === "string";
-      return {
-        pvfPath: normalizePvfPath(item?.fileName || options("--path")[index] || ""),
-        complete,
-        sourceTextSha256: complete ? hash(item.textContent) : null,
-      };
-    });
+    return (result?.items || []).map((item, index) => bindingFor(item, options("--path")[index] || ""));
   }
   return [];
+}
+
+function continuationCommandForPage(item, fallbackPath, maxChars) {
+  if (item?.hasMore !== true || !Number.isSafeInteger(item?.nextStartChar)) return null;
+  const sourceParts = currentSourceCommandParts();
+  const pvfPath = quotedCommandArgument(item?.pvfPath || item?.metadata?.fileName || fallbackPath);
+  if (!sourceParts || !pvfPath) return null;
+  const parts = [
+    "workbench.bat", "pvf-read", "read", ...sourceParts,
+    "--path", pvfPath,
+    "--start-char", String(item.nextStartChar),
+    "--max-chars", String(maxChars),
+  ];
+  const selectedEncoding = option("--pvf-encoding") || item?.semanticReadGuard?.selectedEncoding;
+  if (selectedEncoding) parts.push("--pvf-encoding", String(selectedEncoding));
+  if (rawDisplayMode()) parts.push("--raw");
+  else if (flag("--no-simplified")) parts.push("--no-simplified");
+  if (flag("--string-link") && !rawDisplayMode()) parts.push("--string-link");
+  if (flag("--no-decompile-script")) parts.push("--no-decompile-script");
+  if (flag("--no-decompile-ani")) parts.push("--no-decompile-ani");
+  if (flag("--no-compatible-decompiler")) parts.push("--no-compatible-decompiler");
+  return parts.join(" ");
+}
+
+function readContinuationHandoff(result) {
+  const maxChars = command === "read-batch"
+    ? readCharacterWindow("--max-chars-per-file", 30000).maxChars
+    : readCharacterWindow("--max-chars", 30000).maxChars;
+  const sourcePaths = options("--path");
+  const pageItems = command === "read-batch" ? (result?.items || []) : [result];
+  const pages = pageItems.map((item, index) => ({
+    pvfPath: normalizePvfPath(item?.pvfPath || item?.metadata?.fileName || sourcePaths[index] || ""),
+    returnedRange: item?.returnedRange || null,
+    sourceCharCount: Number.isSafeInteger(item?.sourceCharCount) ? item.sourceCharCount : null,
+    remainingCharCount: Number.isSafeInteger(item?.remainingCharCount) ? item.remainingCharCount : null,
+    hasMore: item?.hasMore === true,
+    nextStartChar: Number.isSafeInteger(item?.nextStartChar) ? item.nextStartChar : null,
+    nextCommandOnly: continuationCommandForPage(item, sourcePaths[index], maxChars),
+  }));
+  const nextCommands = pages.map((page) => page.nextCommandOnly).filter(Boolean);
+  return {
+    characterPaginationSupported: true,
+    argumentSemantics: readArgumentSemantics(),
+    aliases: { startChar: "--offset", maxChars: "--limit" },
+    pages,
+    nextCommandOnly: nextCommands.length === 1 ? nextCommands[0] : null,
+    nextCommands,
+  };
+}
+
+function readArgumentSemantics() {
+  const characterLimitOption = command === "read-batch" ? "--max-chars-per-file" : "--max-chars";
+  const containerEncodingExplicit = option("--encoding") !== undefined;
+  const textEncodingExplicit = option("--pvf-encoding") !== undefined;
+  return {
+    canonicalPagination: {
+      startCharOption: "--start-char",
+      characterLimitOption,
+    },
+    compatibilityAliases: {
+      "--offset": "--start-char",
+      "--limit": characterLimitOption,
+    },
+    unsupportedOptions: ["--count"],
+    textEncodingOption: "--pvf-encoding",
+    containerOpenEncodingOption: "--encoding",
+    containerOpenEncodingDoesNotSetTextEncoding: true,
+    explicitContainerEncodingWithoutExplicitTextEncoding: containerEncodingExplicit && !textEncodingExplicit,
+    correction: containerEncodingExplicit && !textEncodingExplicit
+      ? "--encoding 只控制 PVF 容器打开；若要强制正文使用 Cn/Tw，请明确填写 --pvf-encoding Cn 或 --pvf-encoding Tw。"
+      : null,
+  };
 }
 
 function readTextUsage(result, config, readPreparation = null) {
@@ -292,6 +562,7 @@ function readTextUsage(result, config, readPreparation = null) {
   const truncated = command === "read"
     ? result?.truncated === true
     : Boolean(result?.truncatedByTotalLimit || (result?.items || []).some((item) => item?.truncated === true));
+  const pagination = readContinuationHandoff(result);
   return {
     mode: raw ? "canonical-change-source" : "reader-friendly-display",
     safeForChangeSetSource: raw,
@@ -299,11 +570,13 @@ function readTextUsage(result, config, readPreparation = null) {
     simplifiedChineseDisplayConversion: !raw && !flag("--no-simplified"),
     requestedEncoding,
     selectedEncodings,
+    argumentSemantics: readArgumentSemantics(),
     responseTruncated: truncated,
+    characterPagination: pagination,
     ...(raw ? { rawTextBindings: rawTextBindings(result) } : {}),
     warning: raw
       ? (truncated
-        ? "这是修改校验使用的原始 token 排列，但返回内容已截断；只能复制首尾都完整可见的 token。"
+        ? "这是修改校验使用的原始 token 排列，本次只返回一个字符分段；只能复制首尾都完整可见的 token，并按续读命令取得后续内容。"
         : "这是修改校验使用的原始 token 排列；只复制完整 token，并保留原始文字、换行和 Tab。")
       : "这是便于阅读的显示文本，可能已转成简体或整理布局，禁止复制到 change-set 的 previousText/contextBefore/contextAfter。",
     requiredActionBeforeChangeSet: raw
@@ -608,6 +881,62 @@ function normalizedRegistryPath(value) {
   if (!requested || requested.toLowerCase().endsWith(".lst")) return requested;
   const route = domainRouteForSearchPath(requested);
   return route.known && route.registryPath ? route.registryPath : requested;
+}
+
+function readCharacterWindow(maxCharsOption, fallbackMaxChars) {
+  const canonicalStart = option("--start-char");
+  const aliasStart = option("--offset");
+  const canonicalLimit = option(maxCharsOption);
+  const aliasLimit = option("--limit");
+  if (canonicalStart !== undefined && aliasStart !== undefined) {
+    throw new Error("Use either --start-char or --offset, not both.");
+  }
+  if (canonicalLimit !== undefined && aliasLimit !== undefined) {
+    throw new Error(`Use either ${maxCharsOption} or --limit, not both.`);
+  }
+  const startChar = Number(canonicalStart ?? aliasStart ?? 0);
+  const maxChars = Number(canonicalLimit ?? aliasLimit ?? fallbackMaxChars);
+  if (!Number.isSafeInteger(startChar) || startChar < 0) {
+    throw new Error("--start-char/--offset must be a non-negative safe integer.");
+  }
+  if (!Number.isSafeInteger(maxChars) || maxChars < 1) {
+    throw new Error(`${maxCharsOption}/--limit must be a positive safe integer.`);
+  }
+  const lineSliceRequested = option("--start-line") !== undefined || option("--end-line") !== undefined;
+  const characterSliceRequested = canonicalStart !== undefined || aliasStart !== undefined || aliasLimit !== undefined;
+  if (lineSliceRequested && characterSliceRequested) {
+    throw new Error("Character pagination cannot be combined with --start-line/--end-line in one read.");
+  }
+  return { startChar, maxChars };
+}
+
+function registryQueryPath(value, registryPaths = []) {
+  const requestedPvfPath = normalizePvfPath(value);
+  const baseDirectories = [...new Set((registryPaths || [])
+    .map((registryPath) => path.posix.dirname(normalizePvfPath(registryPath)))
+    .filter((directory) => directory && directory !== ".")
+    .map((directory) => directory.toLowerCase()))];
+  if (baseDirectories.length !== 1) {
+    return { requestedPvfPath, pvfPath: requestedPvfPath, registryRelativePathExpanded: false };
+  }
+  const baseDirectory = baseDirectories[0];
+  if (requestedPvfPath.toLowerCase().startsWith(`${baseDirectory}/`)) {
+    return { requestedPvfPath, pvfPath: requestedPvfPath, registryRelativePathExpanded: false };
+  }
+  return {
+    requestedPvfPath,
+    pvfPath: normalizePvfPath(`${baseDirectory}/${requestedPvfPath}`),
+    registryRelativePathExpanded: true,
+  };
+}
+
+function displayReadAgentHandoff(result) {
+  return {
+    readerFriendlyDisplayComplete: result?.truncated !== true && result?.truncatedByTotalLimit !== true,
+    safeForChangeSetSource: false,
+    readContinuation: readContinuationHandoff(result),
+    instruction: "显示文本只用于阅读；准备修改时仍须对同一路径使用 --raw。若有下一段，直接执行返回的续读命令。",
+  };
 }
 
 function searchBatchRequests(config, sessionId) {
@@ -1041,7 +1370,7 @@ async function executeResolveLstBatch(client, config, sessionId) {
 }
 
 async function executeResolvePathBatch(client, config, sessionId) {
-  const pvfPaths = batchPaths();
+  const requestedPvfPaths = batchPaths();
   const registryPaths = batchRegistryPaths();
   const common = {
     sessionId,
@@ -1052,18 +1381,24 @@ async function executeResolvePathBatch(client, config, sessionId) {
     convertToSimplifiedChinese: !(flag("--no-simplified") || rawDisplayMode()),
   };
   const items = [];
-  for (const pvfPath of pvfPaths) {
-    const result = await callAndParse(client, "pvf_resolve_path", { ...common, pvfPath });
-    items.push({ pvfPath, result });
+  for (const requestedPvfPath of requestedPvfPaths) {
+    const query = registryQueryPath(requestedPvfPath, registryPaths);
+    const result = await callAndParse(client, "pvf_resolve_path", { ...common, pvfPath: query.pvfPath });
+    items.push({
+      requestedPvfPath: query.requestedPvfPath,
+      pvfPath: query.pvfPath,
+      registryRelativePathExpanded: query.registryRelativePathExpanded,
+      result,
+    });
   }
   return {
     ok: true,
     sessionId,
     registryPaths,
-    requestedCount: pvfPaths.length,
+    requestedCount: requestedPvfPaths.length,
     completedCount: items.length,
     confirmedCount: items.filter((item) => Number(item.result?.matchedCount || 0) > 0).length,
-    unmatchedPaths: items.filter((item) => Number(item.result?.matchedCount || 0) === 0).map((item) => item.pvfPath),
+    unmatchedPaths: items.filter((item) => Number(item.result?.matchedCount || 0) === 0).map((item) => item.requestedPvfPath),
     onePvfSessionUsed: true,
     items,
   };
@@ -1361,6 +1696,7 @@ function toolArgsFor(commandName, config, sessionId) {
     };
   }
   if (commandName === "read") {
+    const characterWindow = readCharacterWindow("--max-chars", config.defaults.maxReadChars);
     return {
       sessionId,
       pvfPath: requireOption("--path"),
@@ -1377,12 +1713,14 @@ function toolArgsFor(commandName, config, sessionId) {
       semanticVerificationRead: rawDisplayMode(),
       startLine: numberOption("--start-line"),
       endLine: numberOption("--end-line"),
-      maxChars: numberOption("--max-chars", config.defaults.maxReadChars),
+      startChar: characterWindow.startChar,
+      maxChars: characterWindow.maxChars,
     };
   }
   if (commandName === "read-batch") {
     const pvfPaths = options("--path");
     if (!pvfPaths.length) throw new Error("read-batch requires at least one --path.");
+    const characterWindow = readCharacterWindow("--max-chars-per-file", config.defaults.maxReadChars);
     return {
       sessionId,
       pvfPaths,
@@ -1395,7 +1733,8 @@ function toolArgsFor(commandName, config, sessionId) {
       semanticVerificationRead: rawDisplayMode(),
       startLine: numberOption("--start-line"),
       endLine: numberOption("--end-line"),
-      maxCharsPerFile: numberOption("--max-chars-per-file", config.defaults.maxReadChars),
+      startChar: characterWindow.startChar,
+      maxCharsPerFile: characterWindow.maxChars,
       maxTotalChars: numberOption("--max-total-chars", 300000),
     };
   }
@@ -1411,9 +1750,10 @@ function toolArgsFor(commandName, config, sessionId) {
   }
   if (commandName === "resolve-path") {
     const registryPaths = options("--registry").map(normalizedRegistryPath);
+    const query = registryQueryPath(requireOption("--path"), registryPaths);
     return {
       sessionId,
-      pvfPath: requireOption("--path"),
+      pvfPath: query.pvfPath,
       registryPaths: registryPaths.length ? registryPaths : undefined,
       includeSecondary: flag("--include-secondary"),
       includeErrors: flag("--include-errors"),
@@ -1624,6 +1964,106 @@ async function main() {
     return;
   }
 
+  validateCommandArguments(command);
+
+  if (command === "evidence-self-test") {
+    const result = await require("../scripts/pvf-evidence-self-test").runSelfTest(workbenchRoot);
+    output(result);
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
+
+  if (command === "scope-self-test") {
+    const result = await require("../scripts/pvf-scope-self-test").runSelfTest(workbenchRoot);
+    output(result);
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
+
+  if (command === "equipment-eligibility-self-test") {
+    const result = await require("../scripts/pvf-equipment-eligibility-self-test").runSelfTest(workbenchRoot);
+    output(result); if (!result.ok) process.exitCode = 1; return;
+  }
+
+  if (command === "equipment-eligibility-audit") {
+    const result = await require("../lib/pvf-equipment-eligibility").auditEquipment(workbenchRoot, path.resolve(requireOption("--pvf")), requireOption("--out"), fingerprintPvf);
+    output({ ok: result.ok, command, reportPath: result.reportPath, reportSha256: result.reportSha256, records: result.records,
+      sourcePvfSha256: result.source.sourcePvfSha256, observationComplete: result.observationComplete, summary: result.summary,
+      equipmentTypeGroups: result.equipmentTypeGroups, usableJobGroups: result.usableJobGroups,
+      issueGroups: result.issueGroups, agentHandoff: { semanticContractReady: false, authorizesPvfGeneration: false,
+        instruction: "Preserve every unresolved field and exact job token. Equipment type trailing numbers are not proven slots. Directory names and all-job markers cannot assign gas pools or prove runtime wearability. Never reuse historical pool or parameter answers." } });
+    if (!result.ok) process.exitCode = 1; return;
+  }
+
+  if (command === "skill-learning-self-test") {
+    const result = await require("../scripts/pvf-skill-learning-self-test").runSelfTest(workbenchRoot);
+    output(result);
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
+
+  if (command === "skill-learning-audit") {
+    const source = path.resolve(requireOption("--pvf"));
+    const result = await require("../lib/pvf-skill-learning").auditLearning(source, fingerprintPvf);
+    const report = require("../lib/pvf-scope-audit").writeScopeReport(workbenchRoot, [source], requireOption("--out"), result);
+    output({ ok: result.ok, command, ...report, sourcePvfSha256: result.source.sourcePvfSha256,
+      observationComplete: result.observationComplete, summary: result.summary, issues: result.issues.slice(0, 50), issuesTruncated: result.issues.length > 50,
+      agentHandoff: { semanticContractReady: false, authorizesPvfGeneration: false,
+        instruction: "Read the retained unresolved fields and references. Lexical growth markers are not runtime growtype IDs; table capacity and declared maximum are not playable maxima. Do not reuse historical skill, parameter or pool answers." } });
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
+
+  if (command === "skill-identity-self-test") {
+    const result = await require("../scripts/pvf-skill-identity-self-test").runSelfTest(workbenchRoot);
+    output(result);
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
+
+  if (command === "skill-identity-audit" || command === "skill-identity-check") {
+    const { auditSkillIdentity, checkIdentityClaims } = require("../lib/pvf-skill-identity");
+    const { writeScopeReport } = require("../lib/pvf-scope-audit");
+    const sourcePvf = path.resolve(requireOption("--pvf"));
+    let claims;
+    if (command === "skill-identity-check") {
+      const file = requireOption("--claims"), stat = fs.lstatSync(file);
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 2 * 1024 * 1024) throw new Error("Identity claims must be a bounded regular JSON file.");
+      claims = JSON.parse(fs.readFileSync(file, "utf8"));
+    }
+    const graph = await auditSkillIdentity(sourcePvf, fingerprintPvf);
+    const result = claims ? checkIdentityClaims(graph, claims) : graph;
+    const report = writeScopeReport(workbenchRoot, [sourcePvf], requireOption("--out"), result);
+    output({ ok: result.ok, command, ...report, sourcePvfSha256: graph.source.sourcePvfSha256,
+      summary: result.summary, graphSummary: graph.summary,
+      ...(claims ? { issues: result.issues, results: result.results } : { branches: graph.branches.map((b) => ({ characterId: b.characterId,
+        jobToken: b.jobToken, characterPath: b.characterPath, skillRegistry: b.skillRegistry,
+        complete: b.complete, registeredSkillCount: b.registeredSkillCount, error: b.error })), issues: graph.issues.slice(0, 50), issuesTruncated: graph.issues.length > 50 }),
+      agentHandoff: { authorizesPvfGeneration: false, playableBranchValidation: "not-run", growTypeValidation: "not-run",
+        learnabilityValidation: "not-run", equipmentSlotValidation: "not-run", parameterSemanticsValidation: "not-run",
+        instruction: "Fresh registry identity is not proof of playable class, learnability, equipment slot or parameter meaning. Never reuse historical candidate, value or pool answers." } });
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
+
+  if (command === "scope-audit" || command === "scope-compare" || command === "package-compare") {
+    const { runScopeAudit, writeScopeReport } = require("../lib/pvf-scope-audit");
+    const sourcePvf = path.resolve(requireOption("--pvf"));
+    const candidatePvf = command !== "scope-audit" ? path.resolve(requireOption("--candidate-pvf")) : undefined;
+    const reportFile = requireOption("--out");
+    const result = await runScopeAudit({ sourcePvf, candidatePvf, pvfPath: requireOption("--path"),
+      section: requireOption("--section"), fingerprint: fingerprintPvf, wholePackage: command === "package-compare" });
+    const report = writeScopeReport(workbenchRoot, candidatePvf ? [sourcePvf, candidatePvf] : [sourcePvf], reportFile, result);
+    output({ ok: result.ok, command, result, ...report, agentHandoff: {
+      authorizesPvfGeneration: false, fullPackageCoverage: result.fullPackageCoverage, domainSemanticValidation: "not-run",
+      instruction: command === "package-compare"
+        ? "Full-package preservation does not prove the selected scope is semantically correct or complete. Domain meaning and gameplay still require separate evidence."
+        : "This proves only the selected binary script boundary or outside-body preservation. Other files, domain meaning and gameplay still require separate evidence.",
+    } });
+    if (!result.ok) process.exitCode = 1;
+    return;
+  }
+
   if (command === "adapter-info") {
     output({ ok: true, adapter: adapterInfo(config) });
     return;
@@ -1679,6 +2119,51 @@ async function main() {
 
   const client = new BackendStdioClient(upstreamLaunchOptions(config));
   try {
+    if (command === "export-evidence" || command === "verify-evidence") {
+      if (!config.allowedToolsSet.has("pvf_read_file")) throw new Error("Canonical read tool is not allowed by the read-only adapter.");
+      const sourcePvf = path.resolve(requireOption("--pvf"));
+      // Bind identity before opening the backend session, not after it loaded
+      // the container into memory.
+      const beforeOpen = fingerprintPvf(sourcePvf);
+      let firstFingerprint = true;
+      const requestedEncoding = option("--pvf-encoding");
+      if (requestedEncoding !== undefined && !["Cn", "Tw"].includes(requestedEncoding)) {
+        throw new Error("Evidence text encoding must be Cn or Tw.");
+      }
+      const result = await withOpenSession(config, client, async (sessionId) => {
+        const fingerprint = () => {
+          if (firstFingerprint) { firstFingerprint = false; return beforeOpen; }
+          return fingerprintPvf(sourcePvf);
+        };
+        const read = async (pvfPath, pinnedEncoding, maxChars) => {
+          const encoding = pinnedEncoding || requestedEncoding;
+          const readArgs = { sessionId, pvfPath, pvfEncoding: encoding || config.defaults.pvfReadEncoding,
+            decompileScript: true, decompileBinaryAni: true, autoConvertStringLink: false,
+            useCompatibleDecompiler: true, convertToSimplifiedChinese: false,
+            semanticVerificationRead: true, startChar: 0, maxChars };
+          if (encoding) {
+            return { file: await callAndParse(client, "pvf_read_file", readArgs), selectedEncoding: encoding };
+          }
+          const candidate = await readOneRawAutoEncodingCandidate(client, sessionId, readArgs, pvfPath, readArgs.pvfEncoding);
+          return { file: candidate.file, selectedEncoding: candidate.selection.selectedEncoding, encodingEvidence: candidate.selection };
+        };
+        const common = { workbenchRoot, sourcePvf, fingerprint, read };
+        return command === "export-evidence"
+          ? exportEvidence({ ...common, paths: options("--path"), outputDir: requireOption("--out"),
+            purpose: requireOption("--purpose"), maxChars: numberOption("--max-chars-per-file", DEFAULT_MAX_CHARS) })
+          : verifyEvidence({ ...common, manifestPath: requireOption("--manifest"), manifestSha256: requireOption("--manifest-sha256") });
+      });
+      const quoteArg = (value) => `"${String(value).replace(/"/g, '\\"')}"`;
+      output({ ok: true, command, result, agentHandoff: {
+        ...(command === "export-evidence" ? { nextCommandOnly: `workbench.bat pvf-read verify-evidence --pvf ${quoteArg(sourcePvf)} --manifest ${quoteArg(result.manifestPath)} --manifest-sha256 ${result.manifestSha256}` } : {}),
+        canonicalEvidenceComplete: true, semanticValidation: "not-run", authorizesPvfGeneration: false,
+        boundaryOnly: result.purpose === "boundary-only",
+        instruction: result.purpose === "boundary-only"
+          ? "Use only for replacement boundaries and non-target preservation; never reuse historical profession, skill, parameter or pool answers."
+          : "Evidence integrity does not establish registry identity, domain semantics, coverage or runtime behavior.",
+      } });
+      return;
+    }
     if (command === "tools") {
       const tools = await client.listTools();
       output({
@@ -1745,9 +2230,18 @@ async function main() {
       if (rawDisplayMode() && (command === "read" || command === "read-batch") && !option("--pvf-encoding")) {
         return readRawWithAutomaticEncoding(client, sessionId, commandArgs);
       }
-      const primary = command === "search"
+      let primary = command === "search"
         ? await executeSearch(client, config, commandArgs, option("--pvf-encoding") !== undefined)
         : await callAndParse(client, toolName, commandArgs);
+      if (command === "resolve-path") {
+        const query = registryQueryPath(requireOption("--path"), commandArgs.registryPaths || []);
+        primary = {
+          ...primary,
+          requestedPvfPath: query.requestedPvfPath,
+          resolvedQueryPvfPath: query.pvfPath,
+          registryRelativePathExpanded: query.registryRelativePathExpanded,
+        };
+      }
       if (
         command === "search" &&
         commandArgs.searchType === "SearchFileName" &&
@@ -1780,8 +2274,8 @@ async function main() {
       ? searchBatchAgentHandoff(commandResult)
       : (command === "search" || command === "search-script"
         ? searchAgentHandoff(command, toolArgsFor(command, config, "handoff-only"), commandResult)
-        : ((command === "read" || command === "read-batch") && rawDisplayMode()
-          ? rawReadAgentHandoff()
+        : ((command === "read" || command === "read-batch")
+          ? (rawDisplayMode() ? rawReadAgentHandoff(commandResult) : displayReadAgentHandoff(commandResult))
           : registryResolutionAgentHandoff(command, commandResult)));
     output({
       ok: true,

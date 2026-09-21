@@ -83,6 +83,15 @@ function main() {
     errors.push(`knowledge-pack directory is missing: ${knowledgeRoot}`);
   }
 
+  const router = readJson(path.join(knowledgeRoot, "indexes/knowledge-index.json"), errors);
+  if (Buffer.byteLength(JSON.stringify(router), "utf8") > 20 * 1024) errors.push("Compact root router exceeds 20 KiB; move conditional references into task entries.");
+  for (const [topic, route] of Object.entries(router?.topics || {})) {
+    if (!Array.isArray(route.entries) || route.entries.length !== 1) errors.push("Root topic must have one first entry: " + topic);
+    for (const entry of route.entries || []) {
+      const resolved = path.resolve(knowledgeRoot, entry);
+      if (!resolved.startsWith(knowledgeRoot + path.sep) || !fs.existsSync(resolved)) errors.push("Invalid root route: " + topic + " -> " + entry);
+    }
+  }
   const manifestPath = path.join(knowledgeRoot, "MANIFEST.json");
   if (args.includes("--rebuild-manifest")) rebuildManifest(manifestPath);
   const manifest = fs.existsSync(manifestPath) ? readJson(manifestPath, errors) : null;

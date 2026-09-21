@@ -1,0 +1,26 @@
+{
+  "schemaVersion": "1.0",
+  "mode": "dry-run-only",
+  "target": {
+    "sourcePvf": "<absolute-source-pvf>"
+  },
+  "changes": [
+    {
+      "id": "custom-label",
+      "type": "replace-text",
+      "pvfPath": "stackable/example.stk",
+      "previousText": "`原始自定义文字`",
+      "newText": "`修改后的文字`",
+      "textWriteMode": "verified-scalar-text",
+      "pvfEncoding": "Cn",
+      "expectedOccurrences": 1
+    }
+  ],
+  "description": "Explicit unknown scalar text; runtime meaning requires validation.",
+  "safety": {
+    "writeModeEnabled": false,
+    "requiresBackupBeforeApply": true,
+    "requiresExplicitOutputPath": true,
+    "requiresReadback": true
+  }
+}

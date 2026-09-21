@@ -18,8 +18,10 @@ const {
 const {
   VERIFIED_INLINE_TEXT_MODE,
   VERIFIED_INLINE_CN_TEXT_MODE,
+  RAW_BINARY_ANI_PATCH_MODE,
   buildVerifiedInlineTextPatch,
   buildVerifiedInlineTextBatchPatch,
+  buildRawAsciiAniPatch,
   buildRawAsciiScriptPatch,
   encodeLegacyText,
 } = require("./verified-inline-cn-text");
@@ -308,16 +310,30 @@ function getSessionInfo(sessionId) {
   return { sessionId, ...local };
 }
 
-function limitText(value, maxChars) {
+function limitText(value, maxChars, startChar = 0) {
   const limit = Number.isFinite(maxChars) ? maxChars : 30000;
-  if (!limit || value.length <= limit) {
-    return { textContent: value, truncated: false };
+  const requestedStart = Number(startChar ?? 0);
+  if (!Number.isSafeInteger(requestedStart) || requestedStart < 0) {
+    const error = new Error("startChar must be a non-negative safe integer.");
+    error.code = "READ_CHARACTER_RANGE_INVALID";
+    throw error;
   }
+  const start = Math.min(requestedStart, value.length);
+  const end = !limit ? value.length : Math.min(value.length, start + limit);
+  const textContent = value.slice(start, end);
+  const truncated = start > 0 || end < value.length;
   return {
-    textContent: value.slice(0, limit),
-    truncated: true,
+    textContent,
+    truncated,
+    characterPage: true,
+    requestedStartChar: requestedStart,
+    returnedRange: { startChar: start, endCharExclusive: end },
+    sourceCharCount: value.length,
     originalCharCount: value.length,
-    returnedCharCount: limit,
+    returnedCharCount: textContent.length,
+    remainingCharCount: Math.max(0, value.length - end),
+    hasMore: end < value.length,
+    nextStartChar: end < value.length ? end : null,
   };
 }
 
@@ -849,7 +865,7 @@ async function toolReadFile(args) {
     });
   }
   const content = typeof file.textContent === "string" ? sliceLines(file.textContent, args.startLine, args.endLine) : undefined;
-  const limited = content === undefined ? {} : limitText(content, Number(args.maxChars ?? 30000));
+  const limited = content === undefined ? {} : limitText(content, Number(args.maxChars ?? 30000), Number(args.startChar ?? 0));
   return text({
     ok: true,
     sessionId,
@@ -887,7 +903,7 @@ async function toolReadFiles(args) {
       const { file, semanticReadGuard } = await readPvfFileWithSemanticGuard(sessionId, pvfPath, args);
       const content = typeof file.textContent === "string" ? sliceLines(file.textContent, args.startLine, args.endLine) : undefined;
       const remaining = Math.max(0, maxTotalChars - returnedCharCount);
-      const limited = content === undefined ? {} : limitText(content, Math.min(maxCharsPerFile, remaining));
+      const limited = content === undefined ? {} : limitText(content, Math.min(maxCharsPerFile, remaining), Number(args.startChar ?? 0));
       returnedCharCount += String(limited.textContent || "").length;
       items.push({
         ok: true,
@@ -898,7 +914,7 @@ async function toolReadFiles(args) {
         semanticReadGuard: semanticReadGuard || undefined,
       });
       if (semanticReadGuard?.reason) semanticGuardReasons.add(semanticReadGuard.reason);
-      if (remaining === 0 || (limited.truncated && remaining <= maxCharsPerFile)) truncatedByTotalLimit = true;
+      if (remaining === 0 || (limited.hasMore === true && remaining <= maxCharsPerFile)) truncatedByTotalLimit = true;
     } catch (error) {
       items.push({ ok: false, pvfPath, error: error && error.message ? error.message : String(error) });
     }
@@ -1081,6 +1097,37 @@ async function writeRawAsciiScriptChange(sessionId, pvfPath, sourceText, args) {
   return { ok: true, mode: "raw-ascii-script-token", stringTableResult, scriptResult, proof: patch.proof };
 }
 
+async function writeRawAsciiAniChange(sessionId, pvfPath, sourceText, args) {
+  const sourceBytes = await readRawPvfBytes(sessionId, pvfPath);
+  const patch = buildRawAsciiAniPatch({
+    pvfPath,
+    pvfEncoding: args.pvfEncoding,
+    sourceText,
+    sourceBytes,
+    previousText: args.previousText,
+    newText: args.newText,
+    contextBefore: args.contextBefore,
+    contextAfter: args.contextAfter,
+    scope: args.scope,
+    replaceAll: args.replaceAll === true,
+    expectedOccurrences: args.expectedOccurrences,
+  });
+  if (patch.noOp) return { ok: true, skipped: true, reason: "no-op binary ANI [DELAY] replacement", proof: patch.proof };
+  let writeResult = null;
+  if (args.dryRun !== true) {
+    writeResult = await native.upsertFile(sessionId, pvfPath, { base64Content: patch.bytes.toString("base64") });
+    setRawOverlay(sessionId, pvfPath, patch.bytes);
+  }
+  return {
+    ok: true,
+    dryRun: args.dryRun === true,
+    mode: RAW_BINARY_ANI_PATCH_MODE,
+    writeResult,
+    proof: patch.proof,
+    expectedText: patch.expectedText,
+  };
+}
+
 function auditRegistryLifecycleChange({ beforeText, afterText, proofs, pvfPath }) {
   const proofList = Array.isArray(proofs) ? proofs : [];
   if (!pvfPath.toLowerCase().endsWith(".lst") || proofList.length === 0 ||
@@ -1090,7 +1137,8 @@ function auditRegistryLifecycleChange({ beforeText, afterText, proofs, pvfPath }
     throw error;
   }
 
-  const registryProofs = proofList.map((proof) => validateRegistryRowProof(proof, beforeText));
+  const beforeRegistry = parseRegistryRows(beforeText);
+  const registryProofs = proofList.map((proof) => validateRegistryRowProof(proof, beforeRegistry));
   if (registryProofs.some((proof) => !proof.ok)) {
     const error = new Error(`登记表冲突或格式检查失败：${registryProofs.flatMap((proof) => proof.errors).join("；")}`);
     error.code = "REGISTRY_LIFECYCLE_CHECK_FAILED";
@@ -1124,6 +1172,8 @@ function auditRegistryLifecycleChange({ beforeText, afterText, proofs, pvfPath }
       expectedPvfPath: proof.expectedPvfPath,
       targetIdConflict: Boolean(proof.existingById),
       targetPathConflict: Boolean(proof.existingByPath),
+      preExistingDuplicateSummary: proof.preExistingDuplicateSummary,
+      preExistingDuplicatesIgnoredForAddOnly: proof.preExistingDuplicatesIgnoredForAddOnly === true,
     })),
     transitionProof,
   };
@@ -1395,6 +1445,61 @@ async function toolApplyTextPlan(args) {
       semanticReadGuard: guardedRead.semanticReadGuard || undefined,
     });
   }
+  if (path.posix.extname(pvfPath.toLowerCase()) === ".ani") {
+    if (guardedRead.file.isBinaryAniFile !== true) {
+      const error = new Error("既有 .ani 必须由二进制 ANI 解析器确认后才能进入 [DELAY] 受控补丁路线。");
+      error.code = "RAW_ANI_BINARY_METADATA_REQUIRED";
+      throw error;
+    }
+    if (analyses.length !== 1) {
+      const error = new Error("既有 .ani 受控路线当前要求每个文件恰好一条 [DELAY] 替换，以便绑定唯一原始字节计划。");
+      error.code = "RAW_ANI_SINGLE_CHANGE_REQUIRED";
+      throw error;
+    }
+    let rawAniBytes = await readRawPvfBytes(sessionId, pvfPath);
+    let rawSourceText = guardedRead.file.textContent;
+    const proofs = [];
+    for (const item of analyses) {
+      if (item.change.previousText === item.change.newText) continue;
+      const patch = buildRawAsciiAniPatch({
+        pvfPath,
+        pvfEncoding: readOptions.pvfEncoding,
+        sourceText: rawSourceText,
+        sourceBytes: rawAniBytes,
+        previousText: item.change.previousText,
+        newText: item.change.newText,
+        contextBefore: item.change.contextBefore,
+        contextAfter: item.change.contextAfter,
+        scope: item.change.scope,
+        replaceAll: item.change.replaceAll === true,
+        expectedOccurrences: item.expectedOccurrences,
+      });
+      rawAniBytes = patch.bytes;
+      rawSourceText = patch.expectedText;
+      proofs.push({ id: item.change.id || null, ...patch.proof });
+    }
+    if (rawSourceText !== plannedText) {
+      const error = new Error("ANI 原始字节补丁计划没有生成声明的最终文本。");
+      error.code = "RAW_ANI_PLAN_TEXT_MISMATCH";
+      throw error;
+    }
+    if (args.dryRun !== true && proofs.length > 0) {
+      await native.upsertFile(sessionId, pvfPath, { base64Content: rawAniBytes.toString("base64") });
+      setRawOverlay(sessionId, pvfPath, rawAniBytes);
+      setTextOverlay(sessionId, pvfPath, guardedRead.file, plannedText);
+    }
+    return text({
+      ok: true,
+      sessionId,
+      pvfPath,
+      changeCount: changes.length,
+      dryRun: args.dryRun === true,
+      mode: RAW_BINARY_ANI_PATCH_MODE,
+      finalTextSha256: crypto.createHash("sha256").update(plannedText).digest("hex"),
+      results: proofs,
+      semanticReadGuard: guardedRead.semanticReadGuard || undefined,
+    });
+  }
   let rawScriptBytes = await readRawPvfBytes(sessionId, pvfPath);
   let stringTableBytes = await readRawPvfBytes(sessionId, "stringtable.bin");
   let rawSourceText = guardedRead.file.textContent;
@@ -1585,6 +1690,24 @@ async function toolReplaceText(args) {
       transitionProof: registryLifecycleAudit.transitionProof,
     },
   } : {};
+  let binaryAniWriteResult = null;
+  if (preview.changed && path.posix.extname(pvfPath.toLowerCase()) === ".ani") {
+    if (!writeSafety.allowed) {
+      const error = new Error(`Controlled PVF write blocked: ${writeSafety.reason}`);
+      error.code = writeSafety.code;
+      throw error;
+    }
+    if (file.isBinaryAniFile !== true) {
+      const error = new Error("既有 .ani 必须由二进制 ANI 解析器确认后才能进入 [DELAY] 受控补丁路线。");
+      error.code = "RAW_ANI_BINARY_METADATA_REQUIRED";
+      throw error;
+    }
+    binaryAniWriteResult = await writeRawAsciiAniChange(sessionId, pvfPath, before, {
+      ...args,
+      dryRun: args.dryRun === true,
+      expectedOccurrences,
+    });
+  }
   if (args.dryRun === true) {
     return text({
       ok: true,
@@ -1597,6 +1720,7 @@ async function toolReplaceText(args) {
       contextAnchor: anchored.evidence,
       ...preview,
       ...registryLifecycleResult,
+      rawAsciiTokenPlanProof: binaryAniWriteResult?.proof || undefined,
       semanticReadGuard: semanticReadGuard || undefined,
       semanticWriteSafety: writeSafety,
     });
@@ -1627,6 +1751,8 @@ async function toolReplaceText(args) {
   let writeResult;
   if (isVerifiedInlineTextMode(args.textWriteMode)) {
     writeResult = await writeVerifiedInlineText(sessionId, pvfPath, before, args);
+  } else if (binaryAniWriteResult) {
+    writeResult = binaryAniWriteResult;
   } else if (args.writeProof?.mode === "registry-lifecycle") {
     writeResult = await writeText(sessionId, pvfPath, after, {
       ...args,
@@ -1677,7 +1803,22 @@ async function toolWriteFile(args) {
     error.code = writeSafety.code;
     throw error;
   }
-  const writeResult = await writeText(sessionId, pvfPath, args.textContent, args);
+  let writeResult;
+  const newPlainTextEncoding = normalizeEncoding(args.pvfEncoding || args.writeProof?.pvfEncoding || getSessionState(sessionId).encoding);
+  if ([".str", ".nut", ".sqr"].includes(path.posix.extname(pvfPath.toLowerCase())) &&
+      ["localization-new-file", "script-new-file"].includes(args.writeProof?.mode) &&
+      ["Cn", "Tw"].includes(newPlainTextEncoding)) {
+    // Native plain-text writes use the container's encoding, ignoring the
+    // requested text encoding. Encode these audited new plain-text files
+    // explicitly; the existing-file edit routes remain separate.
+    const encoding = newPlainTextEncoding;
+    const bytes = encodeLegacyText(args.textContent, encoding);
+    const result = await native.upsertFile(sessionId, pvfPath, { base64Content: bytes.toString("base64") });
+    setRawOverlay(sessionId, pvfPath, bytes);
+    writeResult = { ...result, encoding, encodingRoundTripVerified: true, rawSha256: crypto.createHash("sha256").update(bytes).digest("hex") };
+  } else {
+    writeResult = await writeText(sessionId, pvfPath, args.textContent, args);
+  }
   setTextOverlay(sessionId, pvfPath, {
     fileName: pvfPath,
     dataLength: Buffer.byteLength(args.textContent, "utf8"),
@@ -2215,6 +2356,7 @@ const tools = [
         rawSha256Only: { type: "boolean" },
         startLine: { type: "integer", minimum: 1 },
         endLine: { type: "integer", minimum: 1 },
+        startChar: { type: "integer", minimum: 0 },
         maxChars: { type: "integer", minimum: 0 },
       },
       required: ["pvfPath"],
@@ -2237,6 +2379,7 @@ const tools = [
         convertToSimplifiedChinese: { type: "boolean" },
         startLine: { type: "integer", minimum: 1 },
         endLine: { type: "integer", minimum: 1 },
+        startChar: { type: "integer", minimum: 0 },
         maxCharsPerFile: { type: "integer", minimum: 1 },
         maxTotalChars: { type: "integer", minimum: 1 },
       },
@@ -2277,7 +2420,7 @@ const tools = [
         compileScript: { type: "boolean" },
         compileBinaryAni: { type: "boolean" },
         convertToTraditionalChinese: { type: "boolean" },
-        textWriteMode: { type: "string", enum: [VERIFIED_INLINE_TEXT_MODE, VERIFIED_INLINE_CN_TEXT_MODE] },
+        textWriteMode: { type: "string", enum: [VERIFIED_INLINE_TEXT_MODE, VERIFIED_INLINE_CN_TEXT_MODE, "verified-stringlink-detach"] },
       },
       required: ["pvfPath", "previousText", "newText"],
     },
@@ -2319,7 +2462,7 @@ const tools = [
               replaceAll: { type: "boolean" },
               expectedOccurrences: { type: "integer", minimum: 1 },
               writeProof: { type: "object" },
-              textWriteMode: { type: "string", enum: [VERIFIED_INLINE_TEXT_MODE, VERIFIED_INLINE_CN_TEXT_MODE] },
+              textWriteMode: { type: "string", enum: [VERIFIED_INLINE_TEXT_MODE, VERIFIED_INLINE_CN_TEXT_MODE, "verified-stringlink-detach"] },
             },
             required: ["previousText", "newText"],
           },
@@ -2362,7 +2505,7 @@ const tools = [
               replaceAll: { type: "boolean" },
               expectedOccurrences: { type: "integer", minimum: 1 },
               pvfEncoding: { type: "string" },
-              textWriteMode: { type: "string", enum: [VERIFIED_INLINE_TEXT_MODE, VERIFIED_INLINE_CN_TEXT_MODE] },
+              textWriteMode: { type: "string", enum: [VERIFIED_INLINE_TEXT_MODE, VERIFIED_INLINE_CN_TEXT_MODE, "verified-stringlink-detach"] },
             },
             required: ["previousText", "newText", "textWriteMode"],
           },
@@ -2455,7 +2598,7 @@ async function handle(message) {
           capabilities: { tools: { listChanged: false } },
           serverInfo: {
             name: "pvf-workbench-bundled-backend",
-            version: "3.0.1",
+            version: "3.1.0",
             backend: selectedBackend.source,
             readOnly: effectiveReadOnly,
             capabilityMode: serverMode,

@@ -9,9 +9,9 @@
 
 ## 推荐读取顺序
 
-1. `knowledge-pack/README.zh-CN.md`
-2. `knowledge-pack/indexes/knowledge-index.json`
-3. 路由命中的 `knowledge-pack/encyclopedia/`、`knowledge-pack/dictionaries/`、`knowledge-pack/workflows/` 或 `knowledge-pack/task-cards/`
+1. `knowledge-pack/indexes/knowledge-index.json`，选择一个精确意图主题
+2. 只读该主题唯一首入口；按条件跟随其中支持引用
+3. 写入前再读安全说明和受控修改路由
 4. 按路由调用 `workbench.bat knowledge-query`、`pvf-read`、`pvf-index` 或只读规划命令
 5. 读回目标文件并闭合 registry、引用和写入边界
 

@@ -44,7 +44,7 @@
 
 1. 把 APC 等级改为目标公平等级。
 2. 替换武器、五件防具和三件首饰为 APC 专属标准装备。
-3. 保持 AIC 的 `[character status rate]`、`[attack damage rate]`、AI、技能和快捷道具不变。
+3. 保持 AIC 的 `[additional character status]`、`[character status rate]`、`[attack damage rate]`、AI、技能和快捷道具不变。
 4. 保持地图正常生成链，不为调试长期保留强制换人。
 5. 实机观察玩家打 APC、APC 打玩家、整体三速，以及被移除装备效果是否造成明显战斗退化。
 

@@ -25,3 +25,5 @@
 - 数字 ID 按父块和职业分支走正确 `.lst`，不能按数字外形猜。
 - 搜索 0 命中不证明 API 不存在；未知名称不使用近似函数替代。
 - 行为 PASS 必须绑定完整 PVF SHA、入口链、前置条件和测试范围，不跨版本自动继承。
+
+回调同名冲突、数据写入/读取闭合、运行时 UI、调试 helper 与 ACT 的进一步边界见 `indexes/nut-runtime-callback-data-ui-act-boundary.zh-CN.md`。

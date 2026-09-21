@@ -13,6 +13,7 @@
 | 技能树字段缺失 | 需在当前目标 PVF 中只读确认 | 技能树文件承载显示、图标坐标和前置链线索，不承载学习费用或等级上限字段。 |
 | 技能树前置链 | 需在当前目标 PVF 中只读确认 | `[next skill]` 是技能树显示前置链线索，不等于 `.skl [pre required skill]`。 |
 | 装备技能等级加成 | 需在当前目标 PVF 中只读确认 | 装备侧 `[skill levelup]` 是等级加成，不是技能学习消耗或最终技能等级。 |
+| 单级 TP/EX 装备加成诊断 | 需在当前目标 PVF 中只读确认 | 先按职业 registry 解析派生技能；`[pre required skill]` 与基础技能 `[feature skill index]` 双向一致时才列为替代候选，映射与加成幅度分开。 |
 | 装备冷却效果 | 需在当前目标 PVF 中只读确认 | 这是装备效果/触发层，不等于 `.skl [cool time]`，也不是学习点数来源。 |
 | 关键字段规模 | 需在当前目标 PVF 中只读确认 | 两者是高频静态线索，但解释时仍要回到当前职业 registry 和具体 `.skl`。 |
 
@@ -50,7 +51,9 @@
 | 需要哪个前置技能 | `.skl [pre required skill]` 和 SP 树 `[next skill]` 分开查。 | UI 前置线、前置等级门槛和服务端校验是否一致。 |
 | 技能最高能点几级 | `.skl [maximum level]` 与 `[growtype maximum level]`。 | 实际角色/growtype 可点上限和 PVP 修正规则。 |
 | 装备加了多少技能等级 | 装备侧 `[skill levelup]` 三列组并按职业 registry 解析技能 ID。 | 穿戴后面板等级、技能树等级、卸装回退。 |
+| 装备仍给单级 TP/EX 加等级 | 派生 `[maximum level]`、同职业 `[pre required skill]`、基础 `[feature skill index]` 和全部登记装备中的 `[skill levelup]`。 | 穿戴/卸下后的面板与实际效果 A/B；静态上限为 1 不等于加成必然无效。 |
 | 装备改冷却或重置冷却 | 装备效果块、`[skill data up]`、`[cooltime]`、`[skill cooltime reset]` 分开查。 | 释放成功、失败释放、PVP、装备叠加后的实际冷却。 |
+| 消耗品额外增加 SP/TP | 道具效果、目标技能或点数入口、使用限制和玩家可见说明分开查。 | 普通学习、普通降级和技能“初始化”分别测试；一个历史目标样本中，普通改点保留额外 TP，而初始化删除了额外 TP。该结果只作版本风险，不能跨版本推定；还要记录初始化后的剩余点数与玩家提示。 |
 
 
 ## 验收口径
@@ -58,5 +61,7 @@
 - 查学习点数时，不要只看技能树；必须回 `.skl`。
 - 查 TP/EX 点数时，不要把基础技能 ID 当强化技能 ID；必须按同职业 registry 解析 EX/TP `.skl`。
 - 查装备加技能等级时，不要把 `[skill levelup]` 当成学习来源。
+- 批量核查 `[skill levelup]` 时从 `equipment.lst` 覆盖全部登记装备并报告失败、未解析和截断；不要按 ID 段、路径前缀或系列抽样。
 - 查冷却时，区分 `.skl [cool time]`、装备 `[cooltime]` / `[skill cooltime reset]`、`[skill data up] [cooltime]` 和旧 Runtime API 样本。
 - 所有 UI 扣点、服务端放行、PVP 修正、装备叠加和失败回滚都必须实机测试。
+- 涉及技能书或额外点数时，不把“普通学习/降级”和“初始化”合并成一个回滚动作；二者分别形成状态转换用例。

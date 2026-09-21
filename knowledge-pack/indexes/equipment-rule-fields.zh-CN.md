@@ -33,7 +33,7 @@
 | `[limit upgradable level]` | 需验证 | 闭合块，必须读取 `[/limit upgradable level]`。块内连续记录由升级类型 token 与两个整数边界组成；目标样本确认 token 包括 `normal upgrade`、`amplify upgrade`、`separate upgrade`。不要把上下界数字解释成装备 ID。 |
 | `[routing priority]` | 需验证 | 闭合块，必须读取 `[/routing priority]`。目标样本既有空块，也有“职业 token + 数字”记录；空块不能按缺失字段处理。具体显示或路由优先级语义未定性。 |
 | `[impossible contents]` | 需验证 | 闭合的禁用项 token 列表。目标样本确认 token 包括 `disjoint`、`gift`、`upgrade`、`amplify upgrade`、`separate upgrade`、`charac cargo`。每个 token 独立保留，不把整块简化成单一“不可交易”标志。 |
-| `[character item check]` | 需验证 | 闭合块，目标常见为重复三列组：“数字、数字、装备部位文本”。同一块可含多组记录；数字列语义未定性，装备部位文本也不是 equipment registry ID。不要把各组三列拆散。 |
+| `[character item check]` | 需验证 | 闭合块，目标常见为重复三列组：“数字、数字、装备部位文本”。同一块可含多组记录；数字列语义未定性，装备部位文本也不是 equipment registry ID。一个目标版本的两个装备样本在加入该完整块后实机取得气息准入，而官方参考同路径样本没有该块；这只把它提升为该目标系统的装备侧准入入口，不证明列义、次数上限或全版本通用。不要把各组三列拆散。 |
 | `[item category]` | 需验证 | 闭合的分类 token 列表。目标样本确认 `boss drop`、`clear avatar`、`no random`；分类 token 只说明该块的类别值，不自动等同于同名独立标签或完整掉落机制。 |
 
 ## 最低核查清单
@@ -43,7 +43,8 @@
 3. 对 `[limit upgradable level]`，逐组读取升级类型 token 和两个数字边界。
 4. 对 `[routing priority]`，区分空块与包含职业 token 的块，不擅自删除空块。
 5. 对 `[character item check]`，按连续三列组读取，不把数字列直接映射为职业或成长类型。
-6. 对 `[item category]` 和 `[impossible contents]`，按 token 列表处理，不通过中文直译补写目标未出现的 token。
+6. 若用于气息或其他装备准入，必须同时检查目标道具的选项/检查块，并做有块/无块、装备部位、重登保存和实际技能变化 A/B。单件次数、同技能重复限制和跨装备叠加仍属于目标运行候选，不能从块行数推出。
+7. 对 `[item category]` 和 `[impossible contents]`，按 token 列表处理，不通过中文直译补写目标未出现的 token。
 8. 对额外掉落三字段，分别保存标记、地城类型块和难度块；不能仅凭装备文件推出完整掉落机制。
 9. 对 `[expiration date]`，按 epoch 秒保存原值并明确显示时区；不要改写为相对天数。
 10. 对 `[chat emoticon index]`，必须走聊天表情 registry；其他规则数字没有 registry 证据时不得擅自解析。

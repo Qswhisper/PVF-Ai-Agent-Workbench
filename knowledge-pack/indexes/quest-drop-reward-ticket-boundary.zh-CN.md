@@ -32,7 +32,7 @@
 | 类型 | 链路 | 可复用结论 |
 | --- | --- | --- |
 | 任务定位 | 任务 ID -> `n_quest/quest.lst` -> `n_quest/*.qst`。 | 任务文件路径和大小写不能替代 registry。 |
-| 接取与完成 NPC | `.qst [npc index]` / `[complete npc index]` -> `npc/npc.lst`。 | `-1` 不解析为 NPC；NPC 可见性需要实机确认。 |
+| 接取、完成与列表可见性 | `.qst [npc index]` / `[complete npc index]` -> `npc/npc.lst`，并与 `[exposed by npc]` / `[first exposed by npc]`、登记和前置链合读。 | `-1` 不解析为 NPC，也不是删除/隐藏指令；NPC 列表可见性需要多状态实机确认。 |
 | 任务前置 | `.qst [pre required quest]` -> `n_quest/quest.lst`。 | 多个前置块要逐块读，不要合并成一个裸列表。 |
 | 任务收集物 | `.qst [type]` 为 `` `[seeking]` `` 时，`[int data]` 样本可按物品 ID/数量读取。 | 该解释只在对应父块上下文成立。 |
 | 任务固定奖励 | `.qst [reward type]` -> `[reward int data]` -> `stackable` 或 `equipment`。 | 同一数字在多 registry 命中时，以父块和奖励类型决定。 |

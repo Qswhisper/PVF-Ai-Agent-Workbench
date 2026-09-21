@@ -78,6 +78,14 @@
 
 注意：不能把所有 `[DAMAGE BOX]` 都解释成攻击输出；需要区分攻击动作、待机/受击/移动动画和对象用途。
 
+### `[DELAY]`
+
+状态：默认可用（仅受控整数补丁）
+
+含义：二进制 ANI 帧属性中的 4 字节有符号整数延迟。静态数值可用于计算动画帧时长，但状态切换、循环、中断和实际玩法表现仍需实机验证。
+
+写入边界：既有二进制 `.ani` 可按 `task-cards/pvf-existing-ani-delay-controlled-change.zh-CN.md` 做单文件单条原字节整数补丁；其他 ANI 字段、结构、路径和客户端资源不因此开放。
+
 ## 覆盖入口
 
 - `.act` 字段和闭合标签：见 `indexes/monster-action-animation-act-observed-tag-router.zh-CN.md`。

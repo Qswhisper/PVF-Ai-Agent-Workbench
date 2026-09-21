@@ -86,6 +86,32 @@
 
 注意：地点枚举和实际限制需目标样本和游戏内确认。
 
+## 使用、消耗与召唤
+
+### `[summon apc]`
+
+状态：需验证
+
+含义：stackable 使用效果中的 APC 召唤入口。APC 数字必须通过 `aicharacter/aicharacter.lst` 解析，并继续读取目标 `.aic` 及其依赖。
+
+注意：字段静态存在不证明副本内允许使用、APC 成功生成或行为正常；`[summon npc]` 是另一条未覆盖的机制，不能类推。
+
+### `[stackable type] [waste]` / `[stackable type] [unlimited waste]`
+
+状态：需验证
+
+含义：消耗品使用策略的版本相关线索。已有同一目标版本、同一道具链的实机 A/B 表明，把 `[waste]` 改为 `[unlimited waste]` 与该人偶在副本内成功使用相关；仅移除 `[expert type] [doll_controller]` 和 `[sub type] 2` 未能解除限制。
+
+注意：这不是跨版本枚举定义，不能据此断言所有 `[waste]` 都禁止副本使用，或所有 `[unlimited waste]` 都必然可用。提示、冷却和副本禁用策略仍需逐目标实机验证。
+
+### `[consume item]`
+
+状态：需验证
+
+含义：使用效果执行时的显式物品消耗入口；物品 ID 必须通过 `stackable/stackable.lst` 解析，数量列按目标同类样本确认。
+
+注意：在上述已验证道具链中，只有加入显式 `[consume item]` 后才观察到每次使用扣除材料；单独存在 `[need material]` 未形成按次扣除。其他版本仍须分别验证，不能把两字段视为同义或互相替代。
+
 ## 商店与经济
 
 ### `[price]`

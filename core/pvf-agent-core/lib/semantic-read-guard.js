@@ -255,11 +255,12 @@ function semanticWriteSafety(input = {}) {
   const proofShape = input.kind === "write-file" && PROTECTED_NEW_FILE_EXTENSIONS.has(extension)
     ? validateWriteProofShape(pvfPath, input.writeProof)
     : null;
-  if (encoding === "Cn" && extension === ".str" && !(input.kind === "write-file" && proofShape?.ok === true && input.writeProof?.encodingRoundTripRequired === true)) {
+  if (encoding === "Cn" && extension === ".str" && input.kind !== "write-file") {
     return {
       allowed: false,
       code: "CN_LOCALIZATION_WRITE_UNVERIFIED",
-      reason: "已阻止 Cn .str 写入：当前 native 写出无法保持中文编码。",
+      details: { category: "unsupported-capability", recoveryTaskCard: "knowledge-pack/task-cards/pvf-controlled-change-routing.zh-CN.md" },
+      reason: "既有共享 .str 的编辑尚未实现引用影响审计；这不是 Cn 编码一概不能写。新增文件可使用 localization-new-file，明确道具改名可使用名称解除引用路线。",
       clientTextSmokeCheckRequired: true,
       noOp: false,
     };
@@ -275,6 +276,8 @@ function semanticWriteSafety(input = {}) {
         code: "PROTECTED_FILE_TYPE_WRITE_BLOCKED",
         reason,
         details: {
+          category: proofShape?.ok ? "structure-conflict" : "evidence-required",
+          recoveryTaskCard: "knowledge-pack/task-cards/pvf-high-risk-new-file-controlled-change.zh-CN.md",
           expectedMode: proofShape?.expectedMode || HIGH_RISK_NEW_FILE_MODES[extension],
           proofErrors: proofShape?.errors || [],
           sourceErrors: sourceValidation.errors || [],
@@ -318,7 +321,8 @@ function semanticWriteSafety(input = {}) {
       return {
         allowed: false,
         code: "PROTECTED_FILE_TYPE_WRITE_BLOCKED",
-        reason: `已保持既有高风险文件保护：${extension} 只能通过匹配的既有 NUT 专用流程、登记表生命周期或新增文件受控流程处理。`,
+        reason: extension === ".nut" ? "既有 NUT 需使用已实现的专用编辑路线。" : extension === ".lst" ? "既有 LST 当前支持受控新增行；修改或删除既有行尚未实现引用影响审计。" : `既有 ${extension} 通用编辑尚未实现；新增文件路线不能用于覆盖它。`,
+        details: { category: [".co", ".sqr", ".str"].includes(extension) ? "unsupported-capability" : "route-required", recoveryTaskCard: "knowledge-pack/task-cards/pvf-controlled-change-routing.zh-CN.md" },
         clientTextSmokeCheckRequired: true,
         noOp: false,
       };
@@ -377,12 +381,20 @@ function semanticWriteSafety(input = {}) {
         code: null,
         reason: "中文内联文本结构检查通过；仍需临时输出往返验证和客户端文字检查。",
         clientTextSmokeCheckRequired: analysis.clientTextSmokeCheckRequired,
+        runtimeValidationRequired: input.textWriteMode === "verified-scalar-text",
+        semanticMeaningVerified: input.textWriteMode === "verified-scalar-text" ? false : undefined,
         noOp: analysis.noOp,
         verifiedInlineTextWrite: {
           mode: analysis.mode,
           encoding: analysis.encoding,
           parentTag: analysis.parentTag,
           parentTags: analysis.parentTags,
+          eligibilityPolicyId: analysis.eligibilityPolicyId,
+          eligibilityPolicySha256: analysis.eligibilityPolicySha256,
+          eligibilityProofs: analysis.eligibilityProofs,
+          eligibilityProofsSha256: analysis.eligibilityProofsSha256,
+          structuredContainerProofs: analysis.structuredContainerProofs,
+          structuredContainerProofsSha256: analysis.structuredContainerProofsSha256,
           occurrenceCount: analysis.occurrenceCount,
           scopedOccurrenceCount: analysis.scopedOccurrenceCount,
           totalOccurrenceCount: analysis.totalOccurrenceCount,

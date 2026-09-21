@@ -1,45 +1,60 @@
 "use strict";
 
 const crypto = require("crypto");
+const { lexDecompiledScript } = require("./script-text-lexer");
+const { inspectStaticEventAppend } = require("../../core/pvf-agent-core/lib/event-intro-text");
 const path = require("path");
 const {
   compareChineseEncodingCandidates,
   decodeText,
   normalizeEncoding,
 } = require("./fallback/codec.ts");
+const { inspectBinaryAni } = require("./fallback/ani.ts");
 const { StringTable, parseTokens } = require("./fallback/script.ts");
 const {
   analyzeContextAnchoredReplacement,
   applyContextAnchoredReplacement,
   occurrenceMismatch,
 } = require("./context-anchored-replace");
+const {
+  ALLOWED_INLINE_TEXT_EXTENSIONS,
+  ALLOWED_VISIBLE_TEXT_TAGS,
+  VERIFIED_TEXT_ELIGIBILITY_POLICY_ID,
+  VERIFIED_TEXT_ELIGIBILITY_POLICY_SHA256,
+  classifyVisibleTextOccurrence,
+  directBacktickTokenValue: directBacktickValue,
+} = require("../../core/pvf-agent-core/lib/verified-text-eligibility");
 
 const VERIFIED_INLINE_TEXT_MODE = "verified-inline-text";
 const VERIFIED_INLINE_CN_TEXT_MODE = "verified-inline-cn";
+const VERIFIED_STRINGLINK_DETACH_MODE = "verified-stringlink-detach";
 const VERIFIED_INLINE_TEXT_MODES = new Set([
   VERIFIED_INLINE_TEXT_MODE,
   VERIFIED_INLINE_CN_TEXT_MODE,
+  VERIFIED_STRINGLINK_DETACH_MODE,
+  "verified-scalar-text",
+]);
+const TITLEBOOK_SECTION_NAME_RULE_ID = "titlebook-section-name-visible-text";
+const QST_CONDITION_DATA_PROGRESS_RULE_ID = "qst-condition-data-progress-message";
+const STRUCTURED_VISIBLE_TEXT_RULE_IDS = new Set([
+  "event-list-paired-intro-text",
+  "dgn-tower-dialog-visible-message",
+  TITLEBOOK_SECTION_NAME_RULE_ID,
+  QST_CONDITION_DATA_PROGRESS_RULE_ID,
+]);
+const SINGLE_LINE_VISIBLE_TEXT_RULE_IDS = new Set([
+  TITLEBOOK_SECTION_NAME_RULE_ID,
+  QST_CONDITION_DATA_PROGRESS_RULE_ID,
+]);
+const TAG_INJECTION_BLOCKED_RULE_IDS = new Set([
+  TITLEBOOK_SECTION_NAME_RULE_ID,
+  QST_CONDITION_DATA_PROGRESS_RULE_ID,
 ]);
 const SUPPORTED_INLINE_TEXT_ENCODINGS = new Set(["Cn", "Tw"]);
+const RAW_BINARY_ANI_PATCH_MODE = "raw-ascii-binary-ani";
 const MAX_INLINE_TEXT_CHARACTERS = 4000;
 const MAX_STRING_TABLE_ENTRIES = 5_000_000;
-const ALLOWED_INLINE_TEXT_EXTENSIONS = new Set([
-  ".aic",
-  ".cre",
-  ".dgn",
-  ".equ",
-  ".etc",
-  ".map",
-  ".mob",
-  ".msn",
-  ".npc",
-  ".obj",
-  ".qst",
-  ".shp",
-  ".skl",
-  ".stk",
-  ".ui",
-]);
+const MAX_VERIFIED_TEXT_PROOF_BYTES_PER_CHANGE = 3800;
 const RAW_TOKEN_PATCH_EXTENSIONS = new Set([
   ".act",
   ".ai",
@@ -71,29 +86,6 @@ const RAW_TOKEN_PATCH_EXTENSIONS = new Set([
   ".ui",
   ".wdm",
 ]);
-const ALLOWED_VISIBLE_TEXT_TAGS = new Set([
-  "basic explain",
-  "condition message",
-  "depend message",
-  "desc",
-  "description",
-  "explain",
-  "flavor text",
-  "map name",
-  "message",
-  "minimum info",
-  "name",
-  "name2",
-  "on attack",
-  "skill explain",
-  "skill string",
-  "solve message",
-  "speech on situation",
-]);
-const PATH_SCOPED_VISIBLE_TEXT_TAGS = new Map([
-  ["send postal", new Set(["etc/titlebook.etc"])],
-]);
-
 const legacyEncodeMaps = new Map();
 
 function sha256(value) {
@@ -105,10 +97,6 @@ function codedError(code, message, details) {
   error.code = code;
   if (details) error.details = details;
   return error;
-}
-
-function normalizeTag(value) {
-  return String(value || "").trim().replace(/^\[/, "").replace(/\]$/, "").trim().toLowerCase();
 }
 
 function countOccurrences(text, needle) {
@@ -123,58 +111,36 @@ function countOccurrences(text, needle) {
   }
 }
 
-function directBacktickValue(fragment) {
-  // PVF display strings can contain real CRLF/LF line breaks.  Keep the
-  // token boundary strict (one opening and one closing backtick), but do not
-  // mistake a line break inside that token for a partial-token write.
-  const match = /^`([^`]*)`$/u.exec(String(fragment || ""));
-  return match ? match[1] : null;
-}
-
 function containsNonAscii(value) {
   return /[^\x00-\x7f]/u.test(String(value || ""));
 }
 
-function immediateParentTag(sourceText, tokenOffset) {
-  const lineStart = sourceText.lastIndexOf("\n", Math.max(0, tokenOffset - 1)) + 1;
-  const lines = sourceText.slice(0, lineStart).split(/\r?\n/);
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const line = lines[index].trim();
-    if (!line) continue;
-    const match = /^\[([^\]\r\n]+)\]$/.exec(line);
-    if (!match || match[1].trim().startsWith("/")) return null;
-    return normalizeTag(match[1]);
-  }
-  return null;
-}
-
-function nearestOpenTag(sourceText, tokenOffset) {
-  const lineStart = sourceText.lastIndexOf("\n", Math.max(0, tokenOffset - 1)) + 1;
-  const lines = sourceText.slice(0, lineStart).split(/\r?\n/);
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    const match = /^\[([^\]\r\n]+)\]$/.exec(lines[index].trim());
-    if (!match) continue;
-    if (match[1].trim().startsWith("/")) return null;
-    return normalizeTag(match[1]);
-  }
-  return null;
-}
-
-function normalizedPvfPath(value) {
-  return String(value || "").replace(/\\/g, "/").replace(/^\.\//, "").toLowerCase();
-}
-
-function visibleTextParentTag(sourceText, tokenOffset, pvfPath) {
-  const direct = immediateParentTag(sourceText, tokenOffset);
-  if (direct) return direct;
-  const nearest = nearestOpenTag(sourceText, tokenOffset);
-  const allowedPaths = PATH_SCOPED_VISIBLE_TEXT_TAGS.get(nearest);
-  return allowedPaths?.has(normalizedPvfPath(pvfPath)) ? nearest : null;
-}
-
-function visibleTextTagAllowed(parentTag, pvfPath) {
-  if (ALLOWED_VISIBLE_TEXT_TAGS.has(parentTag)) return true;
-  return PATH_SCOPED_VISIBLE_TEXT_TAGS.get(parentTag)?.has(normalizedPvfPath(pvfPath)) === true;
+function eligibilityProofRouteMatches(expected, actual) {
+  if (!expected || !actual) return false;
+  return [
+    "policyId",
+    "policySha256",
+    "ruleId",
+    "ruleKind",
+    "parentTag",
+    "pvfPath",
+    "extension",
+    "baseTag",
+    "suffix",
+    "baseRuleId",
+    "matchedPath",
+    "floor",
+    "event",
+    "tokenOwnLine",
+    "singleLineToken",
+    "conditionDataInteger",
+    "closingTag",
+    "closedContainer",
+    "placeholderOrderPreservedRequired",
+    "semanticMeaningVerified", "runtimeValidationRequired",
+    "role", "eventId", "eventGroup", "eventType", "eventCode", "eventTitle",
+    "startDate", "endDate", "width", "pairedDescription",
+  ].every((field) => (expected[field] ?? null) === (actual[field] ?? null));
 }
 
 function isInsideStringLinkToken(sourceText, tokenOffset, tokenLength) {
@@ -186,6 +152,79 @@ function isInsideStringLinkToken(sourceText, tokenOffset, tokenLength) {
     if (tokenOffset >= matchStart && targetEnd <= matchEnd) return true;
   }
   return false;
+}
+
+function printfPlaceholderSignature(value) {
+  const pattern = /%(?!%)(?:\d+\$)?[-+#0 ]*(?:\d+|\*)?(?:\.(?:\d+|\*))?[A-Za-z]/g;
+  return [...String(value || "").matchAll(pattern)].map((match) => match[0]);
+}
+
+function assertVisibleTextRuleSpecificValueSafety(eligibilityProof, previousValue, newValue) {
+  const ruleId = eligibilityProof?.ruleId || "";
+  if (ruleId === "event-list-paired-intro-text" && /title$/u.test(eligibilityProof.role || "") && /[\r\n\[\]]/u.test(previousValue + newValue)) {
+    throw codedError("CN_TEXT_SINGLE_LINE_TOKEN_REQUIRED", "活动标题必须是成对的单行普通文字。");
+  }
+  if (ruleId === "event-list-paired-intro-text" &&
+      (!newValue.trim() || /https?:\/\/|[<>]/iu.test(newValue))) {
+    throw codedError("CN_TEXT_EVENT_INTRO_PLAIN_TEXT_REQUIRED", "活动介绍只允许非空普通说明文字，不允许链接或标记。");
+  }
+  if (SINGLE_LINE_VISIBLE_TEXT_RULE_IDS.has(ruleId) && (/[\r\n]/u.test(previousValue) || /[\r\n]/u.test(newValue))) {
+    throw codedError(
+      "CN_TEXT_SINGLE_LINE_TOKEN_REQUIRED",
+      "该结构化可见文字只允许单行完整反引号 token；多行文字仍保持阻断。",
+      { ruleId },
+    );
+  }
+  if (TAG_INJECTION_BLOCKED_RULE_IDS.has(ruleId) && /[\[\]]/u.test(`${previousValue}${newValue}`)) {
+    throw codedError(
+      "CN_TEXT_TAG_INJECTION_BLOCKED",
+      "该结构化可见文字不得包含 PVF 标签括号，避免把显示文本写成结构注入。",
+      { ruleId },
+    );
+  }
+  if (ruleId === "explicit-scalar-text" || ruleId === QST_CONDITION_DATA_PROGRESS_RULE_ID || ruleId === "event-list-paired-intro-text") {
+    const previousPlaceholders = printfPlaceholderSignature(previousValue);
+    const newPlaceholders = printfPlaceholderSignature(newValue);
+    if (JSON.stringify(previousPlaceholders) !== JSON.stringify(newPlaceholders)) {
+      throw codedError(
+        "CN_TEXT_PLACEHOLDER_SIGNATURE_CHANGED",
+        "结构化可见文字必须保留原有占位符数量和顺序。",
+        { ruleId, previousPlaceholders, newPlaceholders },
+      );
+    }
+    return { previousPlaceholders, newPlaceholders };
+  }
+  return {};
+}
+
+function buildStructuredVisibleTextProof(eligibilityProof, parentTag, ruleSpecificProof = {}) {
+  if (!STRUCTURED_VISIBLE_TEXT_RULE_IDS.has(eligibilityProof?.ruleId)) return null;
+  return {
+    ok: true,
+    mode: eligibilityProof.mode,
+    parentTag,
+    pvfPath: eligibilityProof.pvfPath,
+    ruleId: eligibilityProof.ruleId,
+    policyId: eligibilityProof.policyId,
+    policySha256: eligibilityProof.policySha256,
+    ...(eligibilityProof.floor !== undefined ? { floor: eligibilityProof.floor } : {}),
+    ...(eligibilityProof.event !== undefined ? { event: eligibilityProof.event } : {}),
+    ...(eligibilityProof.matchedPath !== undefined ? { matchedPath: eligibilityProof.matchedPath } : {}),
+    ...(eligibilityProof.tokenOwnLine !== undefined ? { tokenOwnLine: eligibilityProof.tokenOwnLine } : {}),
+    ...(eligibilityProof.singleLineToken !== undefined ? { singleLineToken: eligibilityProof.singleLineToken } : {}),
+    ...(eligibilityProof.conditionDataInteger !== undefined ? { conditionDataInteger: eligibilityProof.conditionDataInteger } : {}),
+    ...(eligibilityProof.closingTag !== undefined ? { closingTag: eligibilityProof.closingTag } : {}),
+    ...(eligibilityProof.closedContainer !== undefined ? { closedContainer: eligibilityProof.closedContainer } : {}),
+    ...(eligibilityProof.placeholderOrderPreservedRequired !== undefined
+      ? { placeholderOrderPreservedRequired: eligibilityProof.placeholderOrderPreservedRequired }
+      : {}),
+    ...(ruleSpecificProof.previousPlaceholders
+      ? {
+        placeholderSignature: ruleSpecificProof.previousPlaceholders,
+        placeholderSignatureSha256: sha256(JSON.stringify(ruleSpecificProof.previousPlaceholders)),
+      }
+      : {}),
+  };
 }
 
 function isVerifiedInlineTextMode(value) {
@@ -285,7 +324,7 @@ function analyzeVerifiedInlineTextChange(input = {}) {
   const pvfPath = String(input.pvfPath || "").replace(/\\/g, "/");
   const extension = path.posix.extname(pvfPath.toLowerCase());
   if (extension === ".str") {
-    throw codedError("CN_LOCALIZATION_WRITE_UNVERIFIED", "独立 .str 中文资源仍未开放写入。");
+    throw codedError("CN_LOCALIZATION_WRITE_UNVERIFIED", "既有共享 .str 编辑尚未实现；新增 .str 可使用 localization-new-file 路线。");
   }
   if (!ALLOWED_INLINE_TEXT_EXTENSIONS.has(extension)) {
     throw codedError("CN_TEXT_FILE_TYPE_UNSUPPORTED", `当前未开放 ${extension || "无扩展名"} 文件中的中文写入。`);
@@ -296,10 +335,15 @@ function analyzeVerifiedInlineTextChange(input = {}) {
   }
   const previousText = String(input.previousText || "");
   const newText = String(input.newText || "");
-  if (/^<\s*\d+\s*::/u.test(previousText) || /^<\s*\d+\s*::/u.test(newText)) {
-    throw codedError("STRINGLINK_TEXT_WRITE_UNVERIFIED", "StringLink 显示文本必须修改其真实字符串资源；当前仍保持只读。");
+  const detach = mode === VERIFIED_STRINGLINK_DETACH_MODE;
+  const link = /^<(\d+)::([^>`\r\n]{1,512})`([^`]*)`>$/u.exec(previousText);
+  if (detach && (!link || extension !== ".stk" || input.replaceAll === true || !SUPPORTED_INLINE_TEXT_ENCODINGS.has(input.pvfEncoding))) {
+    throw codedError("STRINGLINK_DETACH_SCOPE_INVALID", "显式解除引用仅支持.stk中一个完整StringLink，必须明确Cn/Tw编码。");
   }
-  const previousValue = directBacktickValue(previousText);
+  if ((!detach && /^<\s*\d+\s*::/u.test(previousText)) || /^<\s*\d+\s*::/u.test(newText)) {
+    throw codedError("STRINGLINK_TEXT_WRITE_UNVERIFIED", "普通文字模式禁止StringLink；明确的.stk名称改名请走verified-stringlink-detach任务卡，共享文字表仍受保护。");
+  }
+  const previousValue = detach ? link[3] : directBacktickValue(previousText);
   const newValue = directBacktickValue(newText);
   if (previousValue === null || newValue === null) {
     throw codedError("CN_TEXT_TOKEN_REQUIRED", "中文修改必须替换一个完整的反引号文本，例如 `旧描述` → `新描述`。");
@@ -310,6 +354,10 @@ function analyzeVerifiedInlineTextChange(input = {}) {
       noOp: true,
       mode,
       encoding,
+      eligibilityPolicyId: VERIFIED_TEXT_ELIGIBILITY_POLICY_ID,
+      eligibilityPolicySha256: VERIFIED_TEXT_ELIGIBILITY_POLICY_SHA256,
+      eligibilityProofs: [],
+      eligibilityProofsSha256: null,
       clientTextSmokeCheckRequired: false,
       requiresEncodingRoundTripProbe: false,
     };
@@ -340,20 +388,70 @@ function analyzeVerifiedInlineTextChange(input = {}) {
   const occurrences = [];
   for (let index = 0; index < occurrenceCount; index += 1) {
     const tokenOffset = anchored.occurrenceOffsets[index];
-    if (isInsideStringLinkToken(sourceText, tokenOffset, previousText.length)) {
-      throw codedError("STRINGLINK_TEXT_WRITE_UNVERIFIED", "StringLink 显示文本必须修改其真实字符串资源；当前仍保持只读。");
+    if (!detach && isInsideStringLinkToken(sourceText, tokenOffset, previousText.length)) {
+      throw codedError("STRINGLINK_TEXT_WRITE_UNVERIFIED", "普通文字模式禁止StringLink；明确的.stk名称改名请走verified-stringlink-detach任务卡，共享文字表仍受保护。");
     }
-    const parentTag = visibleTextParentTag(sourceText, tokenOffset, pvfPath);
-    if (!parentTag || !visibleTextTagAllowed(parentTag, pvfPath)) {
+    const eligibility = classifyVisibleTextOccurrence({
+      pvfPath,
+      sourceText,
+      tokenOffset,
+      tokenLength: previousText.length,
+      textWriteMode: mode,
+    });
+    const parentTag = eligibility.parentTag || null;
+    if (eligibility.allowed !== true || !eligibility.proof) {
       throw codedError(
         "CN_TEXT_PARENT_TAG_UNSUPPORTED",
-        `当前只开放已确认的名称、说明和消息字段；目标字段 ${parentTag ? `[${parentTag}]` : "无法识别"} 未获允许。`,
-        { parentTag, extension, occurrenceIndex: index },
+        `目标字段 ${parentTag ? `[${parentTag}]` : "无法识别"} 未命中当前文字路线；这不等于该字段危险。独立标量文字可按专用任务卡使用 verified-scalar-text，结构记录须使用对应路线。`,
+        {
+          parentTag,
+          extension,
+          occurrenceIndex: index,
+          eligibilityPolicyId: eligibility.policyId || VERIFIED_TEXT_ELIGIBILITY_POLICY_ID,
+          eligibilityPolicySha256: eligibility.policySha256 || VERIFIED_TEXT_ELIGIBILITY_POLICY_SHA256,
+          eligibilityReason: eligibility.reason || "unregistered-structure",
+          category: "unsupported-structure",
+          recoveryTaskCard: "knowledge-pack/task-cards/pvf-scalar-text-controlled-change.zh-CN.md",
+        },
       );
     }
-    occurrences.push({ offset: tokenOffset, parentTag });
+    const eligibilityProof = eligibility.proof;
+    if (eligibilityProof.ruleId === "event-list-paired-intro-text" &&
+        !anchored.occurrenceOffsets.includes(eligibilityProof.pairedTokenOffset)) {
+      throw codedError("CN_TEXT_EVENT_INTRO_PAIR_REQUIRED", "活动简介和弹窗正文必须在同一变化中同步替换。");
+    }
+    const ruleSpecificValueProof = assertVisibleTextRuleSpecificValueSafety(eligibilityProof, previousValue, newValue);
+    const structuredContainerProof = buildStructuredVisibleTextProof(eligibilityProof, parentTag, ruleSpecificValueProof);
+    const visibleTextFamilyProof = eligibilityProof.ruleId === "skl-visible-text-ex-variant"
+      ? {
+        ok: true,
+        mode: eligibilityProof.mode,
+        parentTag,
+        baseTag: eligibilityProof.baseTag,
+        suffix: eligibilityProof.suffix,
+        baseRuleId: eligibilityProof.baseRuleId,
+        pvfPath: eligibilityProof.pvfPath,
+        ruleId: eligibilityProof.ruleId,
+        policyId: eligibilityProof.policyId,
+        policySha256: eligibilityProof.policySha256,
+      }
+      : null;
+    occurrences.push({
+      offset: tokenOffset,
+      parentTag,
+      eligibilityProof,
+      structuredContainerProof,
+      visibleTextFamilyProof,
+    });
   }
   const parentTags = [...new Set(occurrences.map((item) => item.parentTag))];
+  const eligibilityProofs = occurrences.map((item) => item.eligibilityProof);
+  const structuredContainerProofs = occurrences
+    .map((item) => item.structuredContainerProof)
+    .filter((item) => item?.ok === true);
+  const visibleTextFamilyProofs = occurrences
+    .map((item) => item.visibleTextFamilyProof)
+    .filter((item) => item?.ok === true);
   const encodedPreviousValue = encodeLegacyText(previousValue, encoding);
   const encodedNewValue = encodeLegacyText(newValue, encoding);
   return {
@@ -367,10 +465,23 @@ function analyzeVerifiedInlineTextChange(input = {}) {
     expectedOccurrences: requiredOccurrences,
     occurrenceCount,
     occurrenceOffsets: occurrences.map((item) => item.offset),
+    eligibilityPolicyId: VERIFIED_TEXT_ELIGIBILITY_POLICY_ID,
+    eligibilityPolicySha256: VERIFIED_TEXT_ELIGIBILITY_POLICY_SHA256,
+    eligibilityProofs,
+    eligibilityProofsSha256: sha256(JSON.stringify(eligibilityProofs)),
+    structuredContainerProofs,
+    structuredContainerProofsSha256: structuredContainerProofs.length > 0
+      ? sha256(JSON.stringify(structuredContainerProofs))
+      : null,
+    visibleTextFamilyProofs,
+    visibleTextFamilyProofsSha256: visibleTextFamilyProofs.length > 0
+      ? sha256(JSON.stringify(visibleTextFamilyProofs))
+      : null,
     totalOccurrenceCount: anchored.totalOccurrenceCount,
     scopedOccurrenceCount: anchored.scopedOccurrenceCount,
     contextAnchor: anchored.evidence,
     previousValue,
+    stringLinkDetach: detach,
     newValue,
     previousCharacterCount: [...previousValue].length,
     newCharacterCount: [...newValue].length,
@@ -490,6 +601,10 @@ function appendStringTableEntries(source, appendedValues) {
 }
 
 function buildVerifiedInlineTextPatch(input = {}) {
+  if (input.textWriteMode === VERIFIED_STRINGLINK_DETACH_MODE) {
+    const batch = buildVerifiedInlineTextBatchPatch({ ...input, changes: [input] });
+    return { ...batch, analysis: analyzeVerifiedInlineTextChange(input), proof: batch.proofs[0] };
+  }
   const analysis = analyzeVerifiedInlineTextChange(input);
   if (analysis.noOp) {
     return { noOp: true, analysis, proof: { mode: analysis.mode, encoding: analysis.encoding, noOp: true } };
@@ -504,17 +619,28 @@ function buildVerifiedInlineTextPatch(input = {}) {
   const extension = path.posix.extname(String(input.pvfPath || "").replace(/\\/g, "/").toLowerCase());
   const sourceAtoms = bindAtomsToRawTokens(lexDecompiledScript(String(input.sourceText || "")), tokens, stringTable);
   const requestedOffsets = new Set(analysis.occurrenceOffsets);
+  const eligibilityProofByOffset = new Map(analysis.eligibilityProofs.map((proof) => [proof.tokenOffset, proof]));
   const candidates = sourceAtoms
     .filter((atom) => requestedOffsets.has(atom.start))
     .map((atom) => {
       const rawToken = atom.rawTokens?.[0];
-      const parentTag = visibleTextParentTag(String(input.sourceText || ""), atom.start, input.pvfPath);
+      const eligibility = classifyVisibleTextOccurrence({
+        pvfPath: input.pvfPath,
+        textWriteMode: input.textWriteMode,
+        sourceText: String(input.sourceText || ""),
+        tokenOffset: atom.start,
+        tokenLength: String(input.previousText || "").length,
+      });
+      const parentTag = eligibility.parentTag || null;
+      const expectedEligibilityProof = eligibilityProofByOffset.get(atom.start) || null;
       if (
         atom.kind !== "string" ||
         atom.value !== analysis.previousValue ||
         atom.rawTokens?.length !== 1 ||
         rawToken?.type !== 7 ||
-        !analysis.parentTags.includes(parentTag)
+        !analysis.parentTags.includes(parentTag) ||
+        eligibility.allowed !== true ||
+        !eligibilityProofRouteMatches(expectedEligibilityProof, eligibility.proof)
       ) {
         throw codedError(
           "CN_TEXT_RAW_TOKEN_UNSAFE",
@@ -624,6 +750,18 @@ function buildVerifiedInlineTextPatch(input = {}) {
       mode: analysis.mode,
       encoding: analysis.encoding,
       parentTag: analysis.parentTag,
+      eligibilityPolicyId: analysis.eligibilityPolicyId,
+      eligibilityPolicySha256: analysis.eligibilityPolicySha256,
+      eligibilityProofs: analysis.eligibilityProofs,
+      eligibilityProofsSha256: analysis.eligibilityProofsSha256,
+      structuredContainerProofs: analysis.structuredContainerProofs,
+      structuredContainerProofsSha256: analysis.structuredContainerProofsSha256,
+      ...(analysis.visibleTextFamilyProofs?.length > 0
+        ? {
+          visibleTextFamilyProofs: analysis.visibleTextFamilyProofs,
+          visibleTextFamilyProofsSha256: analysis.visibleTextFamilyProofsSha256,
+        }
+        : {}),
       targetTokenIndex: candidate.tokenIndex,
       targetTokenIndexes: candidates.map((item) => item.tokenIndex),
       targetTextOffset: candidate.textOffset,
@@ -729,6 +867,9 @@ function buildVerifiedInlineTextBatchPatch(input = {}) {
   };
 
   for (const change of changes) {
+    if (change.textWriteMode === VERIFIED_STRINGLINK_DETACH_MODE && !SUPPORTED_INLINE_TEXT_ENCODINGS.has(change.pvfEncoding)) {
+      throw codedError("STRINGLINK_DETACH_SCOPE_INVALID", "解除引用必须在每项变化中明确声明Cn/Tw。");
+    }
     const analysis = analyzeVerifiedInlineTextChange({
       ...change,
       pvfPath,
@@ -752,17 +893,39 @@ function buildVerifiedInlineTextBatchPatch(input = {}) {
       );
     }
     const requestedOffsets = new Set(originalRequestedOffsets);
+    const eligibilityProofByOriginalOffset = new Map(
+      originalRequestedOffsets.map((offset, index) => [offset, analysis.eligibilityProofs[index] || null]),
+    );
+    const currentOffsetByOriginalOffset = new Map(
+      originalRequestedOffsets.map((offset, index) => [offset, analysis.occurrenceOffsets[index]]),
+    );
     const candidates = sourceAtoms
       .filter((atom) => requestedOffsets.has(atom.start))
       .map((atom) => {
         const rawToken = atom.rawTokens?.[0];
-        const parentTag = visibleTextParentTag(String(input.sourceText || ""), atom.start, pvfPath);
+        const originalEligibility = classifyVisibleTextOccurrence({
+          pvfPath,
+          sourceText: String(input.sourceText || ""),
+          tokenOffset: atom.start,
+          tokenLength: String(change.previousText || "").length,
+          textWriteMode: change.textWriteMode,
+        });
+        // Earlier verified edits can change a paired title and shift offsets.
+        // Bind bytes against the original atoms, but compare the current proof
+        // against the same evolving text used by the change analyzer.
+        const eligibility = classifyVisibleTextOccurrence({
+          pvfPath, sourceText, tokenOffset: currentOffsetByOriginalOffset.get(atom.start),
+          tokenLength: String(change.previousText || "").length, textWriteMode: change.textWriteMode,
+        });
+        const parentTag = eligibility.parentTag || null;
+        const expectedEligibilityProof = eligibilityProofByOriginalOffset.get(atom.start) || null;
         if (
-          atom.kind !== "string" ||
-          atom.value !== analysis.previousValue ||
-          atom.rawTokens?.length !== 1 ||
-          rawToken?.type !== 7 ||
-          !analysis.parentTags.includes(parentTag)
+          (analysis.stringLinkDetach
+            ? (atom.kind !== "stringlink" || atom.rawTokens?.length !== 2 || rawToken?.type !== 9 || atom.rawTokens[1]?.type !== 10)
+            : (atom.kind !== "string" || atom.value !== analysis.previousValue || atom.rawTokens?.length !== 1 || rawToken?.type !== 7)) ||
+          !analysis.parentTags.includes(parentTag) ||
+          originalEligibility.allowed !== true || eligibility.allowed !== true ||
+          !eligibilityProofRouteMatches(expectedEligibilityProof, eligibility.proof)
         ) {
           throw codedError(
             "CN_TEXT_RAW_TOKEN_UNSAFE",
@@ -770,7 +933,8 @@ function buildVerifiedInlineTextBatchPatch(input = {}) {
             { id: change.id || null, offset: atom.start, atomKind: atom.kind, parentTag },
           );
         }
-        return { tokenIndex: atom.tokenStart, originalStringIndex: rawToken.value, parentTag, textOffset: atom.start };
+        return { tokenIndex: atom.tokenStart, tokenCount: analysis.stringLinkDetach ? 2 : 1,
+          originalStringIndex: analysis.stringLinkDetach ? atom.rawTokens[1].value : rawToken.value, parentTag, textOffset: atom.start };
       });
     if (candidates.length !== analysis.expectedOccurrences) {
       throw codedError(
@@ -780,7 +944,9 @@ function buildVerifiedInlineTextBatchPatch(input = {}) {
       );
     }
 
-    const alternateValue = alternateStringTable.get(candidates[0].originalStringIndex);
+    // The link display is not an encoding oracle. Detachment uses the explicitly
+    // selected destination encoding and the normal lossless/independent probes.
+    const alternateValue = analysis.stringLinkDetach ? analysis.previousValue : alternateStringTable.get(candidates[0].originalStringIndex);
     const encodingComparison = compareChineseEncodingCandidates(
       analysis.previousValue,
       alternateValue,
@@ -800,7 +966,10 @@ function buildVerifiedInlineTextBatchPatch(input = {}) {
         },
       );
     }
-    const encodingEvidence = containsNonAscii(analysis.previousValue)
+    const encodingEvidence = analysis.stringLinkDetach
+      ? { kind: "explicit-destination-encoding-stringlink-detach", requestedEncoding: encoding,
+        requestedSupportCount: 1, alternateSupportCount: 0, linkedDisplayUsedAsEncodingEvidence: false }
+      : containsNonAscii(analysis.previousValue)
       ? {
         kind: "target-token",
         requestedEncoding: encoding,
@@ -869,16 +1038,18 @@ function buildVerifiedInlineTextBatchPatch(input = {}) {
 
   const appended = appendStringTableEntries(input.stringTableBytes, pendingStringValues);
   const outputTokens = originalTokens.map((token) => ({ ...token }));
+  const removedTokenIndexes = new Set();
   for (const item of planned.filter((entry) => !entry.noOp)) {
     for (let candidateIndex = 0; candidateIndex < item.candidates.length; candidateIndex += 1) {
       const candidate = item.candidates[candidateIndex];
       const newStringIndex = appended.newIndexes[item.pendingStringSlots[candidateIndex]];
-      outputTokens[candidate.tokenIndex] = { ...outputTokens[candidate.tokenIndex], value: newStringIndex };
+      outputTokens[candidate.tokenIndex] = { ...outputTokens[candidate.tokenIndex], type: 7, value: newStringIndex };
+      if (candidate.tokenCount === 2) removedTokenIndexes.add(candidate.tokenIndex + 1);
       item.newStringIndexes.push(newStringIndex);
     }
   }
   const stringTableBytes = appended.bytes;
-  const scriptBytes = encodeScriptTokens(input.scriptBytes, outputTokens);
+  const scriptBytes = encodeScriptTokens(input.scriptBytes, outputTokens.filter((_, index) => !removedTokenIndexes.has(index)));
   const outputStringEntries = parseStringTableEntries(stringTableBytes);
   const preservedStringEntriesSha256 = entrySequenceSha256(outputStringEntries.slice(0, originalStringEntries.length));
   if (preservedStringEntriesSha256 !== originalStringEntriesSha256) {
@@ -894,6 +1065,18 @@ function buildVerifiedInlineTextBatchPatch(input = {}) {
       mode: item.analysis.mode,
       encoding,
       parentTag: item.analysis.parentTag,
+      eligibilityPolicyId: item.analysis.eligibilityPolicyId,
+      eligibilityPolicySha256: item.analysis.eligibilityPolicySha256,
+      eligibilityProofs: item.analysis.eligibilityProofs,
+      eligibilityProofsSha256: item.analysis.eligibilityProofsSha256,
+      structuredContainerProofs: item.analysis.structuredContainerProofs,
+      structuredContainerProofsSha256: item.analysis.structuredContainerProofsSha256,
+      ...(item.analysis.visibleTextFamilyProofs?.length > 0
+        ? {
+          visibleTextFamilyProofs: item.analysis.visibleTextFamilyProofs,
+          visibleTextFamilyProofsSha256: item.analysis.visibleTextFamilyProofsSha256,
+        }
+        : {}),
       targetTokenIndex: candidate.tokenIndex,
       targetTokenIndexes: item.candidates.map((entry) => entry.tokenIndex),
       targetTextOffset: candidate.textOffset,
@@ -939,6 +1122,12 @@ function buildVerifiedInlineTextBatchPatch(input = {}) {
       mode: "verified-inline-text-batch",
       encoding,
       changeCount: changes.length,
+      eligibilityPolicyId: VERIFIED_TEXT_ELIGIBILITY_POLICY_ID,
+      eligibilityPolicySha256: VERIFIED_TEXT_ELIGIBILITY_POLICY_SHA256,
+      eligibilityProofsByChangeSha256: sha256(JSON.stringify(proofs.map((proof) => ({
+        id: proof.id,
+        eligibilityProofsSha256: proof.eligibilityProofsSha256 || null,
+      })))),
       existingStringEntriesPreserved: true,
       existingStringEntriesSha256: originalStringEntriesSha256,
       originalStringCount: originalStringEntries.length,
@@ -971,69 +1160,6 @@ function floatTokenText(value, keepIntegerDecimal = false) {
   if (!Number.isFinite(number)) return String(number);
   if (keepIntegerDecimal && Number.isInteger(number)) return number.toFixed(1);
   return number.toFixed(6).replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
-}
-
-function lexDecompiledScript(text) {
-  const source = String(text || "");
-  const atoms = [];
-  let offset = 0;
-  while (offset < source.length) {
-    if (source.startsWith("#PVF_File", offset)) {
-      offset += "#PVF_File".length;
-      continue;
-    }
-    if (/\s/u.test(source[offset])) {
-      offset += 1;
-      continue;
-    }
-    const start = offset;
-    if (source[offset] === "<") {
-      const match = /^<(-?\d+)::([^>`]{1,512})`([^`]*)`>/u.exec(source.slice(offset));
-      if (!match) throw codedError("RAW_ASCII_SCRIPT_LEX_FAILED", `无法解析 StringLink，位置 ${offset}。`);
-      offset += match[0].length;
-      atoms.push({ kind: "stringlink", namespace: Number(match[1]), key: match[2], display: match[3], start, end: offset });
-      continue;
-    }
-    if (source[offset] === "`") {
-      const end = source.indexOf("`", offset + 1);
-      if (end < 0) throw codedError("RAW_ASCII_SCRIPT_LEX_FAILED", `反引号 token 未闭合，位置 ${offset}。`);
-      offset = end + 1;
-      atoms.push({ kind: "string", value: source.slice(start + 1, end), start, end: offset });
-      continue;
-    }
-    if (source[offset] === "{") {
-      const typedString = /^\{(\d+)=`([^`]*)`\}/u.exec(source.slice(offset));
-      if (typedString) {
-        offset += typedString[0].length;
-        atoms.push({ kind: "typed-string", type: Number(typedString[1]), value: typedString[2], start, end: offset });
-        continue;
-      }
-      const typedNumber = /^\{(\d+)=(-?\d+)\}/u.exec(source.slice(offset));
-      if (typedNumber) {
-        offset += typedNumber[0].length;
-        atoms.push({ kind: "typed-number", type: Number(typedNumber[1]), valueText: typedNumber[2], start, end: offset });
-        continue;
-      }
-      throw codedError("RAW_ASCII_SCRIPT_LEX_FAILED", `无法解析带类型 token，位置 ${offset}。`);
-    }
-    if (source[offset] === "[") {
-      const end = source.indexOf("]", offset + 1);
-      if (end < 0 || /[\r\n]/u.test(source.slice(offset, end + 1))) {
-        throw codedError("RAW_ASCII_SCRIPT_LEX_FAILED", `Section 标签未闭合，位置 ${offset}。`);
-      }
-      offset = end + 1;
-      atoms.push({ kind: "section", value: source.slice(start, offset), start, end: offset });
-      continue;
-    }
-    const number = /^-?(?:\d+(?:\.\d+)?|\.\d+)/u.exec(source.slice(offset));
-    if (number) {
-      offset += number[0].length;
-      atoms.push({ kind: "number", valueText: number[0], start, end: offset });
-      continue;
-    }
-    throw codedError("RAW_ASCII_SCRIPT_LEX_FAILED", `无法解析脚本文本字符 ${JSON.stringify(source[offset])}，位置 ${offset}。`);
-  }
-  return atoms;
 }
 
 function bindAtomsToRawTokens(atoms, tokens, stringTable) {
@@ -1087,6 +1213,12 @@ function atomIdentity(atom) {
 }
 
 function alignReplacementAtoms(oldAtoms, newAtoms) {
+  if (
+    oldAtoms.length === newAtoms.length &&
+    oldAtoms.every((atom, index) => atom.kind === newAtoms[index].kind && atom.kind !== "stringlink")
+  ) {
+    return new Map(newAtoms.map((_, index) => [index, oldAtoms[index]]));
+  }
   const rows = oldAtoms.length + 1;
   const cols = newAtoms.length + 1;
   const cost = Array.from({ length: rows }, () => new Array(cols).fill(Number.POSITIVE_INFINITY));
@@ -1121,14 +1253,24 @@ function numericValueForToken(valueText, type) {
   const number = Number(valueText);
   if (!Number.isFinite(number)) throw codedError("RAW_ASCII_NUMBER_INVALID", `数字无法编码：${valueText}`);
   if (type === 4) {
+    const float32 = Math.fround(number);
+    if (!Number.isFinite(float32)) {
+      throw codedError("RAW_ASCII_NUMBER_INVALID", `浮点超出 float32 有限范围：${valueText}`);
+    }
     const bytes = Buffer.allocUnsafe(4);
-    bytes.writeFloatLE(number, 0);
+    bytes.writeFloatLE(float32, 0);
     return bytes.readUInt32LE(0);
   }
   if (!Number.isSafeInteger(number) || number < -0x80000000 || number > 0x7fffffff) {
     throw codedError("RAW_ASCII_NUMBER_INVALID", `整数超出 32 位范围：${valueText}`);
   }
   return number >>> 0;
+}
+
+function numericTokenTypeForReplacement(valueText, mapped) {
+  const explicitDecimal = /^-?(?:\d+\.\d+|\.\d+)$/u.test(String(valueText || ""));
+  if (explicitDecimal) return 4;
+  return mapped?.kind === "number" ? mapped.rawNumericType : 2;
 }
 
 function encodeScriptTokens(headerSource, tokens) {
@@ -1149,8 +1291,11 @@ function encodeScriptTokens(headerSource, tokens) {
 function buildRawAsciiScriptPatch(input = {}) {
   const pvfPath = String(input.pvfPath || "").replace(/\\/g, "/");
   const extension = path.posix.extname(pvfPath.toLowerCase());
-  if (!RAW_TOKEN_PATCH_EXTENSIONS.has(extension)) {
-    throw codedError("RAW_ASCII_FILE_TYPE_UNSUPPORTED", `当前未开放 ${extension || "无扩展名"} 文件的原始参数补丁。`);
+  if (!RAW_TOKEN_PATCH_EXTENSIONS.has(extension) && extension !== ".evt") {
+    const recovery = extension === ".til"
+      ? " 可优先使用 copy-file 复制正确的同 PVF、同扩展名 TIL，并在同一 change-set 精确切换其他 .map 的引用；只有修改克隆内容本身才需要累计下一轮。"
+      : "";
+    throw codedError("RAW_ASCII_FILE_TYPE_UNSUPPORTED", `当前未开放 ${extension || "无扩展名"} 文件的原始参数补丁。${recovery}`);
   }
   const previousText = String(input.previousText || "");
   const newText = String(input.newText || "");
@@ -1176,6 +1321,10 @@ function buildRawAsciiScriptPatch(input = {}) {
   if (mismatch) throw mismatch;
   const expectedOccurrences = anchored.expectedOccurrences;
   const actualOccurrences = anchored.occurrenceCount;
+  const staticEventAppend = extension === ".evt" ? inspectStaticEventAppend({ ...input, pvfPath }, anchored.occurrenceOffsets) : null;
+  if (extension === ".evt" && !staticEventAppend) {
+    throw codedError("RAW_ASCII_EVENT_APPEND_REQUIRED", "活动结构只允许在文件末尾追加一个完整静态说明条目，沿用现有末条的非文字元数据并保留所有原文。");
+  }
   const stringTableBytes = input.stringTableBytes;
   const scriptBytes = input.scriptBytes;
   if (!Buffer.isBuffer(stringTableBytes) || !Buffer.isBuffer(scriptBytes)) {
@@ -1231,6 +1380,7 @@ function buildRawAsciiScriptPatch(input = {}) {
   }
   const outputTokens = [];
   const changedTokenIndexes = [];
+  const numericTypeTransitions = [];
   let sourceAtomIndex = 0;
   for (const range of occurrenceRanges) {
     while (sourceAtomIndex < sourceAtoms.length && sourceAtoms[sourceAtomIndex].end <= range.start) {
@@ -1256,10 +1406,18 @@ function buildRawAsciiScriptPatch(input = {}) {
         continue;
       }
       if (atom.kind === "number") {
-        const type = mapped?.kind === "number" ? mapped.rawNumericType : 2;
+        const type = numericTokenTypeForReplacement(atom.valueText, mapped);
         if (![2, 3, 4, 10].includes(type)) throw codedError("RAW_ASCII_NUMBER_TYPE_UNSAFE", "新增数字无法继承明确的原始 token 类型。");
         outputTokens.push({ type, value: numericValueForToken(atom.valueText, type) });
         changedTokenIndexes.push(outputTokens.length - 1);
+        if (!mapped || mapped.rawNumericType !== type) {
+          numericTypeTransitions.push({
+            outputTokenIndex: outputTokens.length - 1,
+            fromType: mapped?.kind === "number" ? mapped.rawNumericType : null,
+            toType: type,
+            valueText: atom.valueText,
+          });
+        }
         continue;
       }
       if (atom.kind === "string" || atom.kind === "section" || atom.kind === "typed-string") {
@@ -1311,6 +1469,7 @@ function buildRawAsciiScriptPatch(input = {}) {
     expectedText: rawExpected,
     proof: {
       mode: "raw-ascii-script-token",
+      ...(staticEventAppend ? { staticEventAppend } : {}),
       encoding,
       occurrenceCount: actualOccurrences,
       expectedOccurrences,
@@ -1319,6 +1478,9 @@ function buildRawAsciiScriptPatch(input = {}) {
       contextAnchor: anchored.evidence,
       changedTokenIndexes,
       changedTokenCount: changedTokenIndexes.length,
+      numericTypeTransitions,
+      numericTypeTransitionCount: numericTypeTransitions.length,
+      floatTokenWriteCount: changedTokenIndexes.filter((index) => outputTokens[index]?.type === 4).length,
       originalTokenCount: tokens.length,
       outputTokenCount: outputTokens.length,
       stringTableUntouched: appendedStringIndexes.size === 0,
@@ -1331,6 +1493,187 @@ function buildRawAsciiScriptPatch(input = {}) {
       stringTableBeforeSha256: sha256(stringTableBytes),
       stringTableAfterSha256: sha256(outputStringTableBytes),
       exactIndependentTextReadback: true,
+    },
+  };
+}
+
+function aniNumericTokens(value) {
+  const tokens = [];
+  const regex = /[-+]?(?:\d+(?:\.\d*)?|\.\d+)/gu;
+  let match;
+  while ((match = regex.exec(String(value))) !== null) {
+    tokens.push({ text: match[0], start: match.index, end: match.index + match[0].length });
+  }
+  return tokens;
+}
+
+function maskAniNumericTokens(value) {
+  return String(value).replace(/[-+]?(?:\d+(?:\.\d*)?|\.\d+)/gu, "#");
+}
+
+function buildRawAsciiAniPatch(input = {}) {
+  const pvfPath = String(input.pvfPath || "").replace(/\\/g, "/");
+  if (path.posix.extname(pvfPath.toLowerCase()) !== ".ani") {
+    throw codedError("RAW_ASCII_FILE_TYPE_UNSUPPORTED", `当前未开放 ${path.posix.extname(pvfPath.toLowerCase()) || "无扩展名"} 文件的原始参数补丁。`);
+  }
+  if (!Buffer.isBuffer(input.sourceBytes)) {
+    throw codedError("RAW_ASCII_INPUT_REQUIRED", "二进制 ANI 原始参数补丁缺少源文件字节。 ");
+  }
+  const inspection = inspectBinaryAni(input.sourceBytes);
+  if (!inspection || inspection.fullyConsumed !== true) {
+    throw codedError("RAW_ANI_BINARY_PARSE_FAILED", "既有 ANI 无法由受控解析器完整展开并消费全部原始字节；已保持阻断。");
+  }
+  const normalize = (value) => String(value || "").replace(/\r?\n/g, "\r\n");
+  const sourceText = normalize(input.sourceText);
+  const inspectedText = normalize(inspection.text);
+  if (sourceText !== inspectedText) {
+    throw codedError("RAW_ANI_SOURCE_TEXT_MISMATCH", "ANI 原始字节与受控展开文本不一致；请重新读取同一文件后再预演。");
+  }
+  const previousText = normalize(input.previousText);
+  const newText = normalize(input.newText);
+  if (containsNonAscii(previousText) || containsNonAscii(newText)) {
+    throw codedError("RAW_ASCII_NON_ASCII_BLOCKED", "ANI 原始参数补丁只允许数字、英文、标签、Tab 和常见符号；中文必须拆成安全文字改动。");
+  }
+  if (!previousText || previousText === newText) {
+    return {
+      noOp: previousText === newText,
+      bytes: input.sourceBytes,
+      expectedText: sourceText,
+      proof: { mode: RAW_BINARY_ANI_PATCH_MODE, noOp: previousText === newText },
+    };
+  }
+
+  const anchored = analyzeContextAnchoredReplacement({
+    sourceText,
+    previousText,
+    newText,
+    contextBefore: input.contextBefore,
+    contextAfter: input.contextAfter,
+    scope: input.scope,
+    occurrenceIndex: input.occurrenceIndex,
+    replaceAll: input.replaceAll === true,
+    expectedOccurrences: input.expectedOccurrences,
+  });
+  const mismatch = occurrenceMismatch(anchored);
+  if (mismatch) throw mismatch;
+  const expectedText = applyContextAnchoredReplacement({ sourceText, previousText, newText }, anchored);
+  const outputBytes = Buffer.from(input.sourceBytes);
+  const changedFields = [];
+  const targetRanges = [];
+  const seenOffsets = new Set();
+  const fields = Array.isArray(inspection.fields) ? inspection.fields : [];
+  const fieldAt = (start, end, text) => fields.find((field) =>
+    Number(field.start) === start && Number(field.end) === end && String(field.text) === text);
+
+  for (let occurrenceIndex = 0; occurrenceIndex < anchored.expectedOccurrences; occurrenceIndex += 1) {
+    const start = anchored.occurrenceOffsets[occurrenceIndex];
+    const end = start + previousText.length;
+    for (const field of fields) {
+      const fieldStart = Number(field.start);
+      const fieldEnd = Number(field.end);
+      const intersects = fieldStart < end && fieldEnd > start;
+      const contained = fieldStart >= start && fieldEnd <= end;
+      if (intersects && !contained) {
+        throw codedError("RAW_ANI_PARTIAL_FIELD_BLOCKED", "ANI 参数替换边界切入了一个完整字段；请扩大为完整帧块或完整参数范围。");
+      }
+    }
+    const oldSegment = sourceText.slice(start, end);
+    const newSegment = newText;
+    if (maskAniNumericTokens(oldSegment) !== maskAniNumericTokens(newSegment)) {
+      throw codedError("RAW_ANI_STRUCTURE_CHANGE_BLOCKED", "ANI 受控补丁只能改变既有数值；标签、路径、空白和结构必须保持不变。");
+    }
+    const oldTokens = aniNumericTokens(oldSegment);
+    const newTokens = aniNumericTokens(newSegment);
+    if (oldTokens.length !== newTokens.length) {
+      throw codedError("RAW_ANI_STRUCTURE_CHANGE_BLOCKED", "ANI 参数补丁不能新增或删除数值 token。");
+    }
+    for (let tokenIndex = 0; tokenIndex < oldTokens.length; tokenIndex += 1) {
+      const oldToken = oldTokens[tokenIndex];
+      const newToken = newTokens[tokenIndex];
+      const field = fieldAt(start + oldToken.start, start + oldToken.end, oldToken.text);
+      if (!field) {
+        if (oldToken.text !== newToken.text) {
+          throw codedError("RAW_ANI_LITERAL_CHANGE_BLOCKED", "ANI 帧编号或其他非字段数字不能通过此参数补丁修改。");
+        }
+        continue;
+      }
+      if (oldToken.text === newToken.text) continue;
+      if (String(field.tag).toUpperCase() !== "DELAY" || String(field.kind) !== "i32" || Number(field.width) !== 4) {
+        throw codedError("RAW_ANI_FIELD_CHANGE_BLOCKED", "当前 ANI 受控路线仅开放既有 [DELAY] 的 32 位整数值替换。");
+      }
+      if (!/^-?\d+$/u.test(newToken.text)) {
+        throw codedError("RAW_ANI_DELAY_INTEGER_REQUIRED", "[DELAY] 只能替换为十进制整数。");
+      }
+      const value = Number(newToken.text);
+      if (!Number.isSafeInteger(value) || value < -0x80000000 || value > 0x7fffffff) {
+        throw codedError("RAW_ANI_DELAY_OUT_OF_RANGE", "[DELAY] 数值超出有符号 32 位范围。");
+      }
+      const offset = Number(field.offset);
+      if (seenOffsets.has(offset)) throw codedError("RAW_ANI_OVERLAPPING_TARGET", "ANI 补丁目标字段发生重叠；请缩小范围。");
+      seenOffsets.add(offset);
+      outputBytes.writeInt32LE(value, offset);
+      const range = { offset, length: 4, tag: "DELAY" };
+      targetRanges.push(range);
+      changedFields.push({ offset, width: 4, tag: "DELAY", previousText: oldToken.text, newText: newToken.text });
+    }
+  }
+  if (changedFields.length === 0) throw codedError("RAW_ANI_NO_NUMERIC_CHANGE", "ANI 补丁没有检测到允许的 [DELAY] 数值变化。");
+
+  const targetBytes = new Uint8Array(input.sourceBytes.length);
+  for (const range of targetRanges) {
+    for (let index = range.offset; index < range.offset + range.length; index += 1) targetBytes[index] = 1;
+  }
+  for (let index = 0; index < input.sourceBytes.length; index += 1) {
+    if (input.sourceBytes[index] !== outputBytes[index] && targetBytes[index] !== 1) {
+      throw codedError("RAW_ANI_NON_TARGET_BYTES_CHANGED", "ANI 补丁改变了目标字段以外的原始字节；已停止写入。");
+    }
+  }
+  const outputInspection = inspectBinaryAni(outputBytes);
+  if (!outputInspection || outputInspection.fullyConsumed !== true || normalize(outputInspection.text) !== expectedText) {
+    throw codedError("RAW_ANI_READBACK_FAILED", "ANI 原始字节补丁的独立展开读回与预期文本不一致。");
+  }
+  const sourceRawSha256 = sha256(input.sourceBytes);
+  const outputRawSha256 = sha256(outputBytes);
+  return {
+    noOp: false,
+    bytes: outputBytes,
+    expectedText,
+    proof: {
+      mode: RAW_BINARY_ANI_PATCH_MODE,
+      encoding: "binary-ani",
+      textEncoding: input.pvfEncoding || null,
+      occurrenceCount: anchored.occurrenceCount,
+      expectedOccurrences: anchored.expectedOccurrences,
+      totalOccurrenceCount: anchored.totalOccurrenceCount,
+      scopedOccurrenceCount: anchored.scopedOccurrenceCount,
+      contextAnchor: anchored.evidence,
+      sourceTextSha256: sha256(sourceText),
+      finalTextSha256: sha256(expectedText),
+      sourceRawSha256,
+      outputRawSha256,
+      scriptBeforeSha256: sourceRawSha256,
+      scriptAfterSha256: outputRawSha256,
+      sourceRawByteLength: input.sourceBytes.length,
+      outputRawByteLength: outputBytes.length,
+      rawBytePreservingPatch: true,
+      wholeFileReencodingUsed: false,
+      nonTargetRawBytesPreserved: true,
+      exactIndependentTextReadback: true,
+      sourceBinaryParseFullyConsumed: inspection.fullyConsumed === true,
+      outputBinaryParseFullyConsumed: outputInspection.fullyConsumed === true,
+      sourceDecodedTextBound: true,
+      existingStringEntriesPreserved: true,
+      stringTableUntouched: true,
+      appendedStringEntryCount: 0,
+      changedFieldCount: changedFields.length,
+      changedFieldTags: [...new Set(changedFields.map((field) => field.tag))],
+      targetRanges,
+      targetRangesSha256: sha256(JSON.stringify(targetRanges)),
+      changedFields,
+      changedFieldsSha256: sha256(JSON.stringify(changedFields)),
+      preservedRawByteCount: input.sourceBytes.length - targetRanges.reduce((sum, range) => sum + range.length, 0),
+      removedRawByteCount: 0,
+      insertedRawByteCount: 0,
     },
   };
 }
@@ -1364,8 +1707,192 @@ function createFixtureScript(tokens) {
   return output;
 }
 
-function verifiedInlineTextSelfTest() {
+function createFixtureBinaryAni(delay = 80) {
+  const image = Buffer.from("Monster/fixture1.img", "ascii");
+  const output = Buffer.alloc(32 + image.length);
+  let cursor = 0;
+  output.writeUInt16LE(1, cursor); cursor += 2;
+  output.writeUInt16LE(1, cursor); cursor += 2;
+  output.writeInt32LE(image.length, cursor); cursor += 4;
+  image.copy(output, cursor); cursor += image.length;
+  output.writeUInt16LE(0, cursor); cursor += 2;
+  output.writeUInt16LE(0, cursor); cursor += 2;
+  output.writeInt16LE(0, cursor); cursor += 2;
+  output.writeUInt16LE(65, cursor); cursor += 2;
+  output.writeInt32LE(-252, cursor); cursor += 4;
+  output.writeInt32LE(-379, cursor); cursor += 4;
+  output.writeUInt16LE(1, cursor); cursor += 2;
+  output.writeUInt16LE(12, cursor); cursor += 2;
+  output.writeInt32LE(delay, cursor);
+  return output;
+}
+
+function stringLinkDetachSelfTest() {
   const checks = [];
+  for (const encoding of ["Cn", "Tw"]) {
+    const empty = Buffer.alloc(8); empty.writeUInt32LE(4, 4);
+    const table = appendStringTableEntries(empty, ["[name]", "shared_key", "[name2]", "[grade]"]
+      .map((text) => encodeLegacyText(text, encoding))).bytes;
+    const raw = encodeScriptTokens(Buffer.from([0xb0, 0xd0]), [
+      { type: 5, value: 0 }, { type: 9, value: 13 }, { type: 10, value: 1 },
+      { type: 5, value: 2 }, { type: 9, value: 13 }, { type: 10, value: 1 },
+      { type: 5, value: 3 }, { type: 2, value: 1 },
+    ]);
+    const link = "<13::shared_key`Old name`>";
+    const sourceText = `[name]\r\n${link}\r\n[name2]\r\n${link}\r\n[grade]\r\n1`;
+    const change = { id: "detach", textWriteMode: VERIFIED_STRINGLINK_DETACH_MODE, pvfEncoding: encoding,
+      previousText: link, newText: "`魂息`", contextBefore: "[name]\r\n", replaceAll: false };
+    const input = { pvfPath: "stackable/fixture.stk", pvfEncoding: encoding,
+      sourceText, scriptBytes: raw, stringTableBytes: table, changes: [change] };
+    const patch = buildVerifiedInlineTextBatchPatch(input);
+    const tokens = parseTokens(patch.scriptBytes);
+    checks.push({ id: `stringlink-detach-${encoding}-preserves-shared-reference-and-nontarget-bytes`,
+      ok: tokens.length === 7 && tokens[1].type === 7 &&
+        StringTable.parse(patch.stringTableBytes, encoding).get(tokens[1].value) === "魂息" &&
+        patch.scriptBytes.subarray(12).equals(raw.subarray(17)) &&
+        entrySequenceSha256(parseStringTableEntries(patch.stringTableBytes).slice(0, 4)) === entrySequenceSha256(parseStringTableEntries(table)) });
+    for (const [id, override, target] of [
+      ["ordinary-mode", { textWriteMode: VERIFIED_INLINE_TEXT_MODE }],
+      ["partial-display", { previousText: "`Old name`" }],
+      ["new-link", { newText: "<13::other`Other`>" }],
+      ["wrong-parent", { contextBefore: "[name2]\r\n" }],
+      ["bulk", { replaceAll: true, expectedOccurrences: 2 }],
+      ["unencodable", { newText: "`😀`" }],
+      ["missing-encoding", { pvfEncoding: null }],
+      ["protected-file", {}, "etc/fixture.str"],
+      ["forged-key", { previousText: "<13::forged`Old name`>" }],
+    ]) {
+      let rejected = false;
+      try { buildVerifiedInlineTextBatchPatch({ ...input, pvfPath: target || input.pvfPath, changes: [{ ...change, ...override }] }); }
+      catch { rejected = true; }
+      checks.push({ id: `stringlink-detach-${encoding}-${id}-rejected`, ok: rejected });
+    }
+  }
+  return checks;
+}
+
+function eventIntroWriterSelfTest() {
+  const checks = [];
+  for (const encoding of ["Cn", "Tw"]) {
+    const oldValue = encoding === "Tw" ? "舊版說明\r\n第二行" : "旧版说明\r\n第二行";
+    const newValue = encoding === "Tw" ? "新版說明\r\n搭配指南" : "新版说明\r\n搭配指南";
+    const sourceText = "#PVF_File\r\n[entry]\r\n[event info]\r\n-1\t2\t4\r\n`fixture\r\nevent`\r\n`Intro`\r\n`20260101`\r\n`20261231`\r\n`" + oldValue + "`\r\n[/event info]\r\n[popupwindow design]\r\n[title]\r\n`Intro`\r\n[explain]\r\n`" + oldValue + "`\t230\r\n[using ok button]\r\n1\r\n[/popupwindow design]\r\n[/entry]\r\n";
+    const strings = [], tokens = [];
+    for (const match of sourceText.matchAll(/`[^`]*`|\[[^\]]+\]|-?\d+/g)) {
+      const value = match[0];
+      if (/^-?\d+$/u.test(value)) tokens.push([2, Number(value)]);
+      else {
+        const decoded = value.startsWith("`") ? value.slice(1, -1) : value;
+        let index = strings.indexOf(decoded);
+        if (index < 0) { index = strings.length; strings.push(decoded); }
+        tokens.push([value.startsWith("`") ? 7 : 5, index]);
+      }
+    }
+    const input = { pvfPath: "event/eventlistwindow.evt", pvfEncoding: encoding,
+      textWriteMode: VERIFIED_INLINE_TEXT_MODE, sourceText,
+      previousText: "`" + oldValue + "`", newText: "`" + newValue + "`",
+      replaceAll: true, expectedOccurrences: 2,
+      stringTableBytes: createFixtureStringTable(strings, encoding), scriptBytes: createFixtureScript(tokens) };
+    const patched = buildVerifiedInlineTextPatch(input);
+    const table = StringTable.parse(patched.stringTableBytes, encoding);
+    const outputTokens = parseTokens(patched.scriptBytes);
+    const originalTokens = parseTokens(input.scriptBytes);
+    checks.push({ id: `event-intro-${encoding}-paired-raw-roundtrip`, ok:
+      outputTokens.filter(t => t.type === 7 && table.get(t.value) === newValue).length === 2 &&
+      strings.every((s, i) => table.get(i) === s) &&
+      patched.proof.existingStringEntriesPreserved === true &&
+      outputTokens.every((t, i) => tokens[i][0] === t.type &&
+        (tokens[i][0] === 7 && strings[tokens[i][1]] === oldValue || t.value === originalTokens[i].value)) });
+    const negatives = [
+      ["title-newline", { previousText: "`Intro`", newText: "`Title\nNext`" }, "CN_TEXT_SINGLE_LINE_TOKEN_REQUIRED"],
+      ["pair", { replaceAll: false, expectedOccurrences: undefined, contextBefore: "[explain]\r\n" }, "CN_TEXT_EVENT_INTRO_PAIR_REQUIRED"],
+      ["count", { expectedOccurrences: 3 }, null],
+      ["url", { newText: "`https://example.invalid/`" }, "CN_TEXT_EVENT_INTRO_PLAIN_TEXT_REQUIRED"],
+      ["markup", { newText: "`<html>guide</html>`" }, "CN_TEXT_EVENT_INTRO_PLAIN_TEXT_REQUIRED"],
+      ["placeholder", { newText: "`guide %s`" }, "CN_TEXT_PLACEHOLDER_SIGNATURE_CHANGED"],
+      ["other-path", { pvfPath: "event/other.evt" }, "CN_TEXT_PARENT_TAG_UNSUPPORTED"],
+    ];
+    for (const [id, override, code] of negatives) {
+      let error;
+      try { buildVerifiedInlineTextPatch({ ...input, ...override }); } catch (caught) { error = caught; }
+      checks.push({ id: `event-intro-${encoding}-${id}-blocked`, ok: Boolean(error && (!code || error.code === code)) });
+    }
+    const titled = buildVerifiedInlineTextPatch({ ...input, previousText: "`Intro`", newText: "`Independent guide`" });
+    checks.push({ id: `event-intro-${encoding}-paired-title-roundtrip`, ok: titled.proof.existingStringEntriesPreserved === true });
+    const titleAndBody = buildVerifiedInlineTextBatchPatch({ ...input, changes: [
+      { ...input, id: "title", previousText: "`Intro`", newText: "`Independent guide`" },
+      { ...input, id: "body" },
+    ] });
+    checks.push({ id: `event-intro-${encoding}-title-then-body-batch`, ok:
+      titleAndBody.sourceText === sourceText.replaceAll("`Intro`", "`Independent guide`").replaceAll(input.previousText, input.newText) &&
+      titleAndBody.proof.existingStringEntriesPreserved === true });
+    const suffix = "[using ok button]\r\n1\r\n[/popupwindow design]\r\n[/entry]";
+    const added = sourceText.slice(sourceText.indexOf("[entry]")).replaceAll("`Intro`", "`Separate guide`").replaceAll("`" + oldValue + "`", "`New guide body`");
+    const appendInput = { ...input, previousText: suffix, newText: suffix + "\r\n" + added, replaceAll: false, expectedOccurrences: 1 };
+    const appended = buildRawAsciiScriptPatch(appendInput);
+    const trailingAppend = buildRawAsciiScriptPatch({ ...appendInput,
+      previousText: suffix + "\r\n", newText: suffix + "\r\n\r\n" + added });
+    checks.push({ id: `event-intro-${encoding}-append-trailing-newline`, ok:
+      trailingAppend.proof.staticEventAppend?.originalTextPreserved === true &&
+      trailingAppend.expectedText.startsWith(sourceText) });
+    checks.push({ id: `event-intro-${encoding}-static-append`, ok: appended.proof.staticEventAppend?.originalTextPreserved === true && appended.proof.existingStringEntriesPreserved === true && appended.expectedText.startsWith(sourceText.trimEnd()) });
+    for (const [id, override] of [
+      ["other-path", { pvfPath: "event/other.evt" }],
+      ["metadata", { newText: appendInput.newText.replace("-1\t2\t4", "-2\t2\t4") }],
+      ["code-change", { newText: appendInput.newText.replace("fixture\r\nevent", "changed\r\nevent") }],
+      ["double-entry", { newText: appendInput.newText + added }],
+      ["original-change", { newText: appendInput.newText.replace("button]\r\n1", "button]\r\n0") }],
+      ["duplicate-title", { newText: appendInput.newText.replaceAll("Separate guide", "Intro") }],
+      ["ordinary-edit", { previousText: "[using ok button]\r\n1", newText: "[using ok button]\r\n0" }],
+    ]) {
+      let rejected = false;
+      try { buildRawAsciiScriptPatch({ ...appendInput, ...override }); } catch { rejected = true; }
+      checks.push({ id: `event-intro-${encoding}-append-${id}-blocked`, ok: rejected });
+    }
+  }
+  return checks;
+}
+
+function scalarTextSelfTest() {
+  const checks = [];
+  for (const encoding of ["Cn", "Tw"]) {
+    const empty = Buffer.alloc(8); empty.writeUInt32LE(4, 4);
+    const values = ["[custom caption]", "魂息 %d", "[value]"];
+    const table = appendStringTableEntries(empty, values.map(text => encodeLegacyText(text, encoding))).bytes;
+    const raw = createFixtureScript([[5, 0], [7, 1], [5, 2], [2, 42]]);
+    const sourceText = "[custom caption]\r\n" + "`魂息 %d`" + "\r\n[value]\r\n42";
+    const input = { pvfPath: "stackable/custom.stk", sourceText, pvfEncoding: encoding,
+      previousText: "`魂息 %d`", newText: "`魂息 %d 新`", textWriteMode: "verified-scalar-text",
+      replaceAll: false, stringTableBytes: table, scriptBytes: raw };
+    const single = buildVerifiedInlineTextPatch(input);
+    const batch = buildVerifiedInlineTextBatchPatch({ ...input, changes: [{ ...input, id: "custom" }] });
+    checks.push({ id: "scalar-" + encoding + "-single-and-batch-preserve-raw-and-old-strings", ok:
+      single.scriptBytes.equals(batch.scriptBytes) && single.scriptBytes.subarray(12).equals(raw.subarray(12)) &&
+      entrySequenceSha256(parseStringTableEntries(batch.stringTableBytes).slice(0, values.length)) === entrySequenceSha256(parseStringTableEntries(table)) &&
+      batch.proofs[0].eligibilityProofs[0].semanticMeaningVerified === false &&
+      batch.proofs[0].eligibilityProofs[0].runtimeValidationRequired === true });
+    for (const [id, override] of [
+      ["ordinary-mode", { textWriteMode: "verified-inline-text" }],
+      ["record-values", { sourceText: sourceText.replace("\r\n[value]", "\t1\r\n[value]") }],
+      ["partial", { previousText: "魂息 %d" }],
+      ["placeholder", { newText: "`魂息 %s 新`" }],
+      ["unencodable", { newText: "`魂息 %d 😀`" }],
+      ["protected", { pvfPath: "sqr/custom.nut" }],
+      ["event", { pvfPath: "event/custom.evt" }],
+      ["known-structured-tag", { sourceText: sourceText.replace("custom caption", "tower dialog"), pvfPath: "dungeon/custom.dgn" }],
+      ["stringlink", { sourceText: sourceText.replace("`魂息 %d`", "<0::shared`魂息 %d`>") }],
+      ["count", { expectedOccurrences: 2, replaceAll: true }],
+      ["nested-string-spoof", { sourceText: "[explain]\r\n`outer\r\n[custom caption]\r\n`魂息 %d`\r\n[value]\r\n42`" }],
+    ]) {
+      let code = null; try { analyzeVerifiedInlineTextChange({ ...input, ...override }); } catch(error) { code=error.code; }
+      checks.push({ id: "scalar-" + encoding + "-" + id + "-rejected", ok: !!code, code });
+    }
+  }
+  return checks;
+}
+
+function verifiedInlineTextSelfTest() {
+  const checks = [...scalarTextSelfTest(), ...stringLinkDetachSelfTest(), ...eventIntroWriterSelfTest()];
   const sourceText = "#PVF_File\r\n[name]\r\n`旧描述`\r\n";
   const table = createFixtureStringTable(["[name]", "旧描述"], "Cn");
   const script = createFixtureScript([[5, 0], [7, 1]]);
@@ -1415,6 +1942,239 @@ function verifiedInlineTextSelfTest() {
       twOutputTable.get(1) === "將任意裝備強化至+20以上一次。",
   });
 
+  const towerDialogSourceText = [
+    "#PVF_File",
+    "[tower dialog]",
+    "1",
+    "`歡迎來到第一層`",
+    "`on start`",
+    "[tower dialog]",
+    "2",
+    "`第二層歡迎\r\n請繼續前進`",
+    "`on complete`",
+    "",
+  ].join("\r\n");
+  const towerDialogTable = createFixtureStringTable([
+    "[tower dialog]",
+    "歡迎來到第一層",
+    "on start",
+    "第二層歡迎\r\n請繼續前進",
+    "on complete",
+  ], "Tw");
+  const towerDialogScript = createFixtureScript([
+    [5, 0], [2, 1], [7, 1], [7, 2],
+    [5, 0], [2, 2], [7, 3], [7, 4],
+  ]);
+  const towerDialogSinglePatch = buildVerifiedInlineTextPatch({
+    textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+    pvfPath: "dungeon/Towers/TowerOfIllusion.dgn",
+    pvfEncoding: "Tw",
+    sourceText: towerDialogSourceText,
+    previousText: "`歡迎來到第一層`",
+    newText: "`歡迎來到幻影之塔第一層`",
+    replaceAll: false,
+    stringTableBytes: towerDialogTable,
+    scriptBytes: towerDialogScript,
+  });
+  const towerDialogSingleTable = StringTable.parse(towerDialogSinglePatch.stringTableBytes, "Tw");
+  const towerDialogSingleTokens = parseTokens(towerDialogSinglePatch.scriptBytes);
+  checks.push({
+    id: "big5-dgn-tower-dialog-on-start-complete-token-roundtrip",
+    ok:
+      towerDialogSingleTable.get(towerDialogSingleTokens[2].value) === "歡迎來到幻影之塔第一層" &&
+      towerDialogSinglePatch.proof.parentTag === "tower dialog" &&
+      towerDialogSinglePatch.proof.structuredContainerProofs?.[0]?.event === "on start" &&
+      towerDialogSinglePatch.proof.structuredContainerProofs?.[0]?.floor === 1 &&
+      towerDialogSinglePatch.proof.existingStringEntriesPreserved === true,
+  });
+  const towerDialogMultilinePatch = buildVerifiedInlineTextPatch({
+    textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+    pvfPath: "dungeon/Towers/TowerOfIllusion.dgn",
+    pvfEncoding: "Tw",
+    sourceText: towerDialogSourceText,
+    previousText: "`第二層歡迎\r\n請繼續前進`",
+    newText: "`第二層歡迎\r\n請擊敗所有敵人後繼續前進`",
+    replaceAll: false,
+    stringTableBytes: towerDialogTable,
+    scriptBytes: towerDialogScript,
+  });
+  const towerDialogMultilineTable = StringTable.parse(towerDialogMultilinePatch.stringTableBytes, "Tw");
+  const towerDialogMultilineTokens = parseTokens(towerDialogMultilinePatch.scriptBytes);
+  checks.push({
+    id: "big5-dgn-tower-dialog-on-complete-multiline-roundtrip",
+    ok:
+      towerDialogMultilineTable.get(towerDialogMultilineTokens[6].value) === "第二層歡迎\r\n請擊敗所有敵人後繼續前進" &&
+      towerDialogMultilinePatch.proof.structuredContainerProofs?.[0]?.event === "on complete" &&
+      towerDialogMultilinePatch.proof.structuredContainerProofs?.[0]?.floor === 2,
+  });
+  let towerDialogEventTokenCode = null;
+  try {
+    analyzeVerifiedInlineTextChange({
+      textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+      pvfPath: "dungeon/Towers/TowerOfIllusion.dgn",
+      pvfEncoding: "Tw",
+      sourceText: towerDialogSourceText,
+      previousText: "`on start`",
+      newText: "`開始時`",
+      replaceAll: false,
+    });
+  } catch (error) { towerDialogEventTokenCode = error.code; }
+  checks.push({
+    id: "dgn-tower-dialog-event-token-remains-logic-and-blocked",
+    ok: towerDialogEventTokenCode === "CN_TEXT_PARENT_TAG_UNSUPPORTED",
+    code: towerDialogEventTokenCode,
+  });
+  let malformedTowerDialogCode = null;
+  try {
+    analyzeVerifiedInlineTextChange({
+      textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+      pvfPath: "dungeon/Towers/TowerOfIllusion.dgn",
+      pvfEncoding: "Tw",
+      sourceText: towerDialogSourceText.replace("`on start`", "`on enter`") ,
+      previousText: "`歡迎來到第一層`",
+      newText: "`結構不完整時不得寫入`",
+      replaceAll: false,
+    });
+  } catch (error) { malformedTowerDialogCode = error.code; }
+  checks.push({
+    id: "dgn-tower-dialog-unknown-event-remains-blocked",
+    ok: malformedTowerDialogCode === "CN_TEXT_PARENT_TAG_UNSUPPORTED",
+    code: malformedTowerDialogCode,
+  });
+  let duplicateTowerDialogCode = null;
+  try {
+    analyzeVerifiedInlineTextChange({
+      textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+      pvfPath: "dungeon/Towers/TowerOfIllusion.dgn",
+      pvfEncoding: "Tw",
+      sourceText: towerDialogSourceText.replace("`第二層歡迎\r\n請繼續前進`", "`歡迎來到第一層`"),
+      previousText: "`歡迎來到第一層`",
+      newText: "`未定位的重複對話不得猜測`",
+      replaceAll: false,
+    });
+  } catch (error) { duplicateTowerDialogCode = error.code; }
+  checks.push({
+    id: "dgn-tower-dialog-duplicate-without-context-remains-blocked",
+    ok: duplicateTowerDialogCode === "OCCURRENCE_COUNT_MISMATCH",
+    code: duplicateTowerDialogCode,
+  });
+
+  const explainExSourceText = [
+    "#PVF_File",
+    "[explain ex]",
+    "`每級增加技能攻擊力。`",
+    "[explain ex]",
+    "`每級增加技能攻擊力。`",
+    "",
+  ].join("\r\n");
+  const explainExTable = createFixtureStringTable(["[explain ex]", "每級增加技能攻擊力。"], "Tw");
+  const explainExScript = createFixtureScript([[5, 0], [7, 1], [5, 0], [7, 1]]);
+  const explainExPatch = buildVerifiedInlineTextPatch({
+    textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+    pvfPath: "skill/swordman/fixture.skl",
+    pvfEncoding: "Tw",
+    sourceText: explainExSourceText,
+    previousText: "`每級增加技能攻擊力。`",
+    newText: "`每級增加技能攻擊力與範圍。`",
+    replaceAll: true,
+    expectedOccurrences: 2,
+    stringTableBytes: explainExTable,
+    scriptBytes: explainExScript,
+  });
+  const explainExOutputTable = StringTable.parse(explainExPatch.stringTableBytes, "Tw");
+  const explainExOutputTokens = parseTokens(explainExPatch.scriptBytes);
+  checks.push({
+    id: "big5-skl-explain-ex-two-complete-tokens-roundtrip",
+    ok:
+      explainExPatch.proof.parentTag === "explain ex" &&
+      explainExPatch.proof.visibleTextFamilyProofs?.every((item) => item.baseTag === "explain") &&
+      explainExPatch.proof.occurrenceCount === 2 &&
+      explainExPatch.proof.existingStringEntriesPreserved === true &&
+      explainExOutputTable.get(explainExOutputTokens[1].value) === "每級增加技能攻擊力與範圍。" &&
+      explainExOutputTable.get(explainExOutputTokens[3].value) === "每級增加技能攻擊力與範圍。",
+  });
+  const basicExplainExSourceText = [
+    "#PVF_File",
+    "[basic explain ex]",
+    "`特性技能的備用基礎說明。`",
+    "",
+  ].join("\r\n");
+  const basicExplainExTable = createFixtureStringTable(["[basic explain ex]", "特性技能的備用基礎說明。"], "Tw");
+  const basicExplainExScript = createFixtureScript([[5, 0], [7, 1]]);
+  const basicExplainExPatch = buildVerifiedInlineTextPatch({
+    textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+    pvfPath: "skill/swordman/fixture.skl",
+    pvfEncoding: "Tw",
+    sourceText: basicExplainExSourceText,
+    previousText: "`特性技能的備用基礎說明。`",
+    newText: "`特性技能的完整備用基礎說明。`",
+    replaceAll: false,
+    stringTableBytes: basicExplainExTable,
+    scriptBytes: basicExplainExScript,
+  });
+  const basicExplainExOutputTable = StringTable.parse(basicExplainExPatch.stringTableBytes, "Tw");
+  const basicExplainExOutputTokens = parseTokens(basicExplainExPatch.scriptBytes);
+  checks.push({
+    id: "big5-skl-basic-explain-ex-visible-family-roundtrip",
+    ok:
+      basicExplainExPatch.proof.parentTag === "basic explain ex" &&
+      basicExplainExPatch.proof.visibleTextFamilyProofs?.[0]?.mode === "skl-visible-text-ex-variant" &&
+      basicExplainExPatch.proof.visibleTextFamilyProofs?.[0]?.baseTag === "basic explain" &&
+      basicExplainExPatch.proof.existingStringEntriesPreserved === true &&
+      basicExplainExOutputTable.get(basicExplainExOutputTokens[1].value) === "特性技能的完整備用基礎說明。",
+  });
+  const skillExplainExAnalysis = analyzeVerifiedInlineTextChange({
+    textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+    pvfPath: "skill/swordman/future-variant.skl",
+    pvfEncoding: "Tw",
+    sourceText: "[skill explain ex]\r\n`未來同構說明`\r\n",
+    previousText: "`未來同構說明`",
+    newText: "`未來同構說明已驗證`",
+    replaceAll: false,
+  });
+  checks.push({
+    id: "skl-known-visible-base-plus-ex-variant-generalizes",
+    ok:
+      skillExplainExAnalysis.allowed === true &&
+      skillExplainExAnalysis.parentTag === "skill explain ex" &&
+      skillExplainExAnalysis.visibleTextFamilyProofs?.[0]?.baseTag === "skill explain",
+  });
+  let unknownExplainExBaseCode = null;
+  try {
+    analyzeVerifiedInlineTextChange({
+      textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+      pvfPath: "skill/swordman/unknown-variant.skl",
+      pvfEncoding: "Tw",
+      sourceText: "[logic explain ex]\r\n`不得把未知基礎標籤當成說明`\r\n",
+      previousText: "`不得把未知基礎標籤當成說明`",
+      newText: "`此變體仍須阻斷`",
+      replaceAll: false,
+    });
+  } catch (error) { unknownExplainExBaseCode = error.code; }
+  checks.push({
+    id: "skl-unknown-visible-base-plus-ex-variant-remains-blocked",
+    ok: unknownExplainExBaseCode === "CN_TEXT_PARENT_TAG_UNSUPPORTED",
+    code: unknownExplainExBaseCode,
+  });
+  let explainExOutsideSklCode = null;
+  try {
+    analyzeVerifiedInlineTextChange({
+      textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+      pvfPath: "stackable/fixture.stk",
+      pvfEncoding: "Tw",
+      sourceText: explainExSourceText,
+      previousText: "`每級增加技能攻擊力。`",
+      newText: "`此路徑不得開放。`",
+      replaceAll: true,
+      expectedOccurrences: 2,
+    });
+  } catch (error) { explainExOutsideSklCode = error.code; }
+  checks.push({
+    id: "explain-ex-outside-skl-remains-blocked",
+    ok: explainExOutsideSklCode === "CN_TEXT_PARENT_TAG_UNSUPPORTED",
+    code: explainExOutsideSklCode,
+  });
+
   const postalSourceText = [
     "#PVF_File",
     "[send postal]",
@@ -1460,6 +2220,151 @@ function verifiedInlineTextSelfTest() {
     id: "send-postal-outside-etc-remains-blocked",
     ok: postalOutsideEtcCode === "CN_TEXT_PARENT_TAG_UNSUPPORTED",
     code: postalOutsideEtcCode,
+  });
+
+  const titlebookSectionSourceText = [
+    "#PVF_File",
+    "[section name]",
+    "`舊稱號分類`",
+    "",
+  ].join("\r\n");
+  const titlebookSectionPatch = buildVerifiedInlineTextPatch({
+    textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+    pvfPath: "etc/titlebook.etc",
+    pvfEncoding: "Tw",
+    sourceText: titlebookSectionSourceText,
+    previousText: "`舊稱號分類`",
+    newText: "`新稱號分類`",
+    replaceAll: false,
+    stringTableBytes: createFixtureStringTable(["[section name]", "舊稱號分類"], "Tw"),
+    scriptBytes: createFixtureScript([[5, 0], [7, 1]]),
+  });
+  const titlebookSectionOutputTable = StringTable.parse(titlebookSectionPatch.stringTableBytes, "Tw");
+  const titlebookSectionOutputTokens = parseTokens(titlebookSectionPatch.scriptBytes);
+  checks.push({
+    id: "big5-titlebook-section-name-scalar-line-roundtrip",
+    ok:
+      titlebookSectionPatch.proof.parentTag === "section name" &&
+      titlebookSectionPatch.proof.structuredContainerProofs?.[0]?.ruleId === TITLEBOOK_SECTION_NAME_RULE_ID &&
+      titlebookSectionPatch.proof.structuredContainerProofs?.[0]?.matchedPath === "etc/titlebook.etc" &&
+      titlebookSectionPatch.proof.structuredContainerProofs?.[0]?.singleLineToken === true &&
+      titlebookSectionOutputTable.get(titlebookSectionOutputTokens[1].value) === "新稱號分類",
+  });
+  let titlebookSectionWrongPathCode = null;
+  try {
+    analyzeVerifiedInlineTextChange({
+      textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+      pvfPath: "etc/other-titlebook.etc",
+      pvfEncoding: "Tw",
+      sourceText: titlebookSectionSourceText,
+      previousText: "`舊稱號分類`",
+      newText: "`新稱號分類`",
+      replaceAll: false,
+    });
+  } catch (error) { titlebookSectionWrongPathCode = error.code; }
+  checks.push({
+    id: "titlebook-section-name-outside-titlebook-remains-blocked",
+    ok: titlebookSectionWrongPathCode === "CN_TEXT_PARENT_TAG_UNSUPPORTED",
+    code: titlebookSectionWrongPathCode,
+  });
+  let titlebookSectionMultilineCode = null;
+  try {
+    analyzeVerifiedInlineTextChange({
+      textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+      pvfPath: "etc/titlebook.etc",
+      pvfEncoding: "Tw",
+      sourceText: titlebookSectionSourceText,
+      previousText: "`舊稱號分類`",
+      newText: "`新稱號\r\n分類`",
+      replaceAll: false,
+    });
+  } catch (error) { titlebookSectionMultilineCode = error.code; }
+  checks.push({
+    id: "titlebook-section-name-multiline-remains-blocked",
+    ok: titlebookSectionMultilineCode === "CN_TEXT_SINGLE_LINE_TOKEN_REQUIRED",
+    code: titlebookSectionMultilineCode,
+  });
+  let titlebookSectionTagInjectionCode = null;
+  try {
+    analyzeVerifiedInlineTextChange({
+      textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+      pvfPath: "etc/titlebook.etc",
+      pvfEncoding: "Tw",
+      sourceText: titlebookSectionSourceText,
+      previousText: "`舊稱號分類`",
+      newText: "`[section name]`",
+      replaceAll: false,
+    });
+  } catch (error) { titlebookSectionTagInjectionCode = error.code; }
+  checks.push({
+    id: "titlebook-section-name-tag-injection-remains-blocked",
+    ok: titlebookSectionTagInjectionCode === "CN_TEXT_TAG_INJECTION_BLOCKED",
+    code: titlebookSectionTagInjectionCode,
+  });
+
+  const qstProgressSourceText = [
+    "#PVF_File",
+    "[condition data]",
+    "0",
+    "`完成次數 : %d / %d`",
+    "[/condition data]",
+    "",
+  ].join("\r\n");
+  const qstProgressPatch = buildVerifiedInlineTextPatch({
+    textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+    pvfPath: "n_quest/title/fixture.qst",
+    pvfEncoding: "Tw",
+    sourceText: qstProgressSourceText,
+    previousText: "`完成次數 : %d / %d`",
+    newText: "`完成稱號 : %d / %d`",
+    replaceAll: false,
+    stringTableBytes: createFixtureStringTable(["[condition data]", "完成次數 : %d / %d", "[/condition data]"], "Tw"),
+    scriptBytes: createFixtureScript([[5, 0], [2, 0], [7, 1], [5, 2]]),
+  });
+  const qstProgressOutputTable = StringTable.parse(qstProgressPatch.stringTableBytes, "Tw");
+  const qstProgressOutputTokens = parseTokens(qstProgressPatch.scriptBytes);
+  checks.push({
+    id: "big5-qst-condition-data-progress-placeholder-roundtrip",
+    ok:
+      qstProgressPatch.proof.parentTag === "condition data" &&
+      qstProgressPatch.proof.structuredContainerProofs?.[0]?.ruleId === QST_CONDITION_DATA_PROGRESS_RULE_ID &&
+      qstProgressPatch.proof.structuredContainerProofs?.[0]?.conditionDataInteger === 0 &&
+      qstProgressPatch.proof.structuredContainerProofs?.[0]?.placeholderSignature?.join(",") === "%d,%d" &&
+      qstProgressOutputTable.get(qstProgressOutputTokens[2].value) === "完成稱號 : %d / %d",
+  });
+  let qstProgressPlaceholderCode = null;
+  try {
+    analyzeVerifiedInlineTextChange({
+      textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+      pvfPath: "n_quest/title/fixture.qst",
+      pvfEncoding: "Tw",
+      sourceText: qstProgressSourceText,
+      previousText: "`完成次數 : %d / %d`",
+      newText: "`完成稱號 : %d`",
+      replaceAll: false,
+    });
+  } catch (error) { qstProgressPlaceholderCode = error.code; }
+  checks.push({
+    id: "qst-condition-data-placeholder-signature-change-blocked",
+    ok: qstProgressPlaceholderCode === "CN_TEXT_PLACEHOLDER_SIGNATURE_CHANGED",
+    code: qstProgressPlaceholderCode,
+  });
+  let qstProgressMalformedCode = null;
+  try {
+    analyzeVerifiedInlineTextChange({
+      textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+      pvfPath: "n_quest/title/fixture.qst",
+      pvfEncoding: "Tw",
+      sourceText: qstProgressSourceText.replace("[/condition data]", "[next]"),
+      previousText: "`完成次數 : %d / %d`",
+      newText: "`完成稱號 : %d / %d`",
+      replaceAll: false,
+    });
+  } catch (error) { qstProgressMalformedCode = error.code; }
+  checks.push({
+    id: "qst-condition-data-progress-unclosed-record-blocked",
+    ok: qstProgressMalformedCode === "CN_TEXT_PARENT_TAG_UNSUPPORTED",
+    code: qstProgressMalformedCode,
   });
 
   for (const fixture of [
@@ -1646,6 +2551,146 @@ function verifiedInlineTextSelfTest() {
       rawPatch.proof.outputTokenCount > rawPatch.proof.originalTokenCount && rawPatch.proof.exactIndependentTextReadback === true,
   });
 
+  const tableValues = Array.from({ length: 20 * 17 }, (_, index) => index + 1);
+  const tableSourceText = `#PVF_File\r\n[table]\r\n${tableValues.join("\t")}\r\n[/table]\r\n`;
+  const tableNextValues = [...tableValues];
+  for (const level of [14, 15]) for (const column of [0, 1, 2, 3, 4, 5, 11, 12, 13, 14, 15, 16]) {
+    tableNextValues[level * 17 + column] = tableValues[13 * 17 + column];
+  }
+  const tableNextText = `#PVF_File\r\n[table]\r\n${tableNextValues.join("\t")}\r\n[/table]\r\n`;
+  const largeTableStringTable = createFixtureStringTable(["[table]", "[/table]"], "Tw");
+  const largeTableScript = createFixtureScript([[5, 0], ...tableValues.map((value) => [2, value]), [5, 1]]);
+  const largeTablePatch = buildRawAsciiScriptPatch({
+    pvfPath: "etc/upgrade.etc",
+    pvfEncoding: "Tw",
+    sourceText: tableSourceText,
+    previousText: tableSourceText,
+    newText: tableNextText,
+    replaceAll: false,
+    stringTableBytes: largeTableStringTable,
+    scriptBytes: largeTableScript,
+  });
+  checks.push({
+    id: "raw-ascii-fixed-width-large-table-roundtrip",
+    ok:
+      largeTablePatch.expectedText === tableNextText &&
+      largeTablePatch.proof.originalTokenCount === largeTablePatch.proof.outputTokenCount &&
+      largeTablePatch.proof.changedTokenCount === 24 &&
+      largeTablePatch.proof.stringTableUntouched === true,
+  });
+
+  const phaseTable = createFixtureStringTable(["[blood phase time]", "[/blood phase time]"], "Cn");
+  const phaseSource = "#PVF_File\r\n[blood phase time]\r\n1\t0\t100\t1\t5\t6\r\n[/blood phase time]\r\n";
+  const phaseScript = createFixtureScript([
+    [5, 0], [2, 1], [2, 0], [2, 100], [2, 1], [2, 5], [2, 6], [5, 1],
+  ]);
+  const phaseDecimal = "#PVF_File\r\n[blood phase time]\r\n1\t0\t100\t1.1\t5\t6\r\n[/blood phase time]\r\n";
+  const phaseDecimalPatch = buildRawAsciiScriptPatch({
+    pvfPath: "map/TowerOfBloodyFight/fixture.map",
+    pvfEncoding: "Cn",
+    sourceText: phaseSource,
+    previousText: phaseSource,
+    newText: phaseDecimal,
+    replaceAll: false,
+    stringTableBytes: phaseTable,
+    scriptBytes: phaseScript,
+  });
+  const phaseDecimalTokens = parseTokens(phaseDecimalPatch.scriptBytes);
+  checks.push({
+    id: "raw-ascii-integer-token-to-float32-roundtrip",
+    ok:
+      phaseDecimalPatch.expectedText === phaseDecimal &&
+      phaseDecimalTokens[4]?.type === 4 &&
+      phaseDecimalPatch.proof.numericTypeTransitions?.some((item) => item.fromType === 2 && item.toType === 4 && item.valueText === "1.1") &&
+      phaseDecimalPatch.proof.floatTokenWriteCount === 1,
+  });
+
+  const phaseExpanded = "#PVF_File\r\n[blood phase time]\r\n1\t0\t100\t1.1\t5\t6\r\n2\t0\t120\t1.3\t5\t6\r\n[/blood phase time]\r\n";
+  const phaseExpandedPatch = buildRawAsciiScriptPatch({
+    pvfPath: "map/TowerOfBloodyFight/fixture.map",
+    pvfEncoding: "Cn",
+    sourceText: phaseSource,
+    previousText: phaseSource,
+    newText: phaseExpanded,
+    replaceAll: false,
+    stringTableBytes: phaseTable,
+    scriptBytes: phaseScript,
+  });
+  checks.push({
+    id: "raw-ascii-inserted-float32-phase-row-roundtrip",
+    ok:
+      phaseExpandedPatch.expectedText === phaseExpanded &&
+      phaseExpandedPatch.proof.outputTokenCount === phaseExpandedPatch.proof.originalTokenCount + 6 &&
+      phaseExpandedPatch.proof.floatTokenWriteCount === 2 &&
+      phaseExpandedPatch.proof.numericTypeTransitions?.filter((item) => item.toType === 4).length === 2,
+  });
+
+  const floatBits = Buffer.allocUnsafe(4);
+  floatBits.writeFloatLE(0.8, 0);
+  const phaseFloatSource = "#PVF_File\r\n[blood phase time]\r\n1\t0\t100\t0.8\t5\t6\r\n[/blood phase time]\r\n";
+  const phaseFloatScript = createFixtureScript([
+    [5, 0], [2, 1], [2, 0], [2, 100], [4, floatBits.readUInt32LE(0)], [2, 5], [2, 6], [5, 1],
+  ]);
+  const phaseInteger = "#PVF_File\r\n[blood phase time]\r\n1\t0\t100\t1\t5\t6\r\n[/blood phase time]\r\n";
+  const phaseIntegerPatch = buildRawAsciiScriptPatch({
+    pvfPath: "map/TowerOfBloodyFight/fixture.map",
+    pvfEncoding: "Cn",
+    sourceText: phaseFloatSource,
+    previousText: phaseFloatSource,
+    newText: phaseInteger,
+    replaceAll: false,
+    stringTableBytes: phaseTable,
+    scriptBytes: phaseFloatScript,
+  });
+  checks.push({
+    id: "raw-ascii-float32-token-to-integer-text-roundtrip",
+    ok: phaseIntegerPatch.expectedText === phaseInteger && parseTokens(phaseIntegerPatch.scriptBytes)[4]?.type === 4,
+  });
+
+  let floatOverflowCode = null;
+  try {
+    buildRawAsciiScriptPatch({
+      pvfPath: "map/TowerOfBloodyFight/fixture.map",
+      pvfEncoding: "Cn",
+      sourceText: phaseSource,
+      previousText: "1\t0\t100\t1\t5\t6",
+      newText: "1\t0\t100\t340282400000000000000000000000000000000.0\t5\t6",
+      replaceAll: false,
+      stringTableBytes: phaseTable,
+      scriptBytes: phaseScript,
+    });
+  } catch (error) {
+    floatOverflowCode = error.code;
+  }
+  checks.push({
+    id: "raw-ascii-float32-overflow-blocked",
+    ok: floatOverflowCode === "RAW_ASCII_NUMBER_INVALID",
+    code: floatOverflowCode,
+  });
+
+  for (const invalidFloatText of ["NaN", "Infinity"]) {
+    let invalidFloatCode = null;
+    try {
+      buildRawAsciiScriptPatch({
+        pvfPath: "map/TowerOfBloodyFight/fixture.map",
+        pvfEncoding: "Cn",
+        sourceText: phaseSource,
+        previousText: "1\t0\t100\t1\t5\t6",
+        newText: `1\t0\t100\t${invalidFloatText}\t5\t6`,
+        replaceAll: false,
+        stringTableBytes: phaseTable,
+        scriptBytes: phaseScript,
+      });
+    } catch (error) {
+      invalidFloatCode = error.code;
+    }
+    checks.push({
+      id: `raw-ascii-${invalidFloatText.toLowerCase()}-blocked`,
+      ok: invalidFloatCode === "RAW_ASCII_SCRIPT_LEX_FAILED",
+      code: invalidFloatCode,
+    });
+  }
+
   const wdmTable = createFixtureStringTable(["[dungeon]", "[/dungeon]", "[name]", "亡者峽谷"], "Tw");
   const wdmScript = createFixtureScript([
     [5, 0], [2, 11000], [2, -1], [2, 11001], [2, -1], [2, 323], [2, -1],
@@ -1720,6 +2765,31 @@ function verifiedInlineTextSelfTest() {
     code: rawRegistryCode,
   });
 
+  let rawTilError = null;
+  try {
+    buildRawAsciiScriptPatch({
+      pvfPath: "map/illusiontower/tile/prisontile1.til",
+      pvfEncoding: "Cn",
+      sourceText: "#PVF_File\r\n[img pos]\r\n0\r\n",
+      previousText: "[img pos]\r\n0",
+      newText: "[img pos]\r\n80",
+      replaceAll: false,
+      stringTableBytes: rawTable,
+      scriptBytes: createFixtureScript([[5, 0], [2, 0]]),
+    });
+  } catch (error) {
+    rawTilError = error;
+  }
+  checks.push({
+    id: "raw-ascii-til-block-suggests-atomic-copy-and-map-switch",
+    ok:
+      rawTilError?.code === "RAW_ASCII_FILE_TYPE_UNSUPPORTED" &&
+      rawTilError?.message.includes("copy-file") &&
+      rawTilError?.message.includes("同一 change-set") &&
+      rawTilError?.message.includes(".map"),
+    code: rawTilError?.code || null,
+  });
+
   let rawClientLogicCode = null;
   try {
     buildRawAsciiScriptPatch({
@@ -1751,6 +2821,96 @@ function verifiedInlineTextSelfTest() {
   checks.push({
     id: "raw-ascii-batch-exact-count-roundtrip",
     ok: rawBatchPatch.proof.occurrenceCount === 2 && rawBatchPatch.expectedText.includes("[value]\r\n20"),
+  });
+
+  const binaryAniSource = createFixtureBinaryAni(80);
+  const binaryAniInspection = inspectBinaryAni(binaryAniSource);
+  const binaryAniPrevious = "[FRAME000]\r\n\t[IMAGE]\r\n\t\t`Monster/fixture1.img`\r\n\t\t65\r\n\t[IMAGE POS]\r\n\t\t-252\t-379\r\n\t[DELAY]\r\n\t\t80";
+  const binaryAniNext = binaryAniPrevious.replace("\t\t80", "\t\t10000");
+  const binaryAniPatch = buildRawAsciiAniPatch({
+    pvfPath: "monster/fixture/animation/down.ani",
+    pvfEncoding: "Cn",
+    sourceText: binaryAniInspection.text,
+    sourceBytes: binaryAniSource,
+    previousText: binaryAniPrevious,
+    newText: binaryAniNext,
+    replaceAll: false,
+  });
+  const binaryAniReadback = inspectBinaryAni(binaryAniPatch.bytes);
+  checks.push({
+    id: "raw-binary-ani-delay-byte-preserving-roundtrip",
+    ok:
+      binaryAniInspection.fullyConsumed === true &&
+      binaryAniReadback?.fullyConsumed === true &&
+      binaryAniReadback?.text.includes("[DELAY]\r\n\t\t10000") &&
+      binaryAniPatch.proof.mode === RAW_BINARY_ANI_PATCH_MODE &&
+      binaryAniPatch.proof.changedFieldCount === 1 &&
+      binaryAniPatch.proof.changedFieldTags?.length === 1 &&
+      binaryAniPatch.proof.changedFieldTags[0] === "DELAY" &&
+      binaryAniPatch.proof.rawBytePreservingPatch === true &&
+      binaryAniPatch.proof.wholeFileReencodingUsed === false &&
+      binaryAniPatch.proof.nonTargetRawBytesPreserved === true &&
+      binaryAniPatch.proof.sourceRawSha256 === sha256(binaryAniSource) &&
+      binaryAniSource.readInt32LE(binaryAniPatch.proof.targetRanges[0].offset) === 80 &&
+      binaryAniPatch.bytes.readInt32LE(binaryAniPatch.proof.targetRanges[0].offset) === 10000,
+  });
+
+  let binaryAniOtherFieldCode = null;
+  try {
+    buildRawAsciiAniPatch({
+      pvfPath: "monster/fixture/animation/down.ani",
+      sourceText: binaryAniInspection.text,
+      sourceBytes: binaryAniSource,
+      previousText: "[IMAGE POS]\r\n\t\t-252\t-379",
+      newText: "[IMAGE POS]\r\n\t\t-251\t-379",
+      replaceAll: false,
+    });
+  } catch (error) {
+    binaryAniOtherFieldCode = error.code;
+  }
+  checks.push({
+    id: "raw-binary-ani-non-delay-field-remains-blocked",
+    ok: binaryAniOtherFieldCode === "RAW_ANI_FIELD_CHANGE_BLOCKED",
+    code: binaryAniOtherFieldCode,
+  });
+
+  let binaryAniLiteralCode = null;
+  try {
+    buildRawAsciiAniPatch({
+      pvfPath: "monster/fixture/animation/down.ani",
+      sourceText: binaryAniInspection.text,
+      sourceBytes: binaryAniSource,
+      previousText: "`Monster/fixture1.img`",
+      newText: "`Monster/fixture2.img`",
+      replaceAll: false,
+    });
+  } catch (error) {
+    binaryAniLiteralCode = error.code;
+  }
+  checks.push({
+    id: "raw-binary-ani-path-and-literal-change-remains-blocked",
+    ok: binaryAniLiteralCode === "RAW_ANI_LITERAL_CHANGE_BLOCKED",
+    code: binaryAniLiteralCode,
+  });
+
+  let binaryAniTrailingBytesCode = null;
+  try {
+    const sourceWithTrailingBytes = Buffer.concat([binaryAniSource, Buffer.from([0xaa])]);
+    buildRawAsciiAniPatch({
+      pvfPath: "monster/fixture/animation/down.ani",
+      sourceText: binaryAniInspection.text,
+      sourceBytes: sourceWithTrailingBytes,
+      previousText: "[DELAY]\r\n\t\t80",
+      newText: "[DELAY]\r\n\t\t10000",
+      replaceAll: false,
+    });
+  } catch (error) {
+    binaryAniTrailingBytesCode = error.code;
+  }
+  checks.push({
+    id: "raw-binary-ani-unparsed-trailing-bytes-remain-blocked",
+    ok: binaryAniTrailingBytesCode === "RAW_ANI_BINARY_PARSE_FAILED",
+    code: binaryAniTrailingBytesCode,
   });
 
   const rawAnchoredPatch = buildRawAsciiScriptPatch({
@@ -2021,13 +3181,14 @@ function verifiedInlineTextBatchStressSelfTest() {
         patch.changeCount === count &&
         patch.proofs.length === count &&
         patch.proof.appendedStringEntryCount === count &&
-        proofBytes < count * 2600 &&
+        proofBytes < count * MAX_VERIFIED_TEXT_PROOF_BYTES_PER_CHANGE &&
         patch.proof.existingStringEntriesPreserved === true &&
         allValuesMatch,
       elapsedMilliseconds: patch.proof.elapsedMilliseconds,
       appendedStringEntryCount: patch.proof.appendedStringEntryCount,
       proofBytes,
       proofBytesPerChange: proofBytes / count,
+      maxProofBytesPerChange: MAX_VERIFIED_TEXT_PROOF_BYTES_PER_CHANGE,
     });
   }
   const sharedTable = createFixtureStringTable(["[name]", "批量旧说明"], "Cn");
@@ -2085,6 +3246,8 @@ function verifiedInlineCnTextSelfTest() {
 }
 
 module.exports = {
+  VERIFIED_STRINGLINK_DETACH_MODE,
+  RAW_BINARY_ANI_PATCH_MODE,
   ALLOWED_VISIBLE_TEXT_TAGS,
   ALLOWED_INLINE_TEXT_EXTENSIONS,
   MAX_INLINE_TEXT_CHARACTERS,
@@ -2097,6 +3260,7 @@ module.exports = {
   buildVerifiedInlineTextBatchPatch,
   buildVerifiedInlineCnPatch,
   buildRawAsciiScriptPatch,
+  buildRawAsciiAniPatch,
   encodeLegacyText,
   encodeGbkText,
   isVerifiedInlineTextMode,

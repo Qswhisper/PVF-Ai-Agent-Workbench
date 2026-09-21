@@ -15,15 +15,15 @@
 
 ## 总原则
 
-- 默认挂载点是 `基础精通 / BasicAttackUp`。常见 ID `174` 只能作为搜索线索，最终必须在目标职业 skill registry 中解析并读回 `.skl`。
-- `基础精通` 是跨版本稳定锚点；短期存在、隐藏、派生或版本限定技能不作为体系基础。
+- 优先按名称在目标职业 skill registry 中解析 `基础精通 / BasicAttackUp`，并读回实际 `.skl`；不把任何版本的常见数字 ID 当搜索或迁移事实。目标没有同一入口时保持 unresolved，并从实际加载链重新选择锚点。
+- 只有目标 registry、职业 passive 与加载链共同证明入口稳定时，才把它作为该目标的挂载锚点；短期存在、隐藏、派生或版本限定技能不作为体系基础。
 - 拼刀奖励必须分成两段：受击保护阶段只记录候选，玩家技能命中确认后才执行控制或奖励。
 - 近身主动来源才允许反制；远程、脱手、召唤、残留和长距离弹体只保护玩家。
 - 长演出、抓取、大范围压制、全屏或无清晰近身相杀点的技能默认只加保护，不加控怪。
 - APC 默认不控。PVP、APC 或服务端同步规则需要单独任务验证。
-- 常规减伤上限优先采用 `damageRate > 10 -> 10`。
-- 常规 protection-only 短预算优先采用 `20`；慢启动特殊项可采用 `40`。
-- 不屈意志读条保护只在 buff 存在且当前处于读条 / 投掷态时生效，尾窗优先采用 `castTime + 200ms`。
+- 减伤上限必须从目标已有实现、设计要求和实机结果确定；历史目标数值不进入跨版本起点。
+- protection-only 预算必须按目标动作和回调节奏测定；普通与慢启动技能可以分组，但每组都从本目标单变量实测起步。
+- 不屈意志读条保护只在 buff 存在且当前处于读条 / 投掷态时生效；尾窗余量从目标时钟口径和实机结果确定，不迁移固定毫秒数。
 - 普通 / 精英 / Boss 的反制状态时间默认先统一，稳定后再考虑细分。
 - 静态攻击包 hitstun 字段不能视为统一硬直方案；硬直若无法跨怪物稳定控制，应退回统一状态时间。
 
@@ -45,6 +45,15 @@
 5. 读取职业 passive 文件，确认 `ProcPassiveSkill_<job>` 或同等被动入口。
 6. 读取候选主动技能的 `.skl`、state/substate、NUT 入口和攻击判定链。
 7. 若需要控制怪物，先确认目标 PVF 中已有可用控制 API 或同职业样本；没有 内置 NUT API 事实目录 或目标脚本证据时不要发明函数名。
+
+## 调用形态与回调可达性
+
+1. 对精确 API / 回调名先查内置声明，再查目标脚本。内置签名只说明候选形状，不证明目标对象上可调用。
+2. `search-script` 0 命中不等于 `.nut` 中不存在该符号。只有当 `load_state`、回调注册、依赖链或已建账来源给出精确路径时，才直接读取该路径；否则保持 unresolved，不猜文件名。
+3. 沿 `load_state -> passive_skill -> appendage` 闭合加载链，并在 appendage 内同时读取 `sq_AddFunctionName` 注册和对应函数定义。参数个数、顺序和对象类型以目标定义为准。
+4. 类静态调用、对象实例调用和同名 helper 是不同调用形态。目标先例与内置声明不一致时，不靠 try/catch 吞错猜测；用一个变量一轮的实机 A/B 裁定。
+5. “脚本已加载”不等于“每个状态都触发同一回调”。按普通动作、攻击类读条、buff 类读条、长演出、死亡 / 换图等任务相关状态建立回调可达性矩阵；只把实际测过的格子写成 PASS。
+6. 回调与调用形态的 PASS 绑定目标 PVF SHA、客户端和前置状态。迁移版本时重新闭合，不把一次目标实测写成引擎通则。
 
 ## 挂载形态
 
@@ -102,17 +111,17 @@ appendage 至少拆成四类状态：
 
 ## 保护与候选
 
-受击阶段的伪代码：
+受击阶段的伪代码仅表达语义；回调名、参数个数和顺序必须复制目标注册与函数定义，不能照抄占位签名：
 
 ```nut
-function getImmuneTypeDamageRate(appendage, attacker, damageRate, damageType)
+function <registered_damage_callback>(<target_verified_parameters>)
 {
     if (!isEffectiveProtectionWindow(appendage))
     {
-        return damageRate;
+        return <target_damage_rate>;
     }
 
-    local protectedRate = calcProtectedDamageRate(damageRate);
+    local protectedRate = calcProtectedDamageRate(<target_damage_rate>);
 
     if (!isNearActiveNonApcSource(appendage, attacker))
     {
@@ -132,12 +141,12 @@ function getImmuneTypeDamageRate(appendage, attacker, damageRate, damageType)
 - 当前攻击不是远程弹体、脱手对象、召唤物或残留场。
 - 当前玩家技能帧允许相杀候选，不是全技能常开。
 
-常规减伤计算：
+减伤形态示意；上限必须由目标证据提供：
 
 ```nut
-function calcProtectedDamageRate(damageRate)
+function calcProtectedDamageRate(damageRate, targetVerifiedRateCap)
 {
-    if (damageRate > 10) return 10;
+    if (damageRate > targetVerifiedRateCap) return targetVerifiedRateCap;
     return damageRate;
 }
 ```
@@ -184,10 +193,10 @@ if (isSuperArmorOnCastCastingWindow(appendage)) return;
 
 默认步骤：
 
-1. 在目标职业 registry 中解析 `不屈意志 / SuperArmorOnCast / Great Willpower`，常见 ID 线索是 `180`。
-2. 读回对应 `.skl`，确认 `[maximum level]` 和 `[growtype maximum level]` 是否为 `10`。
+1. 按名称在目标职业 registry 中解析 `不屈意志 / SuperArmorOnCast / Great Willpower`，不得使用其他版本的数字 ID。
+2. 读回对应 `.skl`、技能树和默认入口，结合 `[maximum level]`、`[growtype maximum level]` 确认本目标的实际可达等级；不得强制改成历史等级。
 3. 在职业 appendage 中检测 buff state 与读条 / 投掷态。
-4. 只在不屈 buff 存在时，对当前读条技能按 `castTime + 200ms` 收口。
+4. 只在不屈 buff 存在时，对当前读条技能按目标确认的 `castTime + 尾窗余量` 收口；尾窗余量必须在本目标重测。
 5. 在 `getImmuneTypeDamageRate` 中只做减伤，不控怪。
 
 伪代码：
@@ -207,7 +216,8 @@ function isSuperArmorOnCastCastingWindow(obj)
     local castTime = sq_GetCastTime(obj, skillIndex, skillLevel);
     if (castTime <= 0) return false;
 
-    return getStateTimer(obj) <= castTime + 200;
+    local tailMargin = getTargetVerifiedCastTailMargin(obj, skillIndex);
+    return getStateTimer(obj) <= castTime + tailMargin;
 }
 ```
 
@@ -223,7 +233,7 @@ function isSuperArmorOnCastCastingWindow(obj)
 | 脱手对象 / 召唤物 / 地面残留 | 保护玩家，不控来源。 |
 | 长演出 / 抓取 / 大范围压制 | 默认 `protection-only`。 |
 | APC 参与 | 默认不控，另开专项。 |
-| 慢启动但有明确准备动作 | 可给 `40` 左右短 protection-only。 |
+| 慢启动但有明确准备动作 | 可给短 protection-only；预算按目标动作节奏实测，不继承历史数值。 |
 | 不屈期间读条 | 只给读条减伤，不控怪。 |
 | 短破招抓取 | 若无法可靠检测敌人攻击态，专题暂缓。 |
 
@@ -258,9 +268,11 @@ function isSuperArmorOnCastCastingWindow(obj)
 
 批处理测试预算：
 
+- 覆盖分母来自目标版本中玩家当前实际可达的技能集，不从 registry 总数或历史清单推导。报告分别列出 `passed / failed / unreachable / deferred / not-run`；已注册但当前不可学、不可触发或不可进入的技能既不算 PASS，也不算 FAIL。
 - 每个新增普通反制技能至少测“近身顶招并命中”和“顶住但未命中/打空”。
 - 远程/脱手隔离、APC 不控、长演出 protection-only 可以按同职业包抽代表回归，不必每个新增技能重复全套。
 - 任何一个技能出现共享 state 误判、空顶也控、远程反控、长演出强控，应只回退该技能或该类型，不要回退整个职业分支。
+- 单技能 PASS 必须能回到该技能的规范原始运行观察；汇总覆盖表不能替代这份记录，也不能把 `unreachable / deferred / not-run` 折算为通过。
 
 ## 低测试量验收组合
 

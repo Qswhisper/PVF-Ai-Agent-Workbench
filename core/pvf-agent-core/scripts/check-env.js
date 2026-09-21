@@ -12,6 +12,12 @@ const {
 } = require("../lib/native-runtime-help");
 const { sha256File } = require("../lib/release-utils");
 const { selectedLocalProfilesMetadata } = require("../lib/workspace-profiles");
+const {
+  validatePublicSchemaContract,
+  validateWritePolicyCapabilityRegistry,
+} = require("../lib/controlled-write-capabilities");
+const { validateExecutionPlanPolicy } = require("../lib/controlled-execution-plan");
+const { validateVerifiedTextEligibilityContract } = require("../lib/verified-text-eligibility");
 
 const args = process.argv.slice(2);
 const rootArgIndex = args.indexOf("--root");
@@ -828,7 +834,7 @@ function checkPvfAdapter(adapterConfig, errors, warnings) {
   }
 }
 
-function checkWritePolicy(writePolicy, errors) {
+function checkWritePolicy(writePolicy, changeSetSchema, errors) {
   if (!writePolicy) {
     return;
   }
@@ -862,6 +868,16 @@ function checkWritePolicy(writePolicy, errors) {
   ) {
     errors.push("write-policy.json must reserve the controlled-write server capability for pvf-change apply.");
   }
+  const capabilityRegistry = validateWritePolicyCapabilityRegistry(writePolicy.controlledWriteRunner?.capabilityRegistry);
+  errors.push(...capabilityRegistry.errors);
+  const executionPlanContract = validateExecutionPlanPolicy(writePolicy.controlledWriteRunner?.executionPlanContract);
+  errors.push(...executionPlanContract.errors);
+  const verifiedTextEligibilityContract = validateVerifiedTextEligibilityContract(
+    writePolicy.controlledWriteRunner?.verifiedTextEligibilityContract,
+  );
+  errors.push(...verifiedTextEligibilityContract.errors);
+  const publicSchemaContract = validatePublicSchemaContract(changeSetSchema);
+  errors.push(...publicSchemaContract.errors);
   const semanticSafety = writePolicy.controlledWriteRunner?.semanticTextSafety || {};
   if (
     semanticSafety.automaticEncodingConflictGuardRequired !== true ||
@@ -870,6 +886,10 @@ function checkWritePolicy(writePolicy, errors) {
     semanticSafety.verifiedInlineTextWriteAllowed !== true ||
     semanticSafety.verifiedInlineTextMultilineAllowed !== true ||
     semanticSafety.verifiedInlineTextBatchRequiresExactExpectedOccurrences !== true ||
+    semanticSafety.verifiedInlineTextEligibilityDefaultBlocked !== true ||
+    semanticSafety.verifiedInlineTextEligibilityProofBoundToDryRunAndApply !== true ||
+    semanticSafety.verifiedInlineTextUnknownRuleAllowed !== false ||
+    semanticSafety.verifiedInlineTextPermissionExpansionAllowed !== false ||
     semanticSafety.exactAdjacentContextAnchoringAllowed !== true ||
     semanticSafety.contextAnchorDoesNotRelaxTextSafety !== true ||
     semanticSafety.exactRangeScopeAllowed !== true ||
@@ -907,6 +927,19 @@ function checkWritePolicy(writePolicy, errors) {
     semanticSafety.existingNutTemporaryRoundTripRequired !== true ||
     semanticSafety.existingNutFinalIndependentReadbackRequired !== true ||
     semanticSafety.existingNutRuntimeValidationRequired !== true ||
+    semanticSafety.structuredUpgradeTableEditAllowed !== true ||
+    semanticSafety.structuredUpgradeTableExactPathsOnly !== true ||
+    semanticSafety.structuredUpgradeTableWidth !== 17 ||
+    semanticSafety.structuredUpgradeLevelIndexIsZeroBasedGroupIndex !== true ||
+    semanticSafety.structuredUpgradeFirstColumnIsExplicitLevelNumber !== false ||
+    semanticSafety.structuredUpgradeColumnsMustFormExactPartition !== true ||
+    semanticSafety.structuredUpgradeAllSixRarityLimitsRequired !== true ||
+    semanticSafety.structuredAmplificationConstGroupWidth !== 4 ||
+    semanticSafety.structuredAmplificationConstHasLevelZeroGroup !== true ||
+    semanticSafety.structuredForgingFileExcluded !== true ||
+    semanticSafety.structuredUpgradeTemporaryRoundTripRequired !== true ||
+    semanticSafety.structuredUpgradeFinalIndependentReadbackRequired !== true ||
+    semanticSafety.structuredUpgradeRuntimeValidationRequired !== true ||
     semanticSafety.existingCoSqrStrProtectionRemains !== true ||
     semanticSafety.registryLifecycleOnlyForExplicitRowAdd !== true ||
     semanticSafety.registryLifecycleExistingTextPreserved !== true ||
@@ -939,7 +972,7 @@ function checkWritePolicy(writePolicy, errors) {
     errors.push("write-policy.json must require verification of every declared cumulative baseline chain.");
   }
   const allowed = new Set(writePolicy.allowedOperations || []);
-  for (const operation of ["dry-run-verified-inline-text", "apply-verified-inline-text-to-explicit-output", "dry-run-copy-same-pvf-file", "apply-copy-same-pvf-file-to-explicit-output", "dry-run-existing-nut-controlled-edit", "apply-existing-nut-controlled-edit-to-explicit-output"]) {
+  for (const operation of ["dry-run-verified-inline-text", "apply-verified-inline-text-to-explicit-output", "dry-run-copy-same-pvf-file", "apply-copy-same-pvf-file-to-explicit-output", "dry-run-existing-nut-controlled-edit", "apply-existing-nut-controlled-edit-to-explicit-output", "dry-run-upgrade-table-level-edit", "apply-upgrade-table-level-edit-to-explicit-output"]) {
     if (!allowed.has(operation)) {
       errors.push(`write-policy.json must explicitly allow the controlled operation: ${operation}`);
     }
@@ -988,7 +1021,7 @@ function checkClientPvfDeployPolicy(policy, errors) {
     "source-pvf-sha256-unchanged",
     "profile-client-target",
     "current-client-pvf-sha256-binding",
-    "current-client-matches-apply-input-or-explicit-baseline-switch",
+    "current-client-matches-apply-input-verified-ancestor-or-explicit-baseline-switch",
     "verified-protected-source-anchor-before-client-origin-replacement",
     "explicit-deploy-authorization-code",
     "client-and-launcher-confirmed-closed",
@@ -1164,6 +1197,7 @@ function main() {
     }
   }
   const schema = readJson("core/pvf-agent-core/schemas/workspace-profiles.schema.json", errors);
+  const changeSetSchema = readJson("core/pvf-agent-core/schemas/pvf-change-set.schema.json", errors);
   const releaseManifest = readJson(agentWorkspaceMode ? "release/PORTABLE-RELEASE-MANIFEST.json" : "PORTABLE-RELEASE-MANIFEST.json", errors);
   const agentWorkspaceManifest = agentWorkspaceMode ? readJson("release/AGENT-WORKSPACE-MANIFEST.json", errors) : null;
   const version = isFile("VERSION") ? readText("VERSION").trim() : null;
@@ -1198,7 +1232,7 @@ function main() {
     checkProviders(errors, warnings);
   }
   checkPvfAdapter(adapterConfig, errors, warnings);
-  checkWritePolicy(writePolicy, errors);
+  checkWritePolicy(writePolicy, changeSetSchema, errors);
   checkClientPvfDeployPolicy(clientPvfDeployPolicy, errors);
   checkWorkspaceProfiles(profilesConfig, errors, warnings, localProfilesConfig, info);
 

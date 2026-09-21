@@ -7,13 +7,16 @@
 - `safety/README.zh-CN.md`
 - `workflows/apc-fair-duel-level-equipment-standardization.zh-CN.md`
 - `indexes/apc-fair-duel-level-equipment-standardization-boundary.zh-CN.md`
+- `task-cards/apc-combat-attribute-intent-readonly-audit.zh-CN.md`
+- `task-cards/apc-character-status-hardness-readonly-audit.zh-CN.md`
+- `dictionaries/apc-character-status-fields.zh-CN.md`
 - `workflows/apc-extraction-planner.zh-CN.md`
 - `task-cards/equipment-stackable-readonly-audit.zh-CN.md`
 
 ## 执行
 
 1. 通过 dungeon、map 和 `aicharacter/aicharacter.lst` 闭合目标 APC，不凭房间顺序、名称或裸数字猜对象。
-2. 读取 `.aic` 的等级、状态倍率、伤害倍率、技能、快捷道具和完整 `[equipment]`。
+2. 读取 `.aic` 的等级、`[additional character status]`、`[character status rate]`、伤害倍率、技能、快捷道具和完整 `[equipment]`；伤害按物理 / 魔法攻击、主属性、独立攻击侧标签、技能和装备建立联合基线，硬度按生命、物防、魔防和受击恢复建立联合基线。
 3. 每件装备通过 `equipment/equipment.lst` 解析；无法解析的值保持 unresolved，不按槽位位置强行命名。
 4. 把原装备分为纯攻防速度、技能等级或技能数据、触发或 appendage、外观与未解析五类。
 5. 玩家公平装备和 APC 标准装备使用不同 ID 与不同文件；不要让后续玩家调平同时改动 APC。

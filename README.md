@@ -4,7 +4,7 @@
 
 ## 下载和开始
 
-1. 在 [Releases](https://github.com/Qswhisper/PVF-Ai-Agent-Workbench/releases) 下载最新版 **Source code (zip)**。
+1. 在 [Releases](https://github.com/Qswhisper/PVF-Ai-Agent-Workbench/releases) 下载最新版 **PVF-Agent-Workbench-版本号-win-x64.zip**；**Source code (zip)** 也包含所需运行时。
 2. 解压后运行 `workbench.bat check`。
 3. 用 Codex、Claude Code、OpenCode 或其他命令型 Agent 打开整个工作台文件夹。
 4. 让 Agent 先读取 `AGENTS.md`，再提供目标 `Script.pvf`、想处理的内容、是否允许生成新 PVF，以及能否进游戏测试。
@@ -31,6 +31,8 @@
 ## 运行环境与文档
 
 支持 64 位 Windows，随包携带 Node.js，不需要 npm、外部 MCP 或已下架插件。native 后端不可用时会自动进入只读模式；查询仍可用，但不能生成 PVF。
+
+随包 native 后端是预编译文件；当前仓库尚未包含完整 Rust 源码和锁文件，不能据此完整重建该后端。
 
 - 中文使用说明：[README.zh-CN.md](README.zh-CN.md)
 - Agent 入口与硬规则：[AGENTS.md](AGENTS.md)

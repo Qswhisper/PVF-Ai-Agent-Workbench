@@ -34,7 +34,7 @@
 | `[maximum level]` | `.skl` 基础等级上限字段。 | 不等于角色实际可点到该等级；还受 growtype、树、PVP、服务端影响。 |
 | `[growtype maximum level]` | 按 growtype 列出的等级上限形状。 | 列数和 growtype 映射必须按当前职业上下文确认。 |
 | `[skill fitness growtype]` | 技能适配 growtype 列表。 | 适配不等于自动获得；仍需技能树、默认技能或运行授予入口。只增加技能树显示节点不能作为 learnability 已扩大的证据。 |
-| `[feature skill index]` | 指向特性/扩展技能 ID 的静态字段。 | 必须回到同职业 registry 解析，不跨职业借 ID。 |
+| `[feature skill index]` | 指向特性/扩展技能 ID 的静态字段；与派生技能 `[pre required skill]` 反向一致时，可形成同职业双向映射候选。 | 必须回到同职业 registry 解析，不跨职业借 ID；双向静态关系仍不自动授权迁移装备加成。 |
 
 ## 命令与可释放状态
 

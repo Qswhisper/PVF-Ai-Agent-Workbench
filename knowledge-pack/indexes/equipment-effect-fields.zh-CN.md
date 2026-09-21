@@ -19,9 +19,9 @@
 | `[set name]` | 需验证 | 套装名字；文本不证明套装效果生效。 |
 | `[set item]` | 需验证 | 套装物品 ID 列表；必须检查 `[/set item]`，ID 走 equipment registry。 |
 | `[set ability]` | 需验证 | 套装能力容器；必须检查 `[/set ability]`，块内字段逐项读取。 |
-| `[set item master]` | 需验证 | 套装主件或关联装备 ID 线索；数字走 equipment registry。 |
-| `[part set index]` | 需验证 | 单值零件套装关联号；不是闭合块。先用数值匹配 `etc/equipmentpartset.etc` 中 `[equipment part set]` 记录的首列，再把该记录的 `character/partset/*.equ` 路径按 `equipment/` 根读取。不要和 `[effect part set index]`、`[set item]` 混用。 |
-| `[piece set ability]` | 需验证 | 按套装件数生效的能力块；目标样本首值为所需件数，后续可包含属性、技能或触发效果字段。正常形态以 `[/piece set ability]` 闭合；目标包存在少量缺失闭合的残缺样本，不能据此省略结束标签。 |
+| `[set item master]` | 需验证 | 套装主件或关联装备 ID 线索；数字走 equipment registry。该字段不能单独证明只有一件“主件”承载全部定义，必须与 `[set item]`、`[part set index]` 和实际成员文件拓扑联合读取。 |
+| `[part set index]` | 需验证 | 单值零件套装关联号；不是闭合块。先用数值匹配 `etc/equipmentpartset.etc` 中 `[equipment part set]` 记录的首列，再把该记录的 `character/partset/*.equ` 路径按 `equipment/` 根读取。不要和 `[effect part set index]`、`[set item]` 混用。调整某一装扮等级的套装能力时，应先确认真正的 partset 能力 owner，再把相邻普通、稀有、克隆或其他等级 owner 作为负对照；生成后全部读回，并分别选代表实机，防止目标档调整误伤其他档。 |
+| `[piece set ability]` | 需验证 | 按套装件数生效的能力块；目标样本首值为所需件数，后续可包含属性、技能或触发效果字段。正常形态以 `[/piece set ability]` 闭合；目标包存在少量缺失闭合的残缺样本，不能据此省略结束标签。一个历史目标实机负例表明，高件数阈值不能自动视为继承全部低件数效果；应读取每个阈值，并按精确穿戴件数分别验证。 |
 | `[parameter basic explain]` | 需验证 | 通常位于 `[piece set ability]` 内的非闭合反引号说明文本；只负责描述，不证明同块效果实际生效。 |
 | `[fullset explain]` | 需验证 | `[set ability]` 内的非闭合套装说明文本；不能代替真实效果字段。 |
 | `[fullset basic explain]` | 需验证 | 非闭合的套装基础说明文本；目标样本多数位于 `[set ability]` 内，也存在根级样本，必须按实际位置读取。 |

@@ -34,6 +34,12 @@ const {
   isVerifiedInlineTextMode,
 } = require("../lib/semantic-read-guard");
 const { encodeLegacyText } = require("../../../tools/pvf-bridge/verified-inline-cn-text");
+const { expandUpgradeTableLevelEdit } = require("../lib/upgrade-table-level-edit");
+const { CAPABILITY_DEFINITIONS } = require("../lib/controlled-write-capabilities");
+const {
+  VERIFIED_TEXT_ELIGIBILITY_POLICY_ID,
+  VERIFIED_TEXT_ELIGIBILITY_POLICY_SHA256,
+} = require("../lib/verified-text-eligibility");
 
 function pathInside(root, candidate) {
   const relative = path.relative(path.resolve(root), path.resolve(candidate));
@@ -87,7 +93,7 @@ function createScript(tokens) {
 }
 
 function createBinaryAni() {
-  const output = Buffer.alloc(20);
+  const output = Buffer.alloc(26);
   let cursor = 0;
   output.writeUInt16LE(1, cursor); cursor += 2; // frame count
   output.writeUInt16LE(0, cursor); cursor += 2; // image count
@@ -96,7 +102,9 @@ function createBinaryAni() {
   output.writeInt16LE(-1, cursor); cursor += 2; // no image
   output.writeInt32LE(0, cursor); cursor += 4; // x
   output.writeInt32LE(0, cursor); cursor += 4; // y
-  output.writeUInt16LE(0, cursor); // frame property count
+  output.writeUInt16LE(1, cursor); cursor += 2; // frame property count
+  output.writeUInt16LE(12, cursor); cursor += 2; // [DELAY]
+  output.writeInt32LE(80, cursor); // delay value
   return output;
 }
 
@@ -113,7 +121,7 @@ function createFixturePvf(targetPath, options = {}) {
     "[job]",
     "[swordman]",
     "SwordmanSkill.lst",
-    "Swordman/MomentarySlashEx.skl",
+    "swordman/momentaryslashex.skl",
     "fixture skill",
     "[name2]",
     "Fixture Skill",
@@ -154,7 +162,12 @@ function createFixturePvf(targetPath, options = {}) {
   strings.push("test.cre", "測試寵物");
   const dungeonPathIndex = strings.length;
   const dungeonNameIndex = strings.length + 1;
-  strings.push("towers/towerofsighs.dgn", options.dungeonName || options.initialName || "fallback-fixture");
+  const illusionDungeonPathIndex = strings.length + 2;
+  strings.push(
+    "towers/towerofsighs.dgn",
+    options.dungeonName || options.initialName || "fallback-fixture",
+    "towers/towerofillusion.dgn",
+  );
   const questPathIndex = strings.length;
   const questNameIndex = strings.length + 1;
   const albertQuestPathIndex = strings.length + 2;
@@ -166,7 +179,69 @@ function createFixturePvf(targetPath, options = {}) {
     "common/albert_condition_2.qst",
     traditionalFixture ? "阿爾伯特的條件 (2/7)" : "阿尔伯特的条件 (2/7)",
   );
+  const towerDialogStringIndexes = {
+    explainTag: strings.length,
+    explainValue: strings.length + 1,
+    dialogTag: strings.length + 2,
+    firstDialog: strings.length + 3,
+    onStart: strings.length + 4,
+    secondDialog: strings.length + 5,
+    onComplete: strings.length + 6,
+  };
+  strings.push(
+    "[explain]",
+    traditionalFixture ? "幻影之塔舊說明" : "幻影之塔旧说明",
+    "[tower dialog]",
+    traditionalFixture ? "歡迎來到第一層" : "欢迎来到第一层",
+    "on start",
+    traditionalFixture ? "第二層歡迎\r\n請繼續前進" : "第二层欢迎\r\n请继续前进",
+    "on complete",
+  );
+  const explainExStringIndexes = {
+    tag: strings.length,
+    value: strings.length + 1,
+    basicTag: strings.length + 2,
+    basicValue: strings.length + 3,
+  };
+  strings.push(
+    "[explain ex]",
+    traditionalFixture ? "每級增加技能攻擊力。" : "每级增加技能攻击力。",
+    "[basic explain ex]",
+    traditionalFixture ? "特性技能的備用基礎說明。" : "特性技能的备用基础说明。",
+  );
+  const upgradeTableStringIndexes = {
+    table: strings.length,
+    tableEnd: strings.length + 1,
+    maxLevel: strings.length + 2,
+    common: strings.length + 3,
+    uncommon: strings.length + 4,
+    rare: strings.length + 5,
+    unique: strings.length + 6,
+    epic: strings.length + 7,
+    chronicle: strings.length + 8,
+    maxLevelEnd: strings.length + 9,
+    amplificationConst: strings.length + 10,
+    amplificationConstEnd: strings.length + 11,
+  };
+  strings.push(
+    "[table]", "[/table]", "[max upgrade level by rarity]",
+    "common", "uncommon", "rare", "unique", "epic", "chronicle",
+    "[/max upgrade level by rarity]", "[amplification const]", "[/amplification const]",
+  );
+  const upgradeTableValues = Array.from({ length: 20 * 17 }, (_, index) => index + 1);
+  const amplificationConstValues = Array.from({ length: 20 }, (_, level) => Array(4).fill(level * 10)).flat();
   const testScriptTokens = [[5, 2], [7, 3], [5, 4], [9, 0], [10, 5], [5, 6], [5, 18], [2, 10]];
+  const eventIntroTokens = [];
+  if (options.eventIntro) {
+    const values = ["[entry]", "[event info]", -1, 2, 4, "fixture event", "Intro", "20260101", "20261231",
+      traditionalFixture ? "舊版說明" : "旧版说明", "[/event info]", "[popupwindow design]", "[title]", "Intro",
+      "[explain]", traditionalFixture ? "舊版說明" : "旧版说明", 230, "[using ok button]", 1,
+      "[/popupwindow design]", "[/entry]"];
+    for (const value of values) {
+      if (typeof value === "number") eventIntroTokens.push([2, value]);
+      else { const index = strings.length; strings.push(value); eventIntroTokens.push([value.startsWith("[") ? 5 : 7, index]); }
+    }
+  }
   const secondScriptTokens = [[5, 2], [7, 17]];
   if (options.cnLocalized) {
     testScriptTokens.push([5, cnAnchorSectionIndex], [7, cnAnchorValueIndex]);
@@ -192,8 +267,20 @@ function createFixturePvf(targetPath, options = {}) {
       Buffer.from("\r\n", "ascii"),
     ])
     : Buffer.from("message_1>只读备用后端\r\n", "utf8");
+  const worldRegistryIndexes = { worldmap: strings.length, town: strings.length + 1, region: strings.length + 2,
+    gate: strings.length + 3, towns: strings.length + 4, townsEnd: strings.length + 5 };
+  strings.push("towers.wdm", "fixture.twn", "fixture.rgn", "[dungeon gate]", "[towns]", "[/towns]");
+  const scalarIndex = strings.length;
+  if (options.customScalar) strings.push("[custom caption]", "魂息 %d");
   const sourceFiles = [
-    { fileName: "stringtable.bin", data: createStringTable(strings, options.stringTableEncoding || "Utf8") },
+    ...(options.customScalar ? [{ fileName: "stackable/custom.stk", data: createScript([[5, scalarIndex], [7, scalarIndex + 1]]) }] : []),
+    { fileName: "worldmap/worldmap.lst", data: createScript([[2, 1], [7, worldRegistryIndexes.worldmap]]) },
+    { fileName: "town/town.lst", data: createScript([[2, 45], [7, worldRegistryIndexes.town]]) },
+    { fileName: "region/region.lst", data: createScript([[2, 1], [7, worldRegistryIndexes.region]]) },
+    { fileName: "town/fixture.twn", data: createScript([[5, worldRegistryIndexes.gate], [2, 2]]) },
+    { fileName: "region/fixture.rgn", data: createScript([[5, worldRegistryIndexes.towns], [2, 45], [5, worldRegistryIndexes.townsEnd]]) },
+    ...(options.eventIntro ? [{ fileName: "event/eventlistwindow.evt", data: createScript(eventIntroTokens) }] : []),
+    { fileName: "stringtable.bin", data: createStringTable([...strings, 'fixture/test.skl'], options.stringTableEncoding || "Utf8") },
     { fileName: "n_string.lst", data: createScript([[2, 0], [7, 0]]) },
     { fileName: "stringview/fixture.str", data: localizedStringView },
     { fileName: "itemshop/itemshop.lst", data: createScript([[2, 1], [7, 1]]) },
@@ -216,8 +303,22 @@ function createFixturePvf(targetPath, options = {}) {
     },
     { fileName: "creature/creature.lst", data: createScript([[2, 1], [7, creatureStringIndexes.path]]) },
     { fileName: "creature/test.cre", data: createScript([[5, 2], [7, creatureStringIndexes.name]]) },
-    { fileName: "dungeon/dungeon.lst", data: createScript([[2, 323], [7, dungeonPathIndex]]) },
+    {
+      fileName: "dungeon/dungeon.lst",
+      data: createScript([[2, 323], [7, dungeonPathIndex], [2, 324], [7, illusionDungeonPathIndex]]),
+    },
     { fileName: "dungeon/towers/towerofsighs.dgn", data: createScript([[5, 2], [7, dungeonNameIndex]]) },
+    {
+      fileName: "dungeon/towers/towerofillusion.dgn",
+      data: createScript([
+        [5, 2], [7, dungeonNameIndex],
+        [5, towerDialogStringIndexes.explainTag], [7, towerDialogStringIndexes.explainValue],
+        [5, towerDialogStringIndexes.dialogTag], [2, 1],
+        [7, towerDialogStringIndexes.firstDialog], [7, towerDialogStringIndexes.onStart],
+        [5, towerDialogStringIndexes.dialogTag], [2, 2],
+        [7, towerDialogStringIndexes.secondDialog], [7, towerDialogStringIndexes.onComplete],
+      ]),
+    },
     {
       fileName: "n_quest/quest.lst",
       data: createScript([[2, 9707], [7, questPathIndex], [2, 350], [7, albertQuestPathIndex]]),
@@ -231,13 +332,49 @@ function createFixturePvf(targetPath, options = {}) {
     { fileName: "skill/skilllist.lst", data: createScript([[2, 0], [7, 10]]) },
     { fileName: "skill/SwordmanSkill.lst", data: createScript([[2, 97], [7, 11]]) },
     {
-      fileName: "skill/Swordman/MomentarySlashEx.skl",
-      data: createScript([[5, 2], [7, 12], [5, 13], [7, 14], [5, 15], [7, 16]]),
+      fileName: "skill/swordman/momentaryslashex.skl",
+      data: createScript([
+        [5, 2], [7, 12], [5, 13], [7, 14], [5, 15], [7, 16],
+        [5, explainExStringIndexes.tag], [7, explainExStringIndexes.value],
+        [5, explainExStringIndexes.tag], [7, explainExStringIndexes.value],
+        [5, explainExStringIndexes.basicTag], [7, explainExStringIndexes.basicValue],
+      ]),
+    },
+    {
+      fileName: "etc/amplifyupgrade.etc",
+      data: createScript([
+        [5, upgradeTableStringIndexes.table],
+        ...upgradeTableValues.map((value) => [2, value]),
+        [5, upgradeTableStringIndexes.tableEnd],
+        [5, upgradeTableStringIndexes.maxLevel],
+        [7, upgradeTableStringIndexes.common], [2, 13],
+        [7, upgradeTableStringIndexes.uncommon], [2, 13],
+        ...(options.partialRarities ? [] : [
+          [7, upgradeTableStringIndexes.rare], [2, 13],
+          [7, upgradeTableStringIndexes.unique], [2, 13],
+          [7, upgradeTableStringIndexes.epic], [2, 13],
+          [7, upgradeTableStringIndexes.chronicle], [2, 13],
+        ]),
+        [5, upgradeTableStringIndexes.maxLevelEnd],
+        [5, upgradeTableStringIndexes.amplificationConst],
+        ...amplificationConstValues.map((value) => [2, value]),
+        [5, upgradeTableStringIndexes.amplificationConstEnd],
+      ]),
     },
     {
       fileName: "sqr/character/fixture_load_state.nut",
-      data: Buffer.from('pushScriptFiles("character/fixture/passive_skill_fixture.nut");\r\n', "utf8"),
+      data: Buffer.from('pushScriptFiles("character/fixture/passive_skill_fixture.nut");\r\nIRDSQRCharacter.pushState(ENUM_CHARACTERJOB_FIXTURE, "character/fixture/appendage/ap_fixture.nut", "Fixture", STATE_FIXTURE, SKILL_FIXTURE);\r\nIRDSQRCharacter.pushScriptFiles("Character/Fixture/fixture_common.nut");\r\nIRDSQRCharacter.pushScriptFiles("Character/Fixture/fixture_header.nut");\r\n', "utf8"),
     },
+    {
+      fileName: "sqr/character/fixture/fixture_common.nut",
+      data: Buffer.concat([
+        Buffer.from('// legacy-cn-byte:', "ascii"), Buffer.from([0x81, 0x20]),
+        Buffer.from('\r\nfunction legacy_empty(obj) {}\r\nfunction legacy_empty(obj) {}\r\nfunction useSkill_before_Fixture(obj) { return 1; }\r\nfunction useSkill_after_Fixture(obj) { return 1; }\r\nfunction procSkill_fixture(obj) { procSkill_Fixture(obj); }\r\nfunction procSkill_Fixture(obj) { return obj.sq_GetIntData(SKILL_FIXTURE, 0); }\r\n', "ascii"),
+      ]),
+    },
+    { fileName: "sqr/character/fixture/fixture_header.nut", data: Buffer.from('SKILL_FIXTURE <- 7\r\n', 'ascii') },
+    { fileName: "skill/fixtureskill.lst", data: createScript([[2, 7], [7, strings.length]]) },
+    { fileName: "skill/fixture/test.skl", data: createScript([[5, 2], [7, 12]]) },
     {
       fileName: "sqr/character/fixture/passive_skill_fixture.nut",
       data: Buffer.from('CNSquirrelAppendage.sq_AppendAppendage(obj, obj, -1, false, "character/fixture/appendage/ap_fixture.nut", true);\r\n', "utf8"),
@@ -247,7 +384,7 @@ function createFixturePvf(targetPath, options = {}) {
       data: Buffer.concat([
         Buffer.from('function onStart(appendage)\r\n{\r\n\t// legacy-cn-byte:', "ascii"),
         Buffer.from([0x81, 0x20]),
-        Buffer.from('\r\n\tappendage.sq_AddFunctionName("proc", "fixture_proc");\r\n}\r\n', "ascii"),
+        Buffer.from('\r\n\tappendage.sq_AddFunctionName("proc", "fixture_proc");\r\n}\r\nfunction onEndState_Fixture(obj) {};\r\n', "ascii"),
       ]),
     },
     {
@@ -259,6 +396,8 @@ function createFixturePvf(targetPath, options = {}) {
       data: Buffer.from("function fixture_status() { return CHANGE_STATUS_TYPE_ACTIVESTATUS_TOLERANCE_ALL; }\r\n", "utf8"),
     },
     { fileName: "script/fallback_fixture.nut", data: Buffer.from('function fallback_fixture() { return "needle"; }\r\n', "utf8") },
+    { fileName: "script/fallback_fixture.sqr", data: Buffer.from('function fallback_fixture() { return 1; }\r\n', "ascii") },
+    { fileName: "passiveobject/fallback_fixture.co", data: createScript([[5, 18], [2, 10]]) },
     { fileName: "sprite/fallback_fixture.ani", data: createBinaryAni() },
     { fileName: "raw/fixture.bin", data: Buffer.from([0, 1, 2, 3, 254, 255]) },
     { fileName: "raw/corrupt.txt", data: Buffer.from("corrupt encrypted fixture\r\n", "utf8"), corruptEncrypted: true },
@@ -660,7 +799,7 @@ async function main() {
     add(
       "fallback-search-name-includes-audited-worldmap-script-types",
       worldmapNameSearch.items.some((item) => item.fileName === "worldmap/towers.wdm") &&
-        worldmapNameSearch.searchedCount === 1,
+        worldmapNameSearch.searchedCount === 2,
     );
     const creatureNameSearch = await fallback.searchFiles(fallbackSessionId, {
       keyword: "測試寵物",
@@ -1344,6 +1483,10 @@ async function main() {
         rawReadResult?.textUsage?.mode === "canonical-change-source" &&
         rawReadResult?.textUsage?.safeForChangeSetSource === true &&
         rawReadResult?.textUsage?.canonicalTokenLayout === true &&
+        rawReadResult?.textUsage?.argumentSemantics?.textEncodingOption === "--pvf-encoding" &&
+        rawReadResult?.textUsage?.argumentSemantics?.containerOpenEncodingOption === "--encoding" &&
+        rawReadResult?.textUsage?.argumentSemantics?.containerOpenEncodingDoesNotSetTextEncoding === true &&
+        rawReadResult?.textUsage?.characterPagination?.argumentSemantics?.unsupportedOptions?.includes("--count") &&
         rawReadResult?.textUsage?.automaticEncodingSelection === undefined &&
         rawReadResult?.agentHandoff?.changeSetFormatExamples?.linkedVerifiedTextAndParameters ===
           "workspaces/examples/change-set.verified-cn-text.example.json" &&
@@ -1362,6 +1505,118 @@ async function main() {
         rawReadResult?.agentHandoff?.examplesDirectoryScanRequired === false &&
         rawReadResult?.agentHandoff?.helpProbeRequired === false,
       rawReadCli.status === 0 ? { result: rawReadResult } : { stderr: rawReadCli.stderr },
+    );
+
+    const canonicalCharacterPageCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "read",
+        "--pvf", fixturePath,
+        "--encoding", "Utf8",
+        "--pvf-encoding", "Utf8",
+        "--path", "itemshop/test.shp",
+        "--raw",
+        "--start-char", "2",
+        "--max-chars", "8",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    const aliasCharacterPageCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "read",
+        "--pvf", fixturePath,
+        "--encoding", "Utf8",
+        "--pvf-encoding", "Utf8",
+        "--path", "itemshop/test.shp",
+        "--raw",
+        "--offset", "2",
+        "--limit", "8",
+      ],
+      {
+        cwd: workbenchRoot,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        env: { ...process.env, PVF_WORKBENCH_BACKEND: "typescript-readonly" },
+      },
+    );
+    let canonicalCharacterPageResult = null;
+    let aliasCharacterPageResult = null;
+    try { canonicalCharacterPageResult = JSON.parse(canonicalCharacterPageCli.stdout || "null"); } catch { /* assertion below */ }
+    try { aliasCharacterPageResult = JSON.parse(aliasCharacterPageCli.stdout || "null"); } catch { /* assertion below */ }
+    add(
+      "cli-read-canonical-character-pagination-and-continuation",
+      canonicalCharacterPageCli.status === 0 &&
+        canonicalCharacterPageResult?.result?.returnedRange?.startChar === 2 &&
+        canonicalCharacterPageResult?.result?.returnedRange?.endCharExclusive === 10 &&
+        canonicalCharacterPageResult?.result?.returnedCharCount === 8 &&
+        canonicalCharacterPageResult?.result?.hasMore === true &&
+        canonicalCharacterPageResult?.result?.nextStartChar === 10 &&
+        /^[a-f0-9]{64}$/u.test(canonicalCharacterPageResult?.textUsage?.rawTextBindings?.[0]?.segmentTextSha256 || "") &&
+        canonicalCharacterPageResult?.textUsage?.rawTextBindings?.[0]?.sourceTextSha256 === null &&
+        canonicalCharacterPageResult?.agentHandoff?.readContinuation?.nextCommandOnly?.includes("--start-char 10 --max-chars 8") &&
+        canonicalCharacterPageResult?.agentHandoff?.readContinuation?.nextCommandOnly?.includes("--pvf-encoding Utf8 --raw"),
+      canonicalCharacterPageCli.status === 0 ? canonicalCharacterPageResult : { stderr: canonicalCharacterPageCli.stderr },
+    );
+    add(
+      "cli-read-pagination-compatibility-aliases-match-canonical-page",
+      aliasCharacterPageCli.status === 0 &&
+        aliasCharacterPageResult?.result?.textContent === canonicalCharacterPageResult?.result?.textContent &&
+        aliasCharacterPageResult?.result?.returnedRange?.startChar === 2 &&
+        aliasCharacterPageResult?.result?.returnedRange?.endCharExclusive === 10 &&
+        aliasCharacterPageResult?.textUsage?.rawTextBindings?.[0]?.segmentTextSha256 ===
+          canonicalCharacterPageResult?.textUsage?.rawTextBindings?.[0]?.segmentTextSha256 &&
+        aliasCharacterPageResult?.textUsage?.argumentSemantics?.compatibilityAliases?.["--offset"] === "--start-char" &&
+        aliasCharacterPageResult?.textUsage?.argumentSemantics?.compatibilityAliases?.["--limit"] === "--max-chars",
+      aliasCharacterPageCli.status === 0 ? aliasCharacterPageResult : { stderr: aliasCharacterPageCli.stderr },
+    );
+
+    const unknownCountCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "read",
+        "--pvf", fixturePath,
+        "--path", "itemshop/test.shp",
+        "--offset", "2",
+        "--count", "8",
+      ],
+      { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 8 * 1024 * 1024 },
+    );
+    add(
+      "cli-read-rejects-unknown-count-with-pagination-recovery",
+      unknownCountCli.status !== 0 &&
+        /Unknown option for pvf-read read: --count/u.test(unknownCountCli.stderr || "") &&
+        /--max-chars/u.test(unknownCountCli.stderr || "") &&
+        /--limit/u.test(unknownCountCli.stderr || ""),
+      { status: unknownCountCli.status, stderr: unknownCountCli.stderr },
+    );
+
+    const wrongSubcommandOptionCli = childProcess.spawnSync(
+      process.execPath,
+      [
+        path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-readonly.js"),
+        "--root", workbenchRoot,
+        "adapter-info",
+        "--limit", "8",
+      ],
+      { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 8 * 1024 * 1024 },
+    );
+    add(
+      "cli-rejects-option-on-wrong-pvf-read-subcommand",
+      wrongSubcommandOptionCli.status !== 0 &&
+        /Unknown option for pvf-read adapter-info: --limit/u.test(wrongSubcommandOptionCli.stderr || ""),
+      { status: wrongSubcommandOptionCli.status, stderr: wrongSubcommandOptionCli.stderr },
     );
 
     const autoTwRawReadCli = childProcess.spawnSync(
@@ -1397,6 +1652,8 @@ async function main() {
         autoTwRawReadResult?.textUsage?.automaticEncodingSelection?.automatic === true &&
         autoTwRawReadResult?.textUsage?.automaticEncodingSelection?.perFile?.[0]?.requestedEncoding === "Cn" &&
         autoTwRawReadResult?.textUsage?.automaticEncodingSelection?.perFile?.[0]?.selectedEncoding === "Tw" &&
+        autoTwRawReadResult?.textUsage?.argumentSemantics?.explicitContainerEncodingWithoutExplicitTextEncoding === true &&
+        autoTwRawReadResult?.textUsage?.argumentSemantics?.correction?.includes("--pvf-encoding Tw") &&
         autoTwRawReadResult?.textUsage?.rawTextBindings?.[0]?.complete === true &&
         /^[a-f0-9]{64}$/u.test(autoTwRawReadResult?.textUsage?.rawTextBindings?.[0]?.sourceTextSha256 || ""),
       autoTwRawReadResult,
@@ -1763,8 +2020,70 @@ async function main() {
         },
       );
 
-      const controlledRegistryRead = parseBackendTextResult(await controlledServerClient.callTool("pvf_read_file", {
+      const controlledAniPlan = parseBackendTextResult(await controlledServerClient.callTool("pvf_apply_text_plan", {
         sessionId: controlledPlanSessionId,
+        pvfPath: "sprite/fallback_fixture.ani",
+        pvfEncoding: "Utf8",
+        dryRun: false,
+        changes: [{
+          id: "binary-ani-delay-fixture",
+          previousText: "[DELAY]\r\n\t\t80",
+          newText: "[DELAY]\r\n\t\t10000",
+          replaceAll: false,
+          expectedOccurrences: 1,
+        }],
+      }));
+      const controlledAniOutput = path.join(tempRoot, "controlled-binary-ani-output.pvf");
+      const controlledAniSave = parseBackendTextResult(await controlledServerClient.callTool("pvf_save", {
+        sessionId: controlledPlanSessionId,
+        targetPath: controlledAniOutput,
+        allowOverwriteSource: false,
+      }));
+      const controlledAniReadbackOpened = parseBackendTextResult(await controlledServerClient.callTool("pvf_open", {
+        path: controlledAniOutput,
+        encoding: "Utf8",
+      }));
+      const controlledAniReadbackSessionId = controlledAniReadbackOpened?.session?.sessionId;
+      const controlledAniReadback = parseBackendTextResult(await controlledServerClient.callTool("pvf_read_file", {
+        sessionId: controlledAniReadbackSessionId,
+        pvfPath: "sprite/fallback_fixture.ani",
+        pvfEncoding: "Utf8",
+        semanticVerificationRead: true,
+        rawSha256Only: false,
+      }));
+      const controlledAniRawReadback = parseBackendTextResult(await controlledServerClient.callTool("pvf_read_file", {
+        sessionId: controlledAniReadbackSessionId,
+        pvfPath: "sprite/fallback_fixture.ani",
+        pvfEncoding: "Utf8",
+        semanticVerificationRead: true,
+        rawSha256Only: true,
+      }));
+      await controlledServerClient.callTool("pvf_close", { sessionId: controlledAniReadbackSessionId });
+      add(
+        "controlled-binary-ani-delay-byte-patch-and-independent-readback",
+        controlledAniPlan?.ok === true &&
+          controlledAniPlan?.results?.[0]?.mode === "raw-ascii-binary-ani" &&
+          controlledAniPlan?.results?.[0]?.changedFieldCount === 1 &&
+          controlledAniPlan?.results?.[0]?.changedFieldTags?.[0] === "DELAY" &&
+          controlledAniPlan?.results?.[0]?.rawBytePreservingPatch === true &&
+          controlledAniPlan?.results?.[0]?.wholeFileReencodingUsed === false &&
+          controlledAniPlan?.results?.[0]?.nonTargetRawBytesPreserved === true &&
+          controlledAniSave?.ok === true &&
+          (controlledAniReadback?.textContent || "").includes("[DELAY]\r\n\t\t10000") &&
+          controlledAniRawReadback?.rawContentSha256 === controlledAniPlan?.results?.[0]?.outputRawSha256 &&
+          sha256File(fixturePath) === sourceSha,
+        { plan: controlledAniPlan, save: controlledAniSave, readback: controlledAniReadback, rawReadback: controlledAniRawReadback },
+      );
+
+      await controlledServerClient.callTool("pvf_close", { sessionId: controlledPlanSessionId });
+      const controlledRegistryOpened = parseBackendTextResult(await controlledServerClient.callTool("pvf_open", {
+        path: fixturePath,
+        encoding: "Utf8",
+      }));
+      const controlledRegistrySessionId = controlledRegistryOpened?.session?.sessionId;
+
+      const controlledRegistryRead = parseBackendTextResult(await controlledServerClient.callTool("pvf_read_file", {
+        sessionId: controlledRegistrySessionId,
         pvfPath: "itemshop/itemshop.lst",
         pvfEncoding: "Utf8",
         convertToSimplifiedChinese: false,
@@ -1786,7 +2105,7 @@ async function main() {
         },
       };
       const controlledRegistryRewrite = parseBackendTextResult(await controlledServerClient.callTool("pvf_replace_text", {
-        sessionId: controlledPlanSessionId,
+        sessionId: controlledRegistrySessionId,
         pvfPath: "itemshop/itemshop.lst",
         previousText: controlledRegistryRow,
         newText: `99\t\`rewritten.shp\`${controlledRegistryNewline}2\t\`new.shp\``,
@@ -1798,7 +2117,7 @@ async function main() {
         writeProof: controlledRegistryProof,
       }));
       const controlledRegistryMisroute = parseBackendTextResult(await controlledServerClient.callTool("pvf_replace_text", {
-        sessionId: controlledPlanSessionId,
+        sessionId: controlledRegistrySessionId,
         pvfPath: "itemshop/test.shp",
         previousText: "fallback-fixture",
         newText: "fallback-preview",
@@ -1813,7 +2132,7 @@ async function main() {
         },
       }));
       const controlledRegistryAdd = parseBackendTextResult(await controlledServerClient.callTool("pvf_replace_text", {
-        sessionId: controlledPlanSessionId,
+        sessionId: controlledRegistrySessionId,
         pvfPath: "itemshop/itemshop.lst",
         previousText: controlledRegistryRow,
         newText: `${controlledRegistryRow}${controlledRegistryNewline}2\t\`new.shp\``,
@@ -1842,8 +2161,11 @@ async function main() {
           add: controlledRegistryAdd,
         },
       );
-      await controlledServerClient.callTool("pvf_close", { sessionId: controlledPlanSessionId });
+      await controlledServerClient.callTool("pvf_close", { sessionId: controlledRegistrySessionId });
 
+      const controlledNutCases = [];
+      let controlledNutPreviousText, controlledNutNewText, controlledNutProof, controlledNutSourceText, controlledNutExpectedText;
+      for (const directStateCase of [false, true]) {
       const controlledNutOpened = parseBackendTextResult(await controlledServerClient.callTool("pvf_open", {
         path: fixturePath,
         encoding: "Cn",
@@ -1857,9 +2179,9 @@ async function main() {
         autoConvertStringLink: false,
         semanticVerificationRead: true,
       }));
-      const controlledNutSourceText = String(controlledNutRead?.textContent || "");
-      const controlledNutAddedFunction = 'function fixture_apply_status(obj)\r\n{\r\n\tCNSquirrelAppendage.sq_AddChangeStatusAppendageID(obj, obj, 120, CHANGE_STATUS_TYPE_ACTIVESTATUS_TOLERANCE_ALL, false, 100, 9901);\r\n}\r\n';
-      const controlledNutProof = {
+      controlledNutSourceText = String(controlledNutRead?.textContent || "");
+      let controlledNutAddedFunction = 'function fixture_apply_status(obj)\r\n{\r\n\tCNSquirrelAppendage.sq_AddChangeStatusAppendageID(obj, obj, 120, CHANGE_STATUS_TYPE_ACTIVESTATUS_TOLERANCE_ALL, false, 100, 9901);\r\n}\r\n';
+      controlledNutProof = {
         mode: "existing-nut-controlled-edit",
         sourceTextSha256: crypto.createHash("sha256").update(controlledNutSourceText).digest("hex"),
         structureCheckRequired: true,
@@ -1884,8 +2206,18 @@ async function main() {
         ],
         apidPlan: { namespace: "fallback-fixture", ids: [9901], conflictSearchRequired: true },
       };
-      const controlledNutPreviousText = "}\r\n";
-      const controlledNutNewText = `}\r\n\r\n${controlledNutAddedFunction}`;
+      if (directStateCase) {
+        controlledNutAddedFunction = controlledNutAddedFunction.replace("fixture_apply_status", "onSetState_Fixture");
+        controlledNutProof.loadChainKind = "direct-character-state";
+        controlledNutProof.loadChain = [{
+          fromPvfPath: "sqr/character/fixture_load_state.nut",
+          toPvfPath: "sqr/character/fixture/appendage/ap_fixture.nut",
+          requiredText: 'IRDSQRCharacter.pushState(ENUM_CHARACTERJOB_FIXTURE, "character/fixture/appendage/ap_fixture.nut", "Fixture", STATE_FIXTURE, SKILL_FIXTURE);',
+        }];
+        controlledNutProof.touchedFunctions = ["onSetState_Fixture"];
+      }
+      controlledNutPreviousText = "}\r\n";
+      controlledNutNewText = `}\r\n\r\n${controlledNutAddedFunction}`;
       const controlledNutSingleBypass = parseBackendTextResult(await controlledServerClient.callTool("pvf_replace_text", {
         sessionId: controlledNutSessionId,
         pvfPath: "sqr/character/fixture/appendage/ap_fixture.nut",
@@ -1909,7 +2241,7 @@ async function main() {
           writeProof: controlledNutProof,
         }],
       }));
-      const controlledNutOutput = path.join(tempRoot, "controlled-existing-nut-output.pvf");
+      const controlledNutOutput = path.join(tempRoot, `controlled-existing-nut-${directStateCase ? "state" : "appendage"}-output.pvf`);
       const controlledNutSave = parseBackendTextResult(await controlledServerClient.callTool("pvf_save", {
         sessionId: controlledNutSessionId,
         targetPath: controlledNutOutput,
@@ -1930,9 +2262,10 @@ async function main() {
         semanticVerificationRead: true,
       }));
       await controlledServerClient.callTool("pvf_close", { sessionId: controlledNutReadbackSessionId });
-      const controlledNutExpectedText = controlledNutSourceText.replace(controlledNutPreviousText, controlledNutNewText);
+      controlledNutExpectedText = controlledNutSourceText.replace(controlledNutPreviousText, controlledNutNewText);
+      controlledNutCases.push({ directStateCase, proof: controlledNutProof, newText: controlledNutNewText, sourceText: controlledNutSourceText, previousText: controlledNutPreviousText, targetPath: "sqr/character/fixture/appendage/ap_fixture.nut" });
       add(
-        "controlled-existing-nut-batch-write-and-independent-readback",
+        directStateCase ? "controlled-existing-state-batch-write-and-independent-readback" : "controlled-existing-nut-batch-write-and-independent-readback",
         controlledNutSingleBypass?.data?.code === "EXISTING_NUT_BATCH_PLAN_REQUIRED" &&
           controlledNutPlan?.ok === true &&
           controlledNutPlan?.existingNutTransition?.ok === true &&
@@ -1950,6 +2283,8 @@ async function main() {
           sha256File(fixturePath) === sourceSha,
         { singleBypass: controlledNutSingleBypass, plan: controlledNutPlan, save: controlledNutSave, readback: controlledNutReadback },
       );
+
+      }
 
       const controlledCnOpened = parseBackendTextResult(await controlledServerClient.callTool("pvf_open", {
         path: cnFixturePath,
@@ -2071,9 +2406,44 @@ async function main() {
       controlledServerClient.stop();
       controlledServerClient = null;
 
-      const controlledNutCliChangeSetFile = path.join(tempRoot, "controlled-existing-nut-cli-change-set.json");
-      const controlledNutCliDryRunRoot = path.join(tempRoot, "controlled-existing-nut-cli-dry-run");
-      const controlledNutCliApplyRoot = path.join(tempRoot, "controlled-existing-nut-cli-apply");
+      const skillUseOpened = await fallback.openSession(fixturePath, "Cn");
+      const skillUseTarget = "sqr/character/fixture/fixture_common.nut";
+      const skillUseOriginal = await fallback.readFile(skillUseOpened.sessionId, skillUseTarget, { pvfEncoding: "Cn" });
+      await fallback.closeSession(skillUseOpened.sessionId);
+      const skillUseSource = String(skillUseOriginal.textContent);
+      controlledNutCases.push({
+        skillUseCase: true, targetPath: skillUseTarget, sourceText: skillUseSource,
+        previousText: "function useSkill_before_Fixture(obj) { return 1; }",
+        newText: "function useSkill_before_Fixture(obj) { CNSquirrelAppendage.sq_AddChangeStatusAppendageID(obj, obj, 120, CHANGE_STATUS_TYPE_ACTIVESTATUS_TOLERANCE_ALL, false, 100, 9901); return 1; }",
+        proof: { ...controlledNutProof, sourceTextSha256: crypto.createHash("sha256").update(skillUseSource).digest("hex"),
+          loadChainKind: "direct-character-skill-use", touchedFunctions: ["useSkill_before_Fixture"],
+          loadChain: [{ fromPvfPath: "sqr/character/fixture_load_state.nut", toPvfPath: skillUseTarget, requiredText: 'IRDSQRCharacter.pushScriptFiles("Character/Fixture/fixture_common.nut");' }],
+        },
+      });
+      controlledNutCases.push({
+        skillProcCase: true, targetPath: skillUseTarget, sourceText: skillUseSource,
+        previousText: 'return obj.sq_GetIntData(SKILL_FIXTURE, 0);',
+        newText: 'return obj.sq_GetIntData(SKILL_FIXTURE, 1);',
+        proof: { ...controlledNutProof, sourceTextSha256: crypto.createHash('sha256').update(skillUseSource).digest('hex'),
+          loadChainKind: 'direct-character-skill-proc', touchedFunctions: ['procSkill_Fixture'],
+          loadChain: [{ fromPvfPath: 'sqr/character/fixture_load_state.nut', toPvfPath: skillUseTarget, requiredText: 'IRDSQRCharacter.pushScriptFiles("Character/Fixture/fixture_common.nut");' }],
+          skillProc: { dispatcher: 'procSkill_fixture', requiredCall: 'procSkill_Fixture(obj);', skillId: 7, skillRegistryPath: 'skill/fixtureskill.lst', skillPvfPath: 'skill/fixture/test.skl',
+            stateRegistration: { fromPvfPath: 'sqr/character/fixture_load_state.nut', toPvfPath: 'sqr/character/fixture/appendage/ap_fixture.nut', requiredText: 'IRDSQRCharacter.pushState(ENUM_CHARACTERJOB_FIXTURE, "character/fixture/appendage/ap_fixture.nut", "Fixture", STATE_FIXTURE, SKILL_FIXTURE);' },
+            headerRegistration: { fromPvfPath: 'sqr/character/fixture_load_state.nut', toPvfPath: 'sqr/character/fixture/fixture_header.nut', requiredText: 'IRDSQRCharacter.pushScriptFiles("Character/Fixture/fixture_header.nut");' } },
+          apiSymbols: [{ name: 'sq_GetIntData', kind: 'function', targetEvidencePaths: [skillUseTarget] }],
+          apidPlan: { namespace: 'fixture-skill-proc', ids: [], conflictSearchRequired: true },
+        },
+      });
+      let controlledNutCli, controlledNutCliEnv;
+      for (const nutCase of controlledNutCases) {
+      controlledNutProof = nutCase.proof;
+      controlledNutNewText = nutCase.newText;
+      controlledNutSourceText = nutCase.sourceText;
+      controlledNutPreviousText = nutCase.previousText;
+      const nutCaseKind = nutCase.skillProcCase ? "skill-proc" : nutCase.skillUseCase ? "skill-use" : nutCase.directStateCase ? "state" : "appendage";
+      const controlledNutCliChangeSetFile = path.join(tempRoot, `controlled-existing-nut-cli-${nutCaseKind}-change-set.json`);
+      const controlledNutCliDryRunRoot = path.join(tempRoot, `controlled-existing-nut-cli-${nutCaseKind}-dry-run`);
+      const controlledNutCliApplyRoot = path.join(tempRoot, `controlled-existing-nut-cli-${nutCaseKind}-apply`);
       fs.writeFileSync(controlledNutCliChangeSetFile, `${JSON.stringify({
         schemaVersion: "1.0",
         mode: "dry-run-only",
@@ -2086,7 +2456,7 @@ async function main() {
         changes: [{
           id: "existing-nut-cli-round-trip",
           type: "replace-text",
-          pvfPath: "sqr/character/fixture/appendage/ap_fixture.nut",
+          pvfPath: nutCase.targetPath,
           previousText: controlledNutPreviousText,
           newText: controlledNutNewText,
           replaceAll: false,
@@ -2102,8 +2472,8 @@ async function main() {
           requiresReadback: true,
         },
       }, null, 2)}\n`, "utf8");
-      const controlledNutCli = path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-change-set.js");
-      const controlledNutCliEnv = { ...process.env, PVF_WORKBENCH_BACKEND: "native" };
+      controlledNutCli = path.join(workbenchRoot, "core", "pvf-agent-core", "cli", "pvf-change-set.js");
+      controlledNutCliEnv = { ...process.env, PVF_WORKBENCH_BACKEND: "native" };
       const controlledNutValidateProcess = childProcess.spawnSync(process.execPath, [
         controlledNutCli,
         "--root", workbenchRoot,
@@ -2148,7 +2518,7 @@ async function main() {
         try {
           controlledNutCliReadback = await fallback.readFile(
             controlledNutCliOpened.sessionId,
-            "sqr/character/fixture/appendage/ap_fixture.nut",
+            nutCase.targetPath,
             { pvfEncoding: "Cn" },
           );
         } finally {
@@ -2194,7 +2564,7 @@ async function main() {
         sha256File(fixturePath) === sourceSha &&
         sha256File(controlledNutApplyManifest.protectedSourcePvf) === sourceSha;
       add(
-        "existing-nut-cli-validate-dry-run-apply-independent-readback",
+        `existing-${nutCaseKind === "appendage" ? "nut" : nutCaseKind}-cli-validate-dry-run-apply-independent-readback`,
         controlledNutCliOk,
         controlledNutCliOk ? undefined : {
           validate: controlledNutValidateResult,
@@ -2206,6 +2576,148 @@ async function main() {
           applyStderr: controlledNutApplyProcess?.stderr,
           applyManifest: controlledNutApplyManifest,
           readback: controlledNutCliReadback,
+          sourceUnchanged: sha256File(fixturePath) === sourceSha,
+        },
+      );
+
+      }
+
+      const controlledAniCliChangeSetFile = path.join(tempRoot, "controlled-binary-ani-cli-change-set.json");
+      const controlledAniCliDryRunRoot = path.join(tempRoot, "controlled-binary-ani-cli-dry-run");
+      const controlledAniCliApplyRoot = path.join(tempRoot, "controlled-binary-ani-cli-apply");
+      fs.writeFileSync(controlledAniCliChangeSetFile, `${JSON.stringify({
+        schemaVersion: "1.0",
+        mode: "dry-run-only",
+        description: "Synthetic CLI round trip for a controlled existing binary ANI delay edit.",
+        target: {
+          sourcePvf: fixturePath,
+          pvfOpenEncoding: "Utf8",
+          pvfReadEncoding: "Utf8",
+        },
+        changes: [{
+          id: "binary-ani-delay-cli-round-trip",
+          type: "replace-text",
+          pvfPath: "sprite/fallback_fixture.ani",
+          previousText: "[DELAY]\r\n\t\t80",
+          newText: "[DELAY]\r\n\t\t10000",
+          replaceAll: false,
+          expectedOccurrences: 1,
+          pvfEncoding: "Utf8",
+          rationale: "Exercise validate, dry-run byte proof, temporary PVF probe, apply, and raw SHA256 readback.",
+        }],
+        safety: {
+          writeModeEnabled: false,
+          requiresBackupBeforeApply: true,
+          requiresExplicitOutputPath: true,
+          requiresReadback: true,
+        },
+      }, null, 2)}\n`, "utf8");
+      const controlledAniValidateProcess = childProcess.spawnSync(process.execPath, [
+        controlledNutCli,
+        "--root", workbenchRoot,
+        "validate",
+        "--file", controlledAniCliChangeSetFile,
+      ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: controlledNutCliEnv });
+      let controlledAniValidateResult = null;
+      try { controlledAniValidateResult = JSON.parse(controlledAniValidateProcess.stdout || "null"); } catch { /* recorded below */ }
+      const controlledAniDryRunProcess = controlledAniValidateProcess.status === 0
+        ? childProcess.spawnSync(process.execPath, [
+          controlledNutCli,
+          "--root", workbenchRoot,
+          "dry-run",
+          "--file", controlledAniCliChangeSetFile,
+          "--out", controlledAniCliDryRunRoot,
+        ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: controlledNutCliEnv })
+        : null;
+      let controlledAniDryRunResult = null;
+      try { controlledAniDryRunResult = JSON.parse(controlledAniDryRunProcess?.stdout || "null"); } catch { /* recorded below */ }
+      const controlledAniDryRunManifest = controlledAniDryRunResult?.manifestPath && fs.existsSync(controlledAniDryRunResult.manifestPath)
+        ? JSON.parse(fs.readFileSync(controlledAniDryRunResult.manifestPath, "utf8"))
+        : null;
+      const controlledAniApplyProcess = controlledAniDryRunProcess?.status === 0 && controlledAniDryRunResult?.approvalCode
+        ? childProcess.spawnSync(process.execPath, [
+          controlledNutCli,
+          "--root", workbenchRoot,
+          "apply",
+          "--file", controlledAniCliChangeSetFile,
+          "--dry-run-manifest", controlledAniDryRunResult.manifestPath,
+          "--authorize-apply", controlledAniDryRunResult.approvalCode,
+          "--out", controlledAniCliApplyRoot,
+        ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: controlledNutCliEnv })
+        : null;
+      let controlledAniApplyResult = null;
+      try { controlledAniApplyResult = JSON.parse(controlledAniApplyProcess?.stdout || "null"); } catch { /* recorded below */ }
+      const controlledAniApplyManifest = controlledAniApplyResult?.manifestPath && fs.existsSync(controlledAniApplyResult.manifestPath)
+        ? JSON.parse(fs.readFileSync(controlledAniApplyResult.manifestPath, "utf8"))
+        : null;
+      let controlledAniCliReadback = null;
+      let controlledAniCliRawSha256 = null;
+      if (controlledAniApplyManifest?.outputPvf && fs.existsSync(controlledAniApplyManifest.outputPvf)) {
+        const controlledAniCliOpened = await fallback.openSession(controlledAniApplyManifest.outputPvf, "Utf8");
+        try {
+          controlledAniCliReadback = await fallback.readFile(
+            controlledAniCliOpened.sessionId,
+            "sprite/fallback_fixture.ani",
+            { pvfEncoding: "Utf8" },
+          );
+          const controlledAniCliRaw = await fallback.readFile(
+            controlledAniCliOpened.sessionId,
+            "sprite/fallback_fixture.ani",
+            { decompileBinaryAni: false, rawContent: true },
+          );
+          controlledAniCliRawSha256 = crypto.createHash("sha256")
+            .update(Buffer.from(controlledAniCliRaw.base64Content || "", "base64"))
+            .digest("hex");
+        } finally {
+          await fallback.closeSession(controlledAniCliOpened.sessionId);
+        }
+      }
+      const controlledAniDryResult = controlledAniDryRunManifest?.results?.[0];
+      const controlledAniApplyReadback = controlledAniApplyManifest?.readback?.[0];
+      const controlledAniCliOk =
+        controlledAniValidateProcess.status === 0 &&
+        controlledAniValidateResult?.ok === true &&
+        controlledAniDryRunProcess?.status === 0 &&
+        controlledAniDryRunResult?.summary?.blockedCount === 0 &&
+        typeof controlledAniDryRunResult?.approvalCode === "string" &&
+        controlledAniDryRunManifest?.safety?.existingBinaryAniDelayOnly === true &&
+        controlledAniDryRunManifest?.safety?.existingBinaryAniRoundTripExecuted === true &&
+        controlledAniDryRunManifest?.summary?.existingBinaryAniDelayPassedCount === 1 &&
+        controlledAniDryResult?.rawAsciiTokenPlanProof?.mode === "raw-ascii-binary-ani" &&
+        controlledAniDryResult?.rawAsciiTokenPlanProof?.changedFieldTags?.[0] === "DELAY" &&
+        controlledAniDryResult?.rawAsciiTokenPlanProof?.rawBytePreservingPatch === true &&
+        controlledAniDryResult?.rawAsciiTokenPlanProof?.wholeFileReencodingUsed === false &&
+        controlledAniDryResult?.rawAsciiTokenPlanProof?.nonTargetRawBytesPreserved === true &&
+        controlledAniDryResult?.binaryAniRoundTripProbe?.ok === true &&
+        controlledAniDryResult?.binaryAniRoundTripProbe?.rawByteReadbackOk === true &&
+        controlledAniDryResult?.binaryAniRoundTripProbe?.temporaryOutputRetained === false &&
+        controlledAniApplyProcess?.status === 0 &&
+        controlledAniApplyManifest?.safety?.sourceUnchanged === true &&
+        controlledAniApplyManifest?.safety?.backupSha256Verified === true &&
+        controlledAniApplyManifest?.safety?.readbackOk === true &&
+        controlledAniApplyManifest?.summary?.existingBinaryAniDelayReadbackPassedCount === 1 &&
+        controlledAniApplyReadback?.controlledBinaryAni === true &&
+        controlledAniApplyReadback?.independentSemanticRead === true &&
+        controlledAniApplyReadback?.independentRawRead === true &&
+        controlledAniApplyReadback?.rawByteReadbackOk === true &&
+        controlledAniApplyReadback?.expectedOutputRawSha256 === controlledAniApplyReadback?.actualOutputRawSha256 &&
+        controlledAniCliRawSha256 === controlledAniApplyReadback?.actualOutputRawSha256 &&
+        (controlledAniCliReadback?.textContent || "").includes("[DELAY]\r\n\t\t10000") &&
+        sha256File(fixturePath) === sourceSha;
+      add(
+        "binary-ani-cli-validate-dry-run-apply-raw-sha256-readback",
+        controlledAniCliOk,
+        controlledAniCliOk ? undefined : {
+          validate: controlledAniValidateResult,
+          validateStderr: controlledAniValidateProcess.stderr,
+          dryRun: controlledAniDryRunResult,
+          dryRunStderr: controlledAniDryRunProcess?.stderr,
+          dryRunManifest: controlledAniDryRunManifest,
+          apply: controlledAniApplyResult,
+          applyStderr: controlledAniApplyProcess?.stderr,
+          applyManifest: controlledAniApplyManifest,
+          readback: controlledAniCliReadback,
+          rawSha256: controlledAniCliRawSha256,
           sourceUnchanged: sha256File(fixturePath) === sourceSha,
         },
       );
@@ -2243,6 +2755,15 @@ async function main() {
             pvfEncoding: "Cn",
           },
           {
+            id: "same-file-numeric-after-text-in-change-set",
+            type: "replace-text",
+            pvfPath: "itemshop/test.shp",
+            previousText: "[value]\r\n10",
+            newText: "[value]\r\n11",
+            replaceAll: false,
+            pvfEncoding: "Cn",
+          },
+          {
             id: "verified-cn-name",
             type: "replace-text",
             pvfPath: "itemshop/test.shp",
@@ -2250,15 +2771,6 @@ async function main() {
             newText: "`中文端到端`",
             replaceAll: false,
             textWriteMode: VERIFIED_INLINE_CN_TEXT_MODE,
-            pvfEncoding: "Cn",
-          },
-          {
-            id: "same-file-numeric-after-text-in-change-set",
-            type: "replace-text",
-            pvfPath: "itemshop/test.shp",
-            previousText: "[value]\r\n10",
-            newText: "[value]\r\n11",
-            replaceAll: false,
             pvfEncoding: "Cn",
           },
           {
@@ -2282,15 +2794,6 @@ async function main() {
             pvfEncoding: "Cn",
           },
           {
-            id: "ordinary-description-delete-after-text",
-            type: "replace-text",
-            pvfPath: "itemshop/second.shp",
-            previousText: "\r\n[description]\r\n``\r\n",
-            newText: "",
-            replaceAll: false,
-            pvfEncoding: "Cn",
-          },
-          {
             id: "verified-cn-skill-name",
             type: "replace-text",
             pvfPath: "itemshop/second.shp",
@@ -2298,6 +2801,15 @@ async function main() {
             newText: "`中文技能名称`",
             replaceAll: false,
             textWriteMode: VERIFIED_INLINE_CN_TEXT_MODE,
+            pvfEncoding: "Cn",
+          },
+          {
+            id: "ordinary-description-delete-after-text",
+            type: "replace-text",
+            pvfPath: "itemshop/second.shp",
+            previousText: "\r\n[description]\r\n``\r\n",
+            newText: "",
+            replaceAll: false,
             pvfEncoding: "Cn",
           },
           {
@@ -2454,6 +2966,11 @@ async function main() {
         typeof dryRunResult?.approvalCode === "string" &&
         applyProcess?.status === 0 &&
         applyManifest?.safety?.sourceUnchanged === true &&
+        applyManifest?.safety?.verifiedTextEligibilityPolicyId === VERIFIED_TEXT_ELIGIBILITY_POLICY_ID &&
+        applyManifest?.safety?.verifiedTextEligibilityPolicySha256 === VERIFIED_TEXT_ELIGIBILITY_POLICY_SHA256 &&
+        applyManifest?.safety?.verifiedTextEligibilityDefaultBlocked === true &&
+        applyManifest?.safety?.verifiedTextEligibilityProofBoundToDryRunAndApply === true &&
+        applyManifest?.safety?.verifiedTextEligibilityPermissionExpansionAllowed === false &&
         applyManifest?.safety?.verifiedInlineTextRequiresExactIndependentReadback === true &&
         applyManifest?.safety?.sameFileChangesPlannedAsOneFinalText === true &&
         applyManifest?.safety?.sameFileChangeOrderPreservedWhenRequired === true &&
@@ -2530,6 +3047,64 @@ async function main() {
         scopedRingText,
         sourceUnchanged: sha256File(cnFixturePath) === cnSourceSha,
       });
+      const executionPlanEndToEndOk =
+        dryRunManifest?.executionPlan?.schemaVersion === "1.1" &&
+        dryRunManifest?.executionPlan?.planSha256 === dryRunManifest?.binding?.executionPlanSha256 &&
+        dryRunManifest?.executionPlan?.entryCount === 11 &&
+        dryRunManifest?.executionPlan?.entries
+          ?.filter((entry) => entry.capabilityId === "verified-inline-text")
+          ?.every((entry) =>
+            entry.verifiedTextEligibility?.policyId === VERIFIED_TEXT_ELIGIBILITY_POLICY_ID &&
+            entry.verifiedTextEligibility?.policySha256 === VERIFIED_TEXT_ELIGIBILITY_POLICY_SHA256 &&
+            /^[a-f0-9]{64}$/u.test(String(entry.verifiedTextEligibility?.proofsSha256 || ""))) &&
+        applyManifest?.executionPlanMatch === true &&
+        applyManifest?.authorizedExecutionPlanSha256 === dryRunManifest?.executionPlan?.planSha256 &&
+        applyManifest?.recomputedExecutionPlanSha256 === dryRunManifest?.executionPlan?.planSha256 &&
+        applyManifest?.executionPlan?.planSha256 === dryRunManifest?.executionPlan?.planSha256 &&
+        applyManifest?.safety?.executionPlanRecomputedBeforeWrite === true &&
+        applyManifest?.safety?.executionPlanMatchedAuthorizedDryRun === true &&
+        applyManifest?.safety?.replacementWriterConsumedPreflightPlanObject === true &&
+        reuseApplyManifest?.executionPlanMatch === true &&
+        reuseApplyManifest?.recomputedExecutionPlanSha256 === dryRunManifest?.executionPlan?.planSha256;
+      add("pvf-change-controlled-execution-plan-dry-run-apply-match", executionPlanEndToEndOk, executionPlanEndToEndOk ? undefined : {
+        dryRunExecutionPlanSha256: dryRunManifest?.executionPlan?.planSha256 || null,
+        dryRunBindingExecutionPlanSha256: dryRunManifest?.binding?.executionPlanSha256 || null,
+        applyAuthorizedExecutionPlanSha256: applyManifest?.authorizedExecutionPlanSha256 || null,
+        applyRecomputedExecutionPlanSha256: applyManifest?.recomputedExecutionPlanSha256 || null,
+        reuseRecomputedExecutionPlanSha256: reuseApplyManifest?.recomputedExecutionPlanSha256 || null,
+      });
+
+      for (const encoding of ["Cn", "Tw"]) {
+        const scalarSource = path.join(tempRoot, "scalar-" + encoding + ".pvf");
+        createFixturePvf(scalarSource, { customScalar: true, stringTableEncoding: encoding });
+        const sourceHash = sha256File(scalarSource);
+        const file = path.join(tempRoot, "scalar-" + encoding + ".json");
+        const change = { id: "scalar", type: "replace-text", pvfPath: "stackable/custom.stk",
+          previousText: "`魂息 %d`", newText: "`魂息 %d 新`", textWriteMode: "verified-scalar-text", pvfEncoding: encoding };
+        const set = { schemaVersion: "1.0", mode: "dry-run-only", description: "Explicit custom scalar lifecycle",
+          target: { sourcePvf: scalarSource, pvfOpenEncoding: "Tw", pvfReadEncoding: encoding }, changes: [change],
+          safety: { writeModeEnabled: false, requiresBackupBeforeApply: true, requiresExplicitOutputPath: true, requiresReadback: true } };
+        fs.writeFileSync(file, JSON.stringify(set));
+        const run = args => { const proc = childProcess.spawnSync(process.execPath, [pvfChangeCli, "--root", workbenchRoot, ...args],
+          { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: cliEnv });
+          let result; try { result=JSON.parse(proc.stdout); } catch { result={ error: proc.stderr }; } return { status: proc.status, result }; };
+        const valid=run(["validate", "--file", file]);
+        const dry=run(["dry-run", "--file", file, "--out", path.join(tempRoot,"scalar-"+encoding+"-dry")]);
+        const applied=dry.result?.approvalCode ? run(["apply", "--file", file, "--dry-run-manifest", dry.result.manifestPath,
+          "--authorize-apply", dry.result.approvalCode, "--out", path.join(tempRoot,"scalar-"+encoding+"-out")]) : null;
+        const manifest=applied?.result?.manifestPath ? JSON.parse(fs.readFileSync(applied.result.manifestPath,"utf8")) : null;
+        let text=null;
+        if(manifest?.outputPvf) { const opened=await fallback.openSession(manifest.outputPvf,"Tw");
+          try { text=(await fallback.readFile(opened.sessionId,"stackable/custom.stk",{pvfEncoding:encoding,autoConvertStringLink:false})).textContent; }
+          finally { await fallback.closeSession(opened.sessionId); } }
+        add("explicit-scalar-"+encoding+"-cli-independent-readback", valid.status===0 && dry.result?.summary?.blockedCount===0 &&
+          applied?.status===0 && manifest?.executionPlanMatch===true && manifest?.readback?.every(item=>item.ok && item.runtimeValidationRequired === true) &&
+          text?.includes(change.newText) && sha256File(scalarSource)===sourceHash, { valid, dry, applied, text });
+        set.changes[0].textWriteMode="verified-inline-text";
+        fs.writeFileSync(file,JSON.stringify(set));
+        const ordinary=run(["dry-run","--file",file,"--out",path.join(tempRoot,"scalar-"+encoding+"-ordinary")]);
+        add("explicit-scalar-"+encoding+"-ordinary-mode-does-not-silently-opt-in", ordinary.result?.summary?.blockedCount===1 && !ordinary.result?.approvalCode && ordinary.result?.blockedChanges?.[0]?.recovery?.category === "unsupported-structure");
+      }
 
       const copyChangeSetFile = path.join(tempRoot, "same-pvf-copy-change-set.json");
       const copyDryRunRoot = path.join(tempRoot, "same-pvf-copy-dry-run");
@@ -2619,6 +3194,188 @@ async function main() {
         copiedTargetText,
         sourceUnchanged: sha256File(cnFixturePath) === cnSourceSha,
       });
+
+      // Exercise the public CLI, native writer and a separate reader for new
+      // files. Shape-only tests cannot detect lost source text or registry rows.
+      const newFileCases = [
+        { pvfPath: "itemshop/new.shp", text: "#PVF_File\r\n[name]\r\n`new-fixture`\r\n[value]\r\n23\r\n" },
+        { pvfPath: "script/new.nut", text: "// 新脚本注释\r\nfunction new_fixture() { return 23; }\r\n", reference: "script/fallback_fixture.nut" },
+        { pvfPath: "script/new.sqr", text: "// 新脚本注释\r\nfunction new_fixture() { return 24; }\r\n", reference: "script/fallback_fixture.sqr" },
+        { pvfPath: "passiveobject/new.co", text: "#PVF_File\r\n[value]\r\n25\r\n", reference: "passiveobject/fallback_fixture.co" },
+        { pvfPath: "stringview/new.str", text: "new_message>新增本地化验证\r\n", reference: "stringview/fixture.str", localization: true },
+        { pvfPath: "itemshop/new.lst", text: "#PVF_File\r\n2\t`new.shp`\r\n", registry: true },
+        { pvfPath: "stringview/new-tw.str", text: "new_message>繁體本地化驗證\r\n", reference: "stringview/fixture.str", localization: true, encoding: "Tw" },
+        { pvfPath: "worldmap/new.ui", text: "#PVF_File\r\n[ui controls]\r\n`IDC_WORLDMAP_BUTTON1`\t0\t0\r\n[balloon]\r\n`fixture.img`\t0\t323\r\n[/ui controls]\r\n" },
+        { pvfPath: "worldmap/new.wdm", text: "#PVF_File\r\n[map image]\r\n`fixture.img`\r\n[ui path]\r\n`worldmap/new.ui`\r\n[dungeon]\r\n323\t-1\r\n[/dungeon]\r\n", writeProof: {
+          mode: "worldmap-lifecycle",
+          registry: { lstPath: "worldmap/worldmap.lst", id: 2, expectedPvfPath: "worldmap/new.wdm", action: "add" },
+          pairedEntries: [
+            { kind: "ui", pvfPath: "worldmap/new.ui" },
+            { kind: "town-gate", pvfPath: "town/fixture.twn", worldmapId: 2 },
+            { kind: "region-town", pvfPath: "region/fixture.rgn", townId: 45 },
+          ],
+        } },
+      ];
+      const newFileChanges = newFileCases.map((entry, index) => {
+        const sourceFile = path.join(tempRoot, `new-file-${index}.txt`);
+        fs.writeFileSync(sourceFile, entry.text, "utf8");
+        const writeProof = entry.writeProof || (entry.registry
+          ? { mode: "registry-lifecycle", registry: { lstPath: entry.pvfPath, action: "verify" } }
+          : entry.localization
+            ? { mode: "localization-new-file", pvfEncoding: entry.encoding || "Cn", encodingRoundTripRequired: true, referencePaths: [entry.reference] }
+            : entry.reference
+              ? { mode: "script-new-file", compileRequired: true, encodingRoundTripRequired: true, referencePaths: [entry.reference] }
+              : null);
+        return {
+          id: `new-file-${index}`, type: "write-file", pvfPath: entry.pvfPath,
+          sourceFile, sourceSha256: sha256File(sourceFile), expectAbsent: true,
+          pvfEncoding: entry.encoding || "Cn", ...(writeProof ? { writeProof } : {}),
+        };
+      });
+      const newFilesOpened = await fallback.openSession(cnFixturePath, "Tw");
+      let newFilesRegistryBefore, newWorldmapRegistryBefore;
+      try {
+        newFilesRegistryBefore = (await fallback.readFile(newFilesOpened.sessionId, "itemshop/itemshop.lst", {
+          pvfEncoding: "Cn", autoConvertStringLink: false,
+        })).textContent;
+        newWorldmapRegistryBefore = (await fallback.readFile(newFilesOpened.sessionId, "worldmap/worldmap.lst", {
+          pvfEncoding: "Cn", autoConvertStringLink: false,
+        })).textContent;
+      } finally {
+        await fallback.closeSession(newFilesOpened.sessionId);
+      }
+      const newFilesRegistryAfter = `${newFilesRegistryBefore}2\t\`new.shp\`\r\n`;
+      const newWorldmapRegistryAfter = `${newWorldmapRegistryBefore}2\t\`new.wdm\`\r\n`;
+      newFileChanges.push({
+        id: "register-new-worldmap", type: "replace-text", pvfPath: "worldmap/worldmap.lst",
+        previousText: newWorldmapRegistryBefore, newText: newWorldmapRegistryAfter,
+        replaceAll: false, pvfEncoding: "Cn",
+        writeProof: { mode: "registry-lifecycle", allowExistingRegistryEdit: true,
+          registry: { lstPath: "worldmap/worldmap.lst", id: 2, expectedPvfPath: "worldmap/new.wdm", action: "add" } },
+      });
+      newFileChanges.push({
+        id: "register-new-shop", type: "replace-text", pvfPath: "itemshop/itemshop.lst",
+        previousText: newFilesRegistryBefore, newText: newFilesRegistryAfter,
+        replaceAll: false, pvfEncoding: "Cn",
+        writeProof: {
+          mode: "registry-lifecycle", allowExistingRegistryEdit: true,
+          registry: { lstPath: "itemshop/itemshop.lst", id: 2, expectedPvfPath: "itemshop/new.shp", action: "add" },
+        },
+      });
+      const newFilesChangeSetFile = path.join(tempRoot, "new-files-change-set.json");
+      fs.writeFileSync(newFilesChangeSetFile, JSON.stringify({
+        schemaVersion: "1.0", mode: "dry-run-only",
+        target: { sourcePvf: cnFixturePath, pvfOpenEncoding: "Tw", pvfReadEncoding: "Cn" },
+        changes: newFileChanges,
+        safety: { writeModeEnabled: false, requiresBackupBeforeApply: true, requiresExplicitOutputPath: true, requiresReadback: true },
+      }, null, 2));
+      const runNewFilesCli = (...args) => {
+        const result = childProcess.spawnSync(process.execPath, [pvfChangeCli, "--root", workbenchRoot, ...args], {
+          cwd: workbenchRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: cliEnv,
+        });
+        let parsed = null;
+        try { parsed = JSON.parse(result.stdout || "null"); } catch { /* recorded below */ }
+        return { status: result.status, parsed, stderr: result.stderr };
+      };
+      const newFilesValidate = runNewFilesCli("validate", "--file", newFilesChangeSetFile);
+      const newFilesDryRun = runNewFilesCli("dry-run", "--file", newFilesChangeSetFile, "--out", path.join(tempRoot, "new-files-preview"));
+      const newFilesApply = newFilesDryRun.status === 0 && newFilesDryRun.parsed?.approvalCode
+        ? runNewFilesCli("apply", "--file", newFilesChangeSetFile,
+          "--dry-run-manifest", newFilesDryRun.parsed.manifestPath,
+          "--authorize-apply", newFilesDryRun.parsed.approvalCode, "--out", path.join(tempRoot, "new-files-output"))
+        : null;
+      const newFilesManifest = newFilesApply?.parsed?.manifestPath
+        ? JSON.parse(fs.readFileSync(newFilesApply.parsed.manifestPath, "utf8")) : null;
+      const newFilesReadbacks = [];
+      if (newFilesManifest?.outputPvf && newFilesApply?.status === 0) {
+        const opened = await fallback.openSession(newFilesManifest.outputPvf, "Tw");
+        try {
+          for (const entry of [...newFileCases, { pvfPath: "itemshop/itemshop.lst", text: newFilesRegistryAfter },
+            { pvfPath: "worldmap/worldmap.lst", text: newWorldmapRegistryAfter }]) {
+            const readback = await fallback.readFile(opened.sessionId, entry.pvfPath, { pvfEncoding: entry.encoding || "Cn", autoConvertStringLink: false });
+            // Binary script layout is canonicalized by the parser; plain NUT,
+            // SQR and STR must retain their exact text, including newlines.
+            const normalize = (text) => String(text).replace(/\s+/gu, " ").trim();
+            const plain = /\.(nut|sqr|str)$/u.test(entry.pvfPath);
+            newFilesReadbacks.push({ pvfPath: entry.pvfPath,
+              ok: plain ? readback.textContent === entry.text : normalize(readback.textContent) === normalize(entry.text),
+              expected: entry.text, actual: readback.textContent });
+          }
+        } finally { await fallback.closeSession(opened.sessionId); }
+      }
+      const newFilesLifecycleOk = newFilesValidate.status === 0 && newFilesDryRun.status === 0 &&
+        newFilesDryRun.parsed?.summary?.blockedCount === 0 && newFilesApply?.status === 0 &&
+        newFilesManifest?.safety?.sourceUnchanged === true && newFilesManifest?.safety?.backupSha256Verified === true &&
+        newFilesManifest?.readback?.length === newFileCases.length + 2 && newFilesManifest.readback.every((item) => item.ok === true) &&
+        newFilesReadbacks.length === newFileCases.length + 2 && newFilesReadbacks.every((item) => item.ok) && sha256File(cnFixturePath) === cnSourceSha;
+      add("pvf-change-new-files-registry-cli-independent-readback", newFilesLifecycleOk, newFilesLifecycleOk
+        ? { extensions: [".shp", ".nut", ".sqr", ".co", ".str", ".lst", ".ui", ".wdm"], registryAddOnly: true, independentReadbackCount: newFilesReadbacks.length }
+        : { validate: newFilesValidate, dryRun: newFilesDryRun, apply: newFilesApply, manifest: newFilesManifest, readbacks: newFilesReadbacks,
+          dryRunManifest: newFilesDryRun.parsed?.manifestPath ? JSON.parse(fs.readFileSync(newFilesDryRun.parsed.manifestPath, "utf8")) : null });
+
+      const brokenWorldmap = JSON.parse(fs.readFileSync(newFilesChangeSetFile, "utf8"));
+      brokenWorldmap.changes.find((entry) => entry.pvfPath === "worldmap/new.wdm")
+        .writeProof.pairedEntries.find((entry) => entry.kind === "region-town").townId = 46;
+      const brokenWorldmapFile = path.join(tempRoot, "worldmap-broken-closure.json");
+      fs.writeFileSync(brokenWorldmapFile, JSON.stringify(brokenWorldmap));
+      const brokenWorldmapResult = runNewFilesCli("dry-run", "--file", brokenWorldmapFile, "--out", path.join(tempRoot, "worldmap-broken-preview"));
+      add("pvf-change-worldmap-town-region-mismatch-withholds-approval",
+        brokenWorldmapResult.status === 2 && brokenWorldmapResult.parsed?.approvalCode === null &&
+        brokenWorldmapResult.parsed?.blockedChanges?.some((entry) => entry.pvfPath === "worldmap/new.wdm" && entry.code === "HIGH_RISK_AUDIT_FAILED") &&
+        sha256File(cnFixturePath) === cnSourceSha, brokenWorldmapResult);
+
+      const unencodableStr = JSON.parse(fs.readFileSync(newFilesChangeSetFile, "utf8"));
+      const badStrSource = path.join(tempRoot, "new-str-unencodable.txt");
+      fs.writeFileSync(badStrSource, "message>\u{1F600}\r\n", "utf8");
+      unencodableStr.changes = [{ ...newFileChanges.find((entry) => entry.pvfPath === "stringview/new.str"),
+        sourceFile: badStrSource, sourceSha256: sha256File(badStrSource) }];
+      const badStrFile = path.join(tempRoot, "new-str-unencodable.json");
+      fs.writeFileSync(badStrFile, JSON.stringify(unencodableStr));
+      const badStrResult = runNewFilesCli("dry-run", "--file", badStrFile, "--out", path.join(tempRoot, "new-str-unencodable-preview"));
+      add("pvf-change-new-str-unencodable-text-withholds-approval",
+        badStrResult.status === 2 && badStrResult.parsed?.approvalCode === null &&
+        badStrResult.parsed?.blockedChanges?.some((entry) => entry.code === "CN_TEXT_CHARACTER_UNENCODABLE") &&
+        sha256File(cnFixturePath) === cnSourceSha, badStrResult);
+
+      const partialUpgradeSource = path.join(tempRoot, "partial-upgrade.pvf");
+      createFixturePvf(partialUpgradeSource, { cnLocalized: true, stringTableEncoding: "Cn", partialRarities: true });
+      const partialUpgradeSourceSha = sha256File(partialUpgradeSource);
+      const partialUpgradeRequest = {
+        id: "partial-upgrade", type: "upgrade-table-level-edit", pvfPath: "etc/amplifyupgrade.etc", pvfEncoding: "Cn",
+        tableEdit: { setCells: [{ group: 0, column: "B", expectedBefore: "1", newValue: "2" }] },
+        amplificationConstEdit: { sourceGroup: 0, targetGroups: [1], groupWidth: 4, hasLevelZeroGroup: true },
+      };
+      const partialUpgradeFile = path.join(tempRoot, "partial-upgrade.json");
+      fs.writeFileSync(partialUpgradeFile, JSON.stringify({
+        schemaVersion: "1.0", mode: "dry-run-only",
+        target: { sourcePvf: partialUpgradeSource, pvfOpenEncoding: "Tw", pvfReadEncoding: "Cn" },
+        changes: [partialUpgradeRequest],
+        safety: { writeModeEnabled: false, requiresBackupBeforeApply: true, requiresExplicitOutputPath: true, requiresReadback: true },
+      }));
+      const partialUpgradeDryRun = runNewFilesCli("dry-run", "--file", partialUpgradeFile, "--out", path.join(tempRoot, "partial-upgrade-preview"));
+      const partialUpgradeApply = partialUpgradeDryRun.status === 0 && partialUpgradeDryRun.parsed?.approvalCode
+        ? runNewFilesCli("apply", "--file", partialUpgradeFile, "--dry-run-manifest", partialUpgradeDryRun.parsed.manifestPath,
+          "--authorize-apply", partialUpgradeDryRun.parsed.approvalCode, "--out", path.join(tempRoot, "partial-upgrade-output")) : null;
+      const partialUpgradeManifest = partialUpgradeApply?.parsed?.manifestPath
+        ? JSON.parse(fs.readFileSync(partialUpgradeApply.parsed.manifestPath, "utf8")) : null;
+      const partialUpgradeTexts = [];
+      for (const pvf of [partialUpgradeSource, partialUpgradeManifest?.outputPvf].filter(Boolean)) {
+        const opened = await fallback.openSession(pvf, "Tw");
+        try { partialUpgradeTexts.push((await fallback.readFile(opened.sessionId, "etc/amplifyupgrade.etc", {
+          pvfEncoding: "Cn", autoConvertStringLink: false,
+        })).textContent); }
+        finally { await fallback.closeSession(opened.sessionId); }
+      }
+      const partialUpgradeExpected = expandUpgradeTableLevelEdit(partialUpgradeTexts[0], partialUpgradeRequest);
+      const partialUpgradeOk = partialUpgradeDryRun.status === 0 && partialUpgradeApply?.status === 0 &&
+        partialUpgradeManifest?.readback?.every((item) => item.ok === true) &&
+        partialUpgradeManifest?.safety?.sourceUnchanged === true && partialUpgradeManifest?.safety?.backupSha256Verified === true &&
+        partialUpgradeTexts.length === 2 && partialUpgradeTexts[1] === partialUpgradeExpected.expectedText &&
+        partialUpgradeExpected.proof.maxLevelByRarity.state === "no-op" &&
+        partialUpgradeExpected.proof.maxLevelByRarity.beforeSha256 === partialUpgradeExpected.proof.maxLevelByRarity.afterSha256 &&
+        sha256File(partialUpgradeSource) === partialUpgradeSourceSha;
+      add("pvf-change-partial-rarity-preserved-cli-independent-readback", partialUpgradeOk,
+        partialUpgradeOk ? undefined : { dryRun: partialUpgradeDryRun, apply: partialUpgradeApply, manifest: partialUpgradeManifest, texts: partialUpgradeTexts });
 
       const scopeMismatchChangeSetFile = path.join(tempRoot, "exact-scope-count-mismatch-change-set.json");
       const scopeMismatchDryRunRoot = path.join(tempRoot, "exact-scope-count-mismatch-dry-run");
@@ -2786,16 +3543,39 @@ async function main() {
           pvfOpenEncoding: "Tw",
           pvfReadEncoding: "Tw",
         },
-        changes: [{
-          id: "verified-tw-name",
-          type: "replace-text",
-          pvfPath: "itemshop/test.shp",
-          previousText: "`太陽`",
-          newText: "`繁體文字驗證`",
-          replaceAll: false,
-          textWriteMode: VERIFIED_INLINE_TEXT_MODE,
-          pvfEncoding: "Tw",
-        }],
+        changes: [
+          {
+            id: "verified-tw-name",
+            type: "replace-text",
+            pvfPath: "itemshop/test.shp",
+            previousText: "`太陽`",
+            newText: "`繁體文字驗證`",
+            replaceAll: false,
+            textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+            pvfEncoding: "Tw",
+          },
+          {
+            id: "verified-tw-skl-explain-ex",
+            type: "replace-text",
+            pvfPath: "skill/swordman/momentaryslashex.skl",
+            previousText: "`每級增加技能攻擊力。`",
+            newText: "`每級增加技能攻擊力與範圍。`",
+            replaceAll: true,
+            expectedOccurrences: 2,
+            textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+            pvfEncoding: "Tw",
+          },
+          {
+            id: "verified-tw-skl-basic-explain-ex-family",
+            type: "replace-text",
+            pvfPath: "skill/swordman/momentaryslashex.skl",
+            previousText: "`特性技能的備用基礎說明。`",
+            newText: "`特性技能的完整備用基礎說明。`",
+            replaceAll: false,
+            textWriteMode: VERIFIED_INLINE_TEXT_MODE,
+            pvfEncoding: "Tw",
+          },
+        ],
         safety: {
           writeModeEnabled: false,
           requiresBackupBeforeApply: true,
@@ -2829,10 +3609,15 @@ async function main() {
         ? JSON.parse(fs.readFileSync(twApplyResult.manifestPath, "utf8"))
         : null;
       let twOutputText = null;
+      let twSkillOutputText = null;
       if (twApplyManifest?.outputPvf && fs.existsSync(twApplyManifest.outputPvf)) {
         const twOutputOpened = await fallback.openSession(twApplyManifest.outputPvf, "Tw");
         try {
           twOutputText = (await fallback.readFile(twOutputOpened.sessionId, "itemshop/test.shp", {
+            pvfEncoding: "Tw",
+            autoConvertStringLink: false,
+          })).textContent;
+          twSkillOutputText = (await fallback.readFile(twOutputOpened.sessionId, "skill/swordman/momentaryslashex.skl", {
             pvfEncoding: "Tw",
             autoConvertStringLink: false,
           })).textContent;
@@ -2845,13 +3630,16 @@ async function main() {
         twDryRunResult?.summary?.blockedCount === 0 &&
         twApplyProcess?.status === 0 &&
         twApplyManifest?.safety?.sourceUnchanged === true &&
-        twApplyManifest?.summary?.verifiedInlineTextByEncoding?.Tw === 1 &&
-        twApplyManifest?.readback?.length === 1 &&
-        twApplyManifest.readback[0]?.verifiedInlineText === true &&
-        twApplyManifest.readback[0]?.verifiedInlineCn === false &&
-        twApplyManifest.readback[0]?.independentSemanticRead === true &&
-        twApplyManifest.readback[0]?.semanticReadGuard?.selectedEncoding === "Tw" &&
+        twApplyManifest?.results?.find((item) => item.id === "verified-tw-skl-explain-ex")
+          ?.applyResult?.writeResult?.proof?.eligibilityProofs?.[0]?.ruleId === "skl-visible-text-ex-variant" &&
+        twApplyManifest?.results?.find((item) => item.id === "verified-tw-skl-basic-explain-ex-family")
+          ?.applyResult?.writeResult?.proof?.eligibilityProofs?.[0]?.baseTag === "basic explain" &&
+        twApplyManifest?.summary?.verifiedInlineTextByEncoding?.Tw === 3 &&
+        twApplyManifest?.readback?.length === 2 &&
+        twApplyManifest.readback.every((item) => item.verifiedInlineText === true && item.verifiedInlineCn === false && item.independentSemanticRead === true && item.semanticReadGuard?.selectedEncoding === "Tw") &&
         /\[name\]\s*`繁體文字驗證`/u.test(twOutputText || "") &&
+        (twSkillOutputText?.match(/`每級增加技能攻擊力與範圍。`/gu) || []).length === 2 &&
+        /\[basic explain ex\]\s*`特性技能的完整備用基礎說明。`/u.test(twSkillOutputText || "") &&
         sha256File(twFixturePath) === twSourceSha;
       add("pvf-change-verified-inline-text-tw-end-to-end", twEndToEndOk, twEndToEndOk ? undefined : {
         dryRunStatus: twDryRunProcess.status,
@@ -2862,7 +3650,552 @@ async function main() {
         applyStderr: twApplyProcess?.stderr,
         applyManifest: twApplyManifest,
         twOutputText,
+        twSkillOutputText,
         sourceUnchanged: sha256File(twFixturePath) === twSourceSha,
+      });
+
+      const upgradeChangeSetFile = path.join(tempRoot, "upgrade-table-level-edit-change-set.json");
+      const upgradeDryRunRoot = path.join(tempRoot, "upgrade-table-level-edit-dry-run");
+      const upgradeApplyRoot = path.join(tempRoot, "upgrade-table-level-edit-apply");
+      const upgradeRequest = {
+        id: "amplify-copy-level-13",
+        type: "upgrade-table-level-edit",
+        pvfPath: "etc/amplifyupgrade.etc",
+        pvfEncoding: "Tw",
+        tableEdit: {
+          sourceGroup: 12,
+          targetGroups: [13, 14],
+          copyColumns: ["B", "C", "D", "E", "F", "G", "M", "N", "O", "P", "Q", "R"],
+          preserveColumns: ["H", "I", "J", "K", "L"],
+        },
+        maxLevelByRarity: {
+          common: 13, uncommon: 13, rare: 13, unique: 13, epic: 13, chronicle: 13,
+        },
+        amplificationConstEdit: {
+          sourceGroup: 13,
+          targetGroups: [14, 15],
+          groupWidth: 4,
+          hasLevelZeroGroup: true,
+        },
+        rationale: "Exercise independent raw groups, component no-op proof, temporary round-trip, apply and readback.",
+      };
+      fs.writeFileSync(upgradeChangeSetFile, `${JSON.stringify({
+        schemaVersion: "1.0",
+        mode: "dry-run-only",
+        description: "Structured reinforcement/amplification table regression fixture.",
+        target: {
+          sourcePvf: twFixturePath,
+          pvfOpenEncoding: "Tw",
+          pvfReadEncoding: "Tw",
+        },
+        changes: [upgradeRequest],
+        safety: {
+          writeModeEnabled: false,
+          requiresBackupBeforeApply: true,
+          requiresExplicitOutputPath: true,
+          requiresReadback: true,
+        },
+      }, null, 2)}\n`, "utf8");
+      let upgradeSourceText = null;
+      const upgradeSourceOpened = await fallback.openSession(twFixturePath, "Tw");
+      try {
+        upgradeSourceText = (await fallback.readFile(upgradeSourceOpened.sessionId, "etc/amplifyupgrade.etc", {
+          pvfEncoding: "Tw",
+          autoConvertStringLink: false,
+        })).textContent;
+      } finally {
+        await fallback.closeSession(upgradeSourceOpened.sessionId);
+      }
+      const upgradeExpectedText = expandUpgradeTableLevelEdit(upgradeSourceText, upgradeRequest).expectedText;
+      const upgradeDryRunProcess = childProcess.spawnSync(process.execPath, [
+        pvfChangeCli,
+        "--root", workbenchRoot,
+        "dry-run",
+        "--file", upgradeChangeSetFile,
+        "--out", upgradeDryRunRoot,
+      ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, env: cliEnv });
+      let upgradeDryRunResult = null;
+      try { upgradeDryRunResult = JSON.parse(upgradeDryRunProcess.stdout || "null"); } catch { /* recorded below */ }
+      const upgradeDryRunManifest = upgradeDryRunResult?.manifestPath && fs.existsSync(upgradeDryRunResult.manifestPath)
+        ? JSON.parse(fs.readFileSync(upgradeDryRunResult.manifestPath, "utf8"))
+        : null;
+      const upgradeApplyProcess = upgradeDryRunProcess.status === 0 && upgradeDryRunResult?.approvalCode
+        ? childProcess.spawnSync(process.execPath, [
+          pvfChangeCli,
+          "--root", workbenchRoot,
+          "apply",
+          "--file", upgradeChangeSetFile,
+          "--dry-run-manifest", upgradeDryRunResult.manifestPath,
+          "--authorize-apply", upgradeDryRunResult.approvalCode,
+          "--out", upgradeApplyRoot,
+        ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, env: cliEnv })
+        : null;
+      let upgradeApplyResult = null;
+      try { upgradeApplyResult = JSON.parse(upgradeApplyProcess?.stdout || "null"); } catch { /* recorded below */ }
+      const upgradeApplyManifest = upgradeApplyResult?.manifestPath && fs.existsSync(upgradeApplyResult.manifestPath)
+        ? JSON.parse(fs.readFileSync(upgradeApplyResult.manifestPath, "utf8"))
+        : null;
+      let upgradeOutputText = null;
+      if (upgradeApplyManifest?.outputPvf && fs.existsSync(upgradeApplyManifest.outputPvf)) {
+        const upgradeOutputOpened = await fallback.openSession(upgradeApplyManifest.outputPvf, "Tw");
+        try {
+          upgradeOutputText = (await fallback.readFile(upgradeOutputOpened.sessionId, "etc/amplifyupgrade.etc", {
+            pvfEncoding: "Tw",
+            autoConvertStringLink: false,
+          })).textContent;
+        } finally {
+          await fallback.closeSession(upgradeOutputOpened.sessionId);
+        }
+      }
+      const upgradeNoOpChangeSetFile = path.join(tempRoot, "upgrade-table-level-edit-no-op-change-set.json");
+      const upgradeNoOpDryRunRoot = path.join(tempRoot, "upgrade-table-level-edit-no-op-dry-run");
+      fs.writeFileSync(upgradeNoOpChangeSetFile, `${JSON.stringify({
+        schemaVersion: "1.0",
+        mode: "dry-run-only",
+        description: "Structured reinforcement/amplification all-no-op regression fixture.",
+        baseline: { applyManifest: upgradeApplyResult?.manifestPath || "missing" },
+        target: {
+          sourcePvf: twFixturePath,
+          pvfOpenEncoding: "Tw",
+          pvfReadEncoding: "Tw",
+        },
+        changes: [upgradeRequest],
+        safety: {
+          writeModeEnabled: false,
+          requiresBackupBeforeApply: true,
+          requiresExplicitOutputPath: true,
+          requiresReadback: true,
+        },
+      }, null, 2)}\n`, "utf8");
+      const upgradeNoOpDryRunProcess = upgradeApplyManifest
+        ? childProcess.spawnSync(process.execPath, [
+          pvfChangeCli,
+          "--root", workbenchRoot,
+          "dry-run",
+          "--file", upgradeNoOpChangeSetFile,
+          "--out", upgradeNoOpDryRunRoot,
+        ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, env: cliEnv })
+        : null;
+      let upgradeNoOpDryRunResult = null;
+      try { upgradeNoOpDryRunResult = JSON.parse(upgradeNoOpDryRunProcess?.stdout || "null"); } catch { /* recorded below */ }
+      const upgradeNoOpManifest = upgradeNoOpDryRunResult?.manifestPath && fs.existsSync(upgradeNoOpDryRunResult.manifestPath)
+        ? JSON.parse(fs.readFileSync(upgradeNoOpDryRunResult.manifestPath, "utf8"))
+        : null;
+
+      const setCellChangeSetFile = path.join(tempRoot, "upgrade-table-set-cell-cumulative-change-set.json");
+      const setCellDryRunRoot = path.join(tempRoot, "upgrade-table-set-cell-cumulative-dry-run");
+      const setCellApplyRoot = path.join(tempRoot, "upgrade-table-set-cell-cumulative-apply");
+      const setCellRequest = {
+        id: "amplify-exact-cell-recovery",
+        type: "upgrade-table-level-edit",
+        pvfPath: "etc/amplifyupgrade.etc",
+        pvfEncoding: "Tw",
+        tableEdit: {
+          setCells: [{ group: 14, column: "B", expectedBefore: "205", newValue: "9999" }],
+        },
+        maxLevelByRarity: {
+          common: 13, uncommon: 13, rare: 13, unique: 13, epic: 13, chronicle: 13,
+        },
+        amplificationConstEdit: {
+          sourceGroup: 13,
+          targetGroups: [14, 15],
+          groupWidth: 4,
+          hasLevelZeroGroup: true,
+        },
+        rationale: "Exercise exact old-value binding and cumulative structured output.",
+      };
+      fs.writeFileSync(setCellChangeSetFile, `${JSON.stringify({
+        schemaVersion: "1.0",
+        mode: "dry-run-only",
+        description: "Cumulative exact table-cell recovery regression fixture.",
+        baseline: { applyManifest: upgradeApplyResult?.manifestPath || "missing" },
+        target: {
+          sourcePvf: twFixturePath,
+          pvfOpenEncoding: "Tw",
+          pvfReadEncoding: "Tw",
+        },
+        changes: [setCellRequest],
+        safety: {
+          writeModeEnabled: false,
+          requiresBackupBeforeApply: true,
+          requiresExplicitOutputPath: true,
+          requiresReadback: true,
+        },
+      }, null, 2)}\n`, "utf8");
+      const setCellExpectedText = upgradeOutputText
+        ? expandUpgradeTableLevelEdit(upgradeOutputText, setCellRequest).expectedText
+        : null;
+      const setCellDryRunProcess = upgradeApplyManifest
+        ? childProcess.spawnSync(process.execPath, [
+          pvfChangeCli,
+          "--root", workbenchRoot,
+          "dry-run",
+          "--file", setCellChangeSetFile,
+          "--out", setCellDryRunRoot,
+        ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, env: cliEnv })
+        : null;
+      let setCellDryRunResult = null;
+      try { setCellDryRunResult = JSON.parse(setCellDryRunProcess?.stdout || "null"); } catch { /* recorded below */ }
+      const setCellDryRunManifest = setCellDryRunResult?.manifestPath && fs.existsSync(setCellDryRunResult.manifestPath)
+        ? JSON.parse(fs.readFileSync(setCellDryRunResult.manifestPath, "utf8"))
+        : null;
+      const setCellApplyProcess = setCellDryRunProcess?.status === 0 && setCellDryRunResult?.approvalCode
+        ? childProcess.spawnSync(process.execPath, [
+          pvfChangeCli,
+          "--root", workbenchRoot,
+          "apply",
+          "--file", setCellChangeSetFile,
+          "--dry-run-manifest", setCellDryRunResult.manifestPath,
+          "--authorize-apply", setCellDryRunResult.approvalCode,
+          "--out", setCellApplyRoot,
+        ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, env: cliEnv })
+        : null;
+      let setCellApplyResult = null;
+      try { setCellApplyResult = JSON.parse(setCellApplyProcess?.stdout || "null"); } catch { /* recorded below */ }
+      const setCellApplyManifest = setCellApplyResult?.manifestPath && fs.existsSync(setCellApplyResult.manifestPath)
+        ? JSON.parse(fs.readFileSync(setCellApplyResult.manifestPath, "utf8"))
+        : null;
+      let setCellOutputText = null;
+      if (setCellApplyManifest?.outputPvf && fs.existsSync(setCellApplyManifest.outputPvf)) {
+        const setCellOutputOpened = await fallback.openSession(setCellApplyManifest.outputPvf, "Tw");
+        try {
+          setCellOutputText = (await fallback.readFile(setCellOutputOpened.sessionId, "etc/amplifyupgrade.etc", {
+            pvfEncoding: "Tw",
+            autoConvertStringLink: false,
+          })).textContent;
+        } finally {
+          await fallback.closeSession(setCellOutputOpened.sessionId);
+        }
+      }
+      const upgradeProofDriftManifestFile = path.join(tempRoot, "upgrade-table-proof-drift-manifest.json");
+      const upgradeProofDriftApplyRoot = path.join(tempRoot, "upgrade-table-proof-drift-apply");
+      let upgradeProofDriftProcess = null;
+      if (upgradeDryRunManifest && upgradeDryRunResult?.approvalCode) {
+        const driftedManifest = JSON.parse(JSON.stringify(upgradeDryRunManifest));
+        const noOpComponent = driftedManifest.results.find((item) => item.structuredEditProof?.componentState === "no-op");
+        if (noOpComponent) noOpComponent.structuredEditProof.componentState = "changed";
+        fs.writeFileSync(upgradeProofDriftManifestFile, `${JSON.stringify(driftedManifest, null, 2)}\n`, "utf8");
+        upgradeProofDriftProcess = childProcess.spawnSync(process.execPath, [
+          pvfChangeCli,
+          "--root", workbenchRoot,
+          "apply",
+          "--file", upgradeChangeSetFile,
+          "--dry-run-manifest", upgradeProofDriftManifestFile,
+          "--authorize-apply", upgradeDryRunResult.approvalCode,
+          "--out", upgradeProofDriftApplyRoot,
+        ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 32 * 1024 * 1024, env: cliEnv });
+      }
+      const upgradeEndToEndOk =
+        upgradeDryRunProcess.status === 0 &&
+        upgradeDryRunResult?.summary?.blockedCount === 0 &&
+        upgradeDryRunManifest?.safety?.structuredUpgradeTableEditAllowed === true &&
+        upgradeDryRunManifest?.safety?.structuredForgingFileExcluded === true &&
+        upgradeDryRunManifest?.summary?.structuredUpgradeTableComponentCount === 3 &&
+        upgradeDryRunManifest?.summary?.structuredUpgradeTableComponentPassedCount === 3 &&
+        upgradeDryRunManifest?.results?.length === 3 &&
+        upgradeDryRunManifest.results.every((item) => item.type === "upgrade-table-level-edit" && item.structuredRoundTripProbe?.ok === true && item.structuredEditProof?.table?.width === 17) &&
+        upgradeDryRunManifest.results.filter((item) => item.structuredEditProof?.componentState === "changed").length === 2 &&
+        upgradeDryRunManifest.results.filter((item) => item.structuredEditProof?.componentState === "no-op").length === 1 &&
+        upgradeDryRunManifest.results.find((item) => item.structuredEditComponent === "max-level-by-rarity")?.structuredRoundTripProbe?.writerRequired === false &&
+        upgradeApplyProcess?.status === 0 &&
+        upgradeApplyManifest?.safety?.sourceUnchanged === true &&
+        upgradeApplyManifest?.safety?.structuredUpgradeFinalIndependentReadbackRequired === true &&
+        upgradeApplyManifest?.summary?.structuredUpgradeTableComponentCount === 2 &&
+        upgradeApplyManifest?.summary?.structuredUpgradeTableReadbackPassedCount === 1 &&
+        upgradeApplyManifest?.readback?.length === 1 &&
+        upgradeApplyManifest.readback[0]?.structuredUpgradeTableEdit === true &&
+        upgradeApplyManifest.readback[0]?.structuredFixedPoint === true &&
+        upgradeApplyManifest.readback[0]?.independentSemanticRead === true &&
+        upgradeOutputText === upgradeExpectedText &&
+        expandUpgradeTableLevelEdit(upgradeOutputText, upgradeRequest).expectedText === upgradeOutputText &&
+        sha256File(twFixturePath) === twSourceSha;
+      add("pvf-change-upgrade-table-level-edit-end-to-end", upgradeEndToEndOk, upgradeEndToEndOk ? undefined : {
+        dryRunStatus: upgradeDryRunProcess.status,
+        dryRunStdout: upgradeDryRunProcess.stdout,
+        dryRunStderr: upgradeDryRunProcess.stderr,
+        dryRunManifest: upgradeDryRunManifest,
+        applyStatus: upgradeApplyProcess?.status,
+        applyStdout: upgradeApplyProcess?.stdout,
+        applyStderr: upgradeApplyProcess?.stderr,
+        applyManifest: upgradeApplyManifest,
+        sourceUnchanged: sha256File(twFixturePath) === twSourceSha,
+      });
+      const upgradeProofDriftBlocked =
+        upgradeProofDriftProcess?.status !== 0 &&
+        /binding|proof|证明|执行计划/iu.test(`${upgradeProofDriftProcess?.stderr || ""}${upgradeProofDriftProcess?.stdout || ""}`) &&
+        !fs.existsSync(path.join(upgradeProofDriftApplyRoot, "output", "Script.pvf")) &&
+        sha256File(twFixturePath) === twSourceSha;
+      add("pvf-change-upgrade-table-component-proof-drift-blocked", upgradeProofDriftBlocked, upgradeProofDriftBlocked ? undefined : {
+        status: upgradeProofDriftProcess?.status,
+        stdout: upgradeProofDriftProcess?.stdout,
+        stderr: upgradeProofDriftProcess?.stderr,
+      });
+      const upgradeAllNoOpOk =
+        upgradeNoOpDryRunProcess?.status === 0 &&
+        upgradeNoOpDryRunResult?.noChange === true &&
+        upgradeNoOpDryRunResult?.approvalCode === null &&
+        upgradeNoOpDryRunResult?.agentHandoff?.readyForApply === false &&
+        upgradeNoOpManifest?.summary?.changedCount === 0 &&
+        upgradeNoOpManifest?.summary?.noOpCount === 3 &&
+        upgradeNoOpManifest?.summary?.noChange === true &&
+        upgradeNoOpManifest?.binding?.authorizationWithheldReason === "NO_CHANGES" &&
+        upgradeNoOpManifest?.temporaryVerificationWriteOperationsExecuted === false &&
+        upgradeNoOpManifest?.results?.every((item) =>
+          item.structuredEditProof?.componentState === "no-op" &&
+          item.structuredRoundTripProbe?.verificationMode === "source-reparse-no-write");
+      add("pvf-change-upgrade-table-all-no-op-withholds-apply", upgradeAllNoOpOk, upgradeAllNoOpOk ? undefined : {
+        dryRunStatus: upgradeNoOpDryRunProcess?.status,
+        dryRunStdout: upgradeNoOpDryRunProcess?.stdout,
+        dryRunStderr: upgradeNoOpDryRunProcess?.stderr,
+        manifest: upgradeNoOpManifest,
+      });
+      const setCellCumulativeOk =
+        setCellDryRunProcess?.status === 0 &&
+        setCellDryRunManifest?.summary?.changedCount === 1 &&
+        setCellDryRunManifest?.summary?.noOpCount === 2 &&
+        setCellDryRunManifest?.results?.find((item) => item.structuredEditComponent === "table")?.structuredEditProof?.table?.setCells?.length === 1 &&
+        setCellApplyProcess?.status === 0 &&
+        setCellApplyManifest?.cumulative?.enabled === true &&
+        setCellApplyManifest?.cumulative?.chainDepth === 1 &&
+        setCellApplyManifest?.safety?.sourceUnchanged === true &&
+        setCellOutputText === setCellExpectedText &&
+        expandUpgradeTableLevelEdit(setCellOutputText, setCellRequest).noChange === true &&
+        sha256File(twFixturePath) === twSourceSha;
+      add("pvf-change-upgrade-table-set-cell-cumulative-end-to-end", setCellCumulativeOk, setCellCumulativeOk ? undefined : {
+        dryRunStatus: setCellDryRunProcess?.status,
+        dryRunStdout: setCellDryRunProcess?.stdout,
+        dryRunStderr: setCellDryRunProcess?.stderr,
+        dryRunManifest: setCellDryRunManifest,
+        applyStatus: setCellApplyProcess?.status,
+        applyStdout: setCellApplyProcess?.stdout,
+        applyStderr: setCellApplyProcess?.stderr,
+        applyManifest: setCellApplyManifest,
+      });
+
+      for (const eventEncoding of ["Cn", "Tw"]) {
+        const source = path.join(tempRoot, `event-intro-${eventEncoding}.pvf`);
+        createFixturePvf(source, { stringTableEncoding: eventEncoding, eventIntro: true });
+        const beforeHash = sha256File(source);
+        const previousText = eventEncoding === "Tw" ? "`舊版說明`" : "`旧版说明`";
+        const newText = eventEncoding === "Tw" ? "`新版說明\r\n搭配指南`" : "`新版说明\r\n搭配指南`";
+        const sourceSession = await fallback.openSession(source, eventEncoding);
+        let originalText;
+        try { originalText = (await fallback.readFile(sourceSession.sessionId, "event/eventlistwindow.evt", { pvfEncoding: eventEncoding, autoConvertStringLink: false })).textContent; }
+        finally { await fallback.closeSession(sourceSession.sessionId); }
+        const changeFile = path.join(tempRoot, `event-intro-${eventEncoding}.json`);
+        fs.writeFileSync(changeFile, JSON.stringify({ schemaVersion: "1.0", mode: "dry-run-only",
+          target: { sourcePvf: source, pvfOpenEncoding: eventEncoding, pvfReadEncoding: eventEncoding },
+          changes: [{ id: "intro", type: "replace-text", pvfPath: "event/eventlistwindow.evt", previousText, newText,
+            replaceAll: true, expectedOccurrences: 2, textWriteMode: VERIFIED_INLINE_TEXT_MODE, pvfEncoding: eventEncoding }],
+          safety: { writeModeEnabled: false, requiresBackupBeforeApply: true, requiresExplicitOutputPath: true, requiresReadback: true },
+        }), "utf8");
+        const run = args => childProcess.spawnSync(process.execPath, [pvfChangeCli, "--root", workbenchRoot, ...args],
+          { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: cliEnv });
+        const dry = run(["dry-run", "--file", changeFile, "--out", path.join(tempRoot, `event-intro-${eventEncoding}-dry`)]);
+        let preview;
+        try { preview = JSON.parse(dry.stdout); } catch { /* failure reported below */ }
+        const applied = preview?.approvalCode && run(["apply", "--file", changeFile, "--dry-run-manifest", preview.manifestPath,
+          "--authorize-apply", preview.approvalCode, "--out", path.join(tempRoot, `event-intro-${eventEncoding}-apply`)]);
+        let result, manifest, outputText;
+        try { result = JSON.parse(applied?.stdout); manifest = JSON.parse(fs.readFileSync(result.manifestPath, "utf8")); } catch { /* failure reported below */ }
+        if (manifest?.outputPvf) {
+          const session = await fallback.openSession(manifest.outputPvf, eventEncoding);
+          try { outputText = (await fallback.readFile(session.sessionId, "event/eventlistwindow.evt", { pvfEncoding: eventEncoding, autoConvertStringLink: false })).textContent; }
+          finally { await fallback.closeSession(session.sessionId); }
+        }
+        const previewManifest = preview?.manifestPath && JSON.parse(fs.readFileSync(preview.manifestPath, "utf8"));
+        const passed = dry.status === 0 && applied?.status === 0 &&
+          previewManifest?.temporaryVerificationWriteOperationsExecuted === true &&
+          previewManifest?.results?.[0]?.encodingRoundTripProbe?.ok === true &&
+          manifest?.safety?.sourceUnchanged === true && sha256File(source) === beforeHash &&
+          outputText === originalText.replaceAll(previousText, newText);
+        add(`event-intro-${eventEncoding}-controlled-output-independent-readback`, passed,
+          passed ? undefined : { dry: dry.stdout, dryError: dry.stderr, apply: applied?.stdout, applyError: applied?.stderr, outputText });
+      }
+
+      const dgnDialogChangeSetFile = path.join(tempRoot, "verified-inline-tw-dgn-dialog-change-set.json");
+      const dgnDialogDryRunRoot = path.join(tempRoot, "verified-inline-tw-dgn-dialog-dry-run");
+      const dgnDialogApplyRoot = path.join(tempRoot, "verified-inline-tw-dgn-dialog-apply");
+      fs.writeFileSync(dgnDialogChangeSetFile, `${JSON.stringify({
+        schemaVersion: "1.0",
+        mode: "dry-run-only",
+        description: "Verified complete Traditional Chinese messages inside strict DGN tower dialog records.",
+        target: {
+          sourcePvf: twFixturePath,
+          pvfOpenEncoding: "Tw",
+          pvfReadEncoding: "Tw",
+        },
+        changes: [
+          {
+            id: "dgn-name", type: "replace-text", pvfPath: "dungeon/towers/towerofillusion.dgn",
+            previousText: "`太陽`", newText: "`幻影之塔`", replaceAll: false,
+            textWriteMode: VERIFIED_INLINE_TEXT_MODE, pvfEncoding: "Tw",
+          },
+          {
+            id: "dgn-explain", type: "replace-text", pvfPath: "dungeon/towers/towerofillusion.dgn",
+            previousText: "`幻影之塔舊說明`", newText: "`幻影之塔驗證說明`", replaceAll: false,
+            textWriteMode: VERIFIED_INLINE_TEXT_MODE, pvfEncoding: "Tw",
+          },
+          {
+            id: "dgn-dialog-on-start", type: "replace-text", pvfPath: "dungeon/towers/towerofillusion.dgn",
+            previousText: "`歡迎來到第一層`", newText: "`歡迎來到幻影之塔第一層`", replaceAll: false,
+            textWriteMode: VERIFIED_INLINE_TEXT_MODE, pvfEncoding: "Tw",
+          },
+          {
+            id: "dgn-dialog-on-complete", type: "replace-text", pvfPath: "dungeon/towers/towerofillusion.dgn",
+            previousText: "`第二層歡迎\r\n請繼續前進`", newText: "`第二層歡迎\r\n請擊敗所有敵人後繼續前進`", replaceAll: false,
+            textWriteMode: VERIFIED_INLINE_TEXT_MODE, pvfEncoding: "Tw",
+          },
+        ],
+        safety: {
+          writeModeEnabled: false,
+          requiresBackupBeforeApply: true,
+          requiresExplicitOutputPath: true,
+          requiresReadback: true,
+        },
+      }, null, 2)}\n`, "utf8");
+      const dgnDialogDryRunProcess = childProcess.spawnSync(process.execPath, [
+        pvfChangeCli,
+        "--root", workbenchRoot,
+        "dry-run",
+        "--file", dgnDialogChangeSetFile,
+        "--out", dgnDialogDryRunRoot,
+      ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: cliEnv });
+      let dgnDialogDryRunResult = null;
+      try { dgnDialogDryRunResult = JSON.parse(dgnDialogDryRunProcess.stdout || "null"); } catch { /* recorded below */ }
+      const dgnDialogDryRunManifest = dgnDialogDryRunResult?.manifestPath && fs.existsSync(dgnDialogDryRunResult.manifestPath)
+        ? JSON.parse(fs.readFileSync(dgnDialogDryRunResult.manifestPath, "utf8"))
+        : null;
+      const dgnDialogApplyProcess = dgnDialogDryRunProcess.status === 0 && dgnDialogDryRunResult?.approvalCode
+        ? childProcess.spawnSync(process.execPath, [
+          pvfChangeCli,
+          "--root", workbenchRoot,
+          "apply",
+          "--file", dgnDialogChangeSetFile,
+          "--dry-run-manifest", dgnDialogDryRunResult.manifestPath,
+          "--authorize-apply", dgnDialogDryRunResult.approvalCode,
+          "--out", dgnDialogApplyRoot,
+        ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: cliEnv })
+        : null;
+      let dgnDialogApplyResult = null;
+      try { dgnDialogApplyResult = JSON.parse(dgnDialogApplyProcess?.stdout || "null"); } catch { /* recorded below */ }
+      const dgnDialogApplyManifest = dgnDialogApplyResult?.manifestPath && fs.existsSync(dgnDialogApplyResult.manifestPath)
+        ? JSON.parse(fs.readFileSync(dgnDialogApplyResult.manifestPath, "utf8"))
+        : null;
+      let dgnDialogOutputText = null;
+      if (dgnDialogApplyManifest?.outputPvf && fs.existsSync(dgnDialogApplyManifest.outputPvf)) {
+        const dgnDialogOutputOpened = await fallback.openSession(dgnDialogApplyManifest.outputPvf, "Tw");
+        try {
+          dgnDialogOutputText = (await fallback.readFile(
+            dgnDialogOutputOpened.sessionId,
+            "dungeon/towers/towerofillusion.dgn",
+            { pvfEncoding: "Tw", autoConvertStringLink: false },
+          )).textContent;
+        } finally {
+          await fallback.closeSession(dgnDialogOutputOpened.sessionId);
+        }
+      }
+      const dgnDialogDryRunResults = dgnDialogDryRunManifest?.results || [];
+      const dgnDialogValidEndToEnd =
+        dgnDialogDryRunProcess.status === 0 &&
+        dgnDialogDryRunResult?.summary?.blockedCount === 0 &&
+        dgnDialogDryRunManifest?.temporaryVerificationWriteOperationsExecuted === true &&
+        dgnDialogDryRunResults.length === 4 &&
+        dgnDialogDryRunResults.every((item) => item.encodingRoundTripProbe?.ok === true) &&
+        dgnDialogDryRunResults.find((item) => item.id === "dgn-dialog-on-start")
+          ?.encodingRoundTripProbe?.writerProof?.structuredContainerProofs?.[0]?.event === "on start" &&
+        dgnDialogDryRunResults.find((item) => item.id === "dgn-dialog-on-start")
+          ?.encodingRoundTripProbe?.writerProof?.eligibilityProofs?.[0]?.ruleId === "dgn-tower-dialog-visible-message" &&
+        dgnDialogDryRunResults.find((item) => item.id === "dgn-dialog-on-complete")
+          ?.encodingRoundTripProbe?.writerProof?.structuredContainerProofs?.[0]?.event === "on complete" &&
+        dgnDialogApplyProcess?.status === 0 &&
+        dgnDialogApplyManifest?.safety?.sourceUnchanged === true &&
+        dgnDialogApplyManifest?.summary?.verifiedInlineTextByEncoding?.Tw === 4 &&
+        /\[name\]\s*`幻影之塔`/u.test(dgnDialogOutputText || "") &&
+        /\[explain\]\s*`幻影之塔驗證說明`/u.test(dgnDialogOutputText || "") &&
+        (dgnDialogOutputText || "").includes("`歡迎來到幻影之塔第一層`") &&
+        (dgnDialogOutputText || "").includes("`第二層歡迎\r\n請擊敗所有敵人後繼續前進`") &&
+        sha256File(twFixturePath) === twSourceSha;
+      add("pvf-change-verified-inline-text-tw-dgn-tower-dialog-end-to-end", dgnDialogValidEndToEnd, dgnDialogValidEndToEnd ? undefined : {
+        dryRunStatus: dgnDialogDryRunProcess.status,
+        dryRunStdout: dgnDialogDryRunProcess.stdout,
+        dryRunStderr: dgnDialogDryRunProcess.stderr,
+        dryRunManifest: dgnDialogDryRunManifest,
+        applyStatus: dgnDialogApplyProcess?.status,
+        applyStdout: dgnDialogApplyProcess?.stdout,
+        applyStderr: dgnDialogApplyProcess?.stderr,
+        applyManifest: dgnDialogApplyManifest,
+        outputText: dgnDialogOutputText,
+      });
+
+      const dgnBatchBlockChangeSetFile = path.join(tempRoot, "verified-inline-tw-dgn-batch-block-change-set.json");
+      fs.writeFileSync(dgnBatchBlockChangeSetFile, `${JSON.stringify({
+        schemaVersion: "1.0",
+        mode: "dry-run-only",
+        description: "A valid DGN name/explain pair must identify an illegal same-file event-token blocker.",
+        target: { sourcePvf: twFixturePath, pvfOpenEncoding: "Tw", pvfReadEncoding: "Tw" },
+        changes: [
+          {
+            id: "valid-dgn-name", type: "replace-text", pvfPath: "dungeon/towers/towerofillusion.dgn",
+            previousText: "`太陽`", newText: "`幻影之塔`", replaceAll: false,
+            textWriteMode: VERIFIED_INLINE_TEXT_MODE, pvfEncoding: "Tw",
+          },
+          {
+            id: "valid-dgn-explain", type: "replace-text", pvfPath: "dungeon/towers/towerofillusion.dgn",
+            previousText: "`幻影之塔舊說明`", newText: "`幻影之塔驗證說明`", replaceAll: false,
+            textWriteMode: VERIFIED_INLINE_TEXT_MODE, pvfEncoding: "Tw",
+          },
+          {
+            id: "invalid-dialog-event", type: "replace-text", pvfPath: "dungeon/towers/towerofillusion.dgn",
+            previousText: "`on start`", newText: "`不應修改事件 token`", replaceAll: false,
+            textWriteMode: VERIFIED_INLINE_TEXT_MODE, pvfEncoding: "Tw",
+          },
+        ],
+        safety: {
+          writeModeEnabled: false,
+          requiresBackupBeforeApply: true,
+          requiresExplicitOutputPath: true,
+          requiresReadback: true,
+        },
+      }, null, 2)}\n`, "utf8");
+      const dgnBatchBlockDryRun = childProcess.spawnSync(process.execPath, [
+        pvfChangeCli,
+        "--root", workbenchRoot,
+        "dry-run",
+        "--file", dgnBatchBlockChangeSetFile,
+        "--out", path.join(tempRoot, "verified-inline-tw-dgn-batch-block-dry-run"),
+      ], { cwd: workbenchRoot, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, env: cliEnv });
+      let dgnBatchBlockResult = null;
+      try { dgnBatchBlockResult = JSON.parse(dgnBatchBlockDryRun.stdout || "null"); } catch { /* recorded below */ }
+      const dgnBatchBlockManifest = dgnBatchBlockResult?.manifestPath && fs.existsSync(dgnBatchBlockResult.manifestPath)
+        ? JSON.parse(fs.readFileSync(dgnBatchBlockResult.manifestPath, "utf8"))
+        : null;
+      const dgnBatchBlockedChanges = dgnBatchBlockResult?.blockedChanges || [];
+      const dgnBatchValidBlocks = dgnBatchBlockedChanges.filter((item) =>
+        ["valid-dgn-name", "valid-dgn-explain"].includes(item.id));
+      const dgnBatchDiagnosticOk =
+        dgnBatchBlockDryRun.status === 2 &&
+        dgnBatchBlockResult?.approvalCode === null &&
+        dgnBatchBlockResult?.summary?.blockedCount === 3 &&
+        dgnBatchBlockManifest?.temporaryVerificationWriteOperationsExecuted === false &&
+        dgnBatchValidBlocks.length === 2 &&
+        dgnBatchValidBlocks.every((item) =>
+          item.code === "FILE_CHANGE_BATCH_BLOCKED" &&
+          item.blockedByChangeId === "invalid-dialog-event" &&
+          item.details?.ownStaticCheckPassed === true &&
+          item.details?.temporaryVerificationExecuted === false) &&
+        dgnBatchBlockedChanges.find((item) => item.id === "invalid-dialog-event")?.code === "CN_TEXT_PARENT_TAG_UNSUPPORTED" &&
+        !dgnBatchBlockedChanges.some((item) => item.code === "CN_TEXT_ROUNDTRIP_REQUIRED") &&
+        dgnBatchBlockResult?.agentHandoff?.sameFileBatchRecovery?.blockedByChangeIds?.includes("invalid-dialog-event") &&
+        dgnBatchBlockResult?.agentHandoff?.instruction?.includes("invalid-dialog-event") &&
+        dgnBatchBlockManifest?.binding?.approvalCode === null &&
+        sha256File(twFixturePath) === twSourceSha;
+      add("pvf-change-dgn-same-file-batch-blocker-diagnostic", dgnBatchDiagnosticOk, dgnBatchDiagnosticOk ? undefined : {
+        status: dgnBatchBlockDryRun.status,
+        stdout: dgnBatchBlockDryRun.stdout,
+        stderr: dgnBatchBlockDryRun.stderr,
+        result: dgnBatchBlockResult,
+        manifest: dgnBatchBlockManifest,
       });
 
       const displayTextMisuseChangeSetFile = path.join(tempRoot, "display-text-misuse-tw-change-set.json");
@@ -3016,7 +4349,31 @@ async function main() {
     ok: checks.find((check) => check.id === id)?.ok === true,
   });
   const existingNutCliEvidence = evidenceCheck("existing-nut-cli-validate-dry-run-apply-independent-readback");
+  const lifecycleChecks = {
+    "ordinary-raw-token-replacement": ["pvf-change-verified-inline-text-cn-end-to-end"],
+    "verified-inline-text": ["explicit-scalar-Cn-cli-independent-readback", "explicit-scalar-Tw-cli-independent-readback", "pvf-change-verified-inline-text-cn-end-to-end", "pvf-change-verified-inline-text-tw-end-to-end"],
+    "existing-binary-ani-delay": ["binary-ani-cli-validate-dry-run-apply-raw-sha256-readback"],
+    "existing-nut-controlled-edit": ["existing-nut-cli-validate-dry-run-apply-independent-readback", "existing-state-cli-validate-dry-run-apply-independent-readback",
+      "existing-skill-use-cli-validate-dry-run-apply-independent-readback", "existing-skill-proc-cli-validate-dry-run-apply-independent-readback"],
+    "registry-lifecycle-row-add": ["pvf-change-new-files-registry-cli-independent-readback"],
+    "same-pvf-file-copy": ["pvf-change-same-pvf-copy-end-to-end"],
+    "ordinary-new-file": ["pvf-change-new-files-registry-cli-independent-readback"],
+    "high-risk-new-file": ["pvf-change-new-files-registry-cli-independent-readback"],
+    "upgrade-amplification-table": ["pvf-change-upgrade-table-level-edit-end-to-end", "pvf-change-partial-rarity-preserved-cli-independent-readback"],
+  };
+  const lifecycleCoverage = CAPABILITY_DEFINITIONS.map(({ id }) => {
+    const evidence = (lifecycleChecks[id] || []).map(evidenceCheck);
+    return { capabilityId: id, ok: evidence.length > 0 && evidence.every((check) => check.ok), evidence };
+  });
   report.capabilityEvidence = {
+    controlledWriteLifecycle: {
+      capabilityCount: lifecycleCoverage.length,
+      passedCapabilityCount: lifecycleCoverage.filter((item) => item.ok).length,
+      ok: lifecycleCoverage.every((item) => item.ok),
+      fixtureOnly: true,
+      gameplayValidationPerformed: false,
+      capabilities: lifecycleCoverage,
+    },
     existingNutControlledEdit: {
       ok: existingNutCliEvidence.ok &&
         checks.find((check) => check.id === "fallback-raw-plain-text-bytes")?.ok === true &&

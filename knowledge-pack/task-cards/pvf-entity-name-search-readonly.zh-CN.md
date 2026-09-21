@@ -55,6 +55,7 @@
 3. 修改前仍对目标路径执行原始读回，并遵守受控生成流程。
 4. 登记身份和返回的目标文件已经读回后，身份定位就结束。不要再逐项 `resolve-path`，也不要把登记路径、目录名或路径片段送入 `search-script` 做第二次确认；它们不会增加登记身份证据。只有用户明确要求观察某个精确正文符号或引用，而且 registry / dependency 证据无法回答时，才进入下节限定的正文观察。
 5. 若宽泛名称的结果被截断，优先使用同一批里更具体的成功关键词。例如“阿尔伯特”很宽而“偷学”已精确命中时，只读“偷学”的结果；确实仍需宽泛项时，最多用用户原话中另一个具体短语缩小一次，不要把整批候选全部打开。
+6. 若当前请求同时描述 APC 的“提升伤害、提高输出、增强攻击力、打得更快、加强战斗力、硬度、坦度、生存能力、更抗打或不容易被打僵”，目标 `.aic` 返回后按根规则直接读取 `task-cards/apc-combat-attribute-intent-readonly-audit.zh-CN.md` 与 `dictionaries/apc-character-status-fields.zh-CN.md`；生存意图再读 `task-cards/apc-character-status-hardness-readonly-audit.zh-CN.md`。不要 grep、glob 或扫描知识包来重新找主题。
 
 ## 零命中
 

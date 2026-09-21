@@ -1,7 +1,7 @@
 {
   "schemaVersion": "1.0",
   "packageName": "PVF-Agent-Workbench",
-  "packageVersion": "3.0.1",
+  "packageVersion": "3.1.0",
   "purpose": "Self-contained clean workspace with beginner-first progressive responses, automatic Cn/Tw encoding-conflict protection, round-trip-verified multiline, exact-count batch, exact adjacent-context and hash-bound exact-range-scoped inline Chinese text changes, dependency-aware same-file ordering with one-pass verified-text batching, explicit cumulative apply chains, reusable SHA256-verified protected-source backups, external persistent local profiles, target-bound skill and script routing, a preferred native PVF backend, a dependency-free TypeScript read-only fallback, SHA-bound indexes, bundled knowledge, controlled output, client-origin source promotion after verified backup, and baseline-safe separately authorized test-client Script.pvf deployment and rollback.",
   "includes": [
     ".gitattributes",
@@ -30,6 +30,7 @@
     "tools/pvf-bridge/server.js",
     "tools/pvf-bridge/native-backend.js",
     "tools/pvf-bridge/verified-inline-cn-text.js",
+    "tools/pvf-bridge/script-text-lexer.js",
     "tools/pvf-bridge/context-anchored-replace.js",
     "tools/pvf-bridge/fallback/",
     "tools/pvf-bridge/dungeon-workflow.js",

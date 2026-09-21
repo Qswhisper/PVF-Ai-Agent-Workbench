@@ -1,6 +1,6 @@
 # PVF Safety Compatibility Adapter
 
-The authoritative safety policy is `knowledge-pack/safety/README.zh-CN.md`. Read it in full for every concrete PVF task. This file intentionally does not duplicate its field-level text, scope, cumulative-output, or client-deployment rules.
+The authoritative safety policy is `knowledge-pack/safety/README.zh-CN.md`. Read it in full before any write plan or deployment. Read-only tasks use the global invariants in AGENTS.md. This file intentionally does not duplicate its field-level text, scope, cumulative-output, or client-deployment rules.
 
 Hard stops that always remain visible:
 

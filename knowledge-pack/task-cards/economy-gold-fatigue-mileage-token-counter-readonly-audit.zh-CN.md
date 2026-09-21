@@ -6,6 +6,8 @@
 ## 快速结论
 
 - 本主题复用 NPC Shop、Quest Reward、Event Reward Delivery、Upgrade / Recipe、Stackable Container、Clear Reward、ServerParameter 等现有入口，不重开这些大主线。
+- 经济对象按 `已登记 -> 有静态引用 -> 来源/入口链闭合 -> 当前可见/可达 -> 运行时交付或转换确认` 分层；后一级不能由前一级替代。休眠、过期、隐藏、未解析配置保持独立状态，不计入有效日收益或实际消耗。
+- 账户余额/服务端计数与同名或近似名的 stackable 券、代币、材料是不同对象；静态物品被消耗或取得也不自动证明账户余额完成转换。
 
 ## 默认处理
 
@@ -14,6 +16,7 @@
 3. 需要文件矩阵、ID 解析样本和辅助差异时，读 `indexes/economy-gold-fatigue-mileage-token-counter-boundary.zh-CN.md`。
 4. 需要文件类型说明时，读 `encyclopedia/pvf-file-types/economy-gold-fatigue-mileage-token-counter.zh-CN.md`。
 5. 如果问题转向具体商店购买、强化、活动奖励、翻牌、任务、礼包开包或 UI，转读对应现有主题。
+6. 汇总经济来源或消耗时，逐项标注上述可达性层级；没有当前入口或运行时交付证据的条目不并入“玩家实际可获得/可消耗”总量。
 
 ## 可接受结论
 

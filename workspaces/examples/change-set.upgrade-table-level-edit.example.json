@@ -1,0 +1,46 @@
+{
+  "$schema": "../../core/pvf-agent-core/schemas/pvf-change-set.schema.json",
+  "schemaVersion": "1.0",
+  "mode": "dry-run-only",
+  "description": "Use independent raw group selectors for the 17-value table and four-value amplification constants.",
+  "target": {
+    "sourcePvf": "C:\\PVF\\Script.pvf",
+    "pvfOpenEncoding": "Tw",
+    "pvfReadEncoding": "Tw"
+  },
+  "changes": [
+    {
+      "id": "amplify-independent-raw-groups",
+      "type": "upgrade-table-level-edit",
+      "pvfPath": "etc/amplifyupgrade.etc",
+      "pvfEncoding": "Tw",
+      "tableEdit": {
+        "sourceGroup": 12,
+        "targetGroups": [13, 14],
+        "copyColumns": ["B", "C", "D", "E", "F", "G", "M", "N", "O", "P", "Q", "R"],
+        "preserveColumns": ["H", "I", "J", "K", "L"]
+      },
+      "maxLevelByRarity": {
+        "common": 15,
+        "uncommon": 15,
+        "rare": 15,
+        "unique": 15,
+        "epic": 15,
+        "chronicle": 15
+      },
+      "amplificationConstEdit": {
+        "sourceGroup": 13,
+        "targetGroups": [14, 15],
+        "groupWidth": 4,
+        "hasLevelZeroGroup": true
+      },
+      "rationale": "All group numbers are raw indexes. B-R are positional labels only; gameplay display levels and meaning still require target evidence and in-game validation."
+    }
+  ],
+  "safety": {
+    "writeModeEnabled": false,
+    "requiresBackupBeforeApply": true,
+    "requiresExplicitOutputPath": true,
+    "requiresReadback": true
+  }
+}

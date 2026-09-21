@@ -28,7 +28,23 @@
 - 不要默认每个块都有同样数量的数字组；目标样本可见有 socket token 的多组形态，也可见无 socket token 后直接闭合的形态。
 - 当某组末尾的 socket 数量为 `0` 时，不要补写 socket token。
 - 当某组末尾的 socket 数量大于 `0` 时，后续应按该数量读取紧邻的 socket token，再确认 `[/avatar type select]` 闭合。
-- 数字列的运行语义不在本索引内展开；价格、期限或其他解释都需要另做目标验证。
+- 除下述已闭合的商城价格分支外，数字列的运行语义不在本索引内展开；期限或其他解释仍需另做目标验证。
+
+## 商城价格语义边界
+
+在两份独立 PVF 的商城目录/装备样本以及一次历史客户端批量 A/B 中，已观察到以下闭合链：
+
+1. `etc/newcashshop.etc [avatar]` 引用一个经 `equipment.lst` 登记的装扮 ID。
+2. 对应 `.equ [avatar type select]` 由连续五数字组构成。
+3. 该家族每组第 4 个数字随商城散件显示价和实际价格变化；组末数字仍按 socket 数量解释。
+
+使用边界：
+
+- 这是一条“目标商城装扮家族”语义，不是看到 `[avatar type select]` 就能无条件写入的全版本公式。
+- 必须先闭合商城目录引用、equipment registry 和目标 `.equ`，再用目标客户端价格 A/B 确认。
+- 组形不是连续五数字组、物品未被目标商城引用、或 UI 属于 `avarulet/avagacha` 等独立 `.shp` 时，保持未知并转读对应系统。
+- 不对整份 PVF 的相同数字做 replaceAll；同值也可能属于能力、期限、展示或其他商品系统。
+- 具体流程见 `task-cards/cashshop-avatar-price-readonly-audit.zh-CN.md`。
 
 ## Socket Token
 

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "1.0",
+  "mode": "dry-run-only",
+  "description": "Explicit .stk name reference detachment; follow with a cumulative round for new descriptions",
+  "target": { "sourcePvf": "D:/MyDNFWork/Script.pvf", "pvfOpenEncoding": "Tw", "pvfReadEncoding": "Tw" },
+  "changes": [{
+    "id": "detach-name",
+    "type": "replace-text",
+    "pvfPath": "stackable/example.stk",
+    "previousText": "<13::example_name`Old Name`>",
+    "newText": "`獨立名稱`",
+    "contextBefore": "[name]\r\n",
+    "replaceAll": false,
+    "pvfEncoding": "Tw",
+    "textWriteMode": "verified-stringlink-detach",
+    "rationale": "Explicit destination encoding; shared localization entries remain unchanged"
+  }],
+  "safety": { "writeModeEnabled": false, "requiresBackupBeforeApply": true, "requiresExplicitOutputPath": true, "requiresReadback": true }
+}

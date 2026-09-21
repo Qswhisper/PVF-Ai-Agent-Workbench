@@ -9,8 +9,10 @@
 - 当目标 PVF 和 API 名称都明确时只用两条命令：先 `workbench.bat knowledge-query nut --name <symbol> --kind <kind> --group dnf --exact`，再 `workbench.bat pvf-read search-script --pvf <Script.pvf> --keyword <symbol>`。两步已覆盖内置声明与目标脚本观察，不再运行 help、`Test-Path`、`Get-Item`、普通 filename search 或目录枚举。
 - API 名称用随包 `workbench.bat nut-api query` 或 `workbench.bat knowledge-query nut` 精确查询；不需要额外目录。内置目录未命中时继续查目标 PVF，不猜函数名。
 - 内置声明版本、函数签名和常量值只说明接口形状，默认 `targetRuntimeVerified: false`；还要查目标 PVF 真实调用点。目录 0 命中不证明运行时不存在。
+- `search-script` 0 命中同样不证明目标 `.nut` 没有该符号。若 `load_state`、回调注册、依赖链或已建账来源已经给出一个精确 PVF 路径，可直接读取该路径闭合；没有已知路径时保持 unresolved，不做普通 filename search 或近似名称猜测。
 - `dnf`、`squirrel`、`frontend`、`tooling` 必须分组理解；Attract-Mode 的 `frontend` 声明不是 DNF 运行时 API。
 - 函数存在不等于当前脚本入口会运行；必须确认 `load_state`、职业入口或已加载脚本把它推入。
+- 回调需要同时闭合“注册名、目标函数定义和目标参数顺序”；类静态形态、对象实例形态和同名 helper 不可互换。静态闭合后仍要按普通动作、读条 / buff、换图等相关状态做代表性实机回归。
 - 函数签名只能说明调用形状，不能证明伤害、命中、同步、PVP、UI、读条、冷却或资源显示。
 - 数字参数必须回到目标 PVF 的 `.lst`、`.skl [static data]`、state 包、substate 分支或同脚本上下文解释。
 - 涉及客户端视觉、音效、图标、动画资源时，Script 引用不证明 ImagePacks2/NPK 完整。
@@ -29,8 +31,9 @@
 | Appendage、buff、active status、对象查找 | 本文 + 目标 appendage / skill 链 | 要确认 appendage 生命周期或对象 API 时 |
 | PassiveObject、AttackInfoPacket、动态攻击包 | 本文 + PassiveObject compact router | 要确认 `sq_SendCreatePassiveObjectPacket`、attack packet、回调参数时 |
 | 回调参数、`onSetState_*`、`onProc_*`、`onAttack_*` | 本文 + 目标脚本实际入口 | 要确认回调参数最低含义时 |
+| 回调冲突、数据传递、运行时 UI、ACT、调试 helper | 本文 + `indexes/nut-runtime-callback-data-ui-act-boundary.zh-CN.md` | 要区分内置 API、目标封装和教程候选时 |
 | 函数、类、常量精确查询 | `nut-api query --exact --kind ... --group dnf` | 有同名冲突、声明版本不明或需看参数时 |
-| 已给目标 PVF 的精确函数核对 | `knowledge-query nut --exact --group dnf` + `pvf-read search-script --keyword <symbol>` | 只有需要解释复杂入口链时才继续读返回的具体脚本 |
+| 已给目标 PVF 的精确函数核对 | `knowledge-query nut --exact --group dnf` + `pvf-read search-script --keyword <symbol>`；0 命中但已有精确加载路径时直接读该路径 | 只有需要解释复杂入口链或闭合回调注册时才继续读具体脚本 |
 | 两个以上历史 PVF 的调用变化 | `nut-api query --observation ...` 或外部 observation diff | 结论必须同时显示完整 PVF SHA；索引后仍读回相关脚本 |
 
 ## 禁止外推
@@ -48,3 +51,4 @@
 - API 组边界：`indexes/skill-state-nut-runtime-api-group-boundary.zh-CN.md`
 - API 分组边界：`indexes/skill-state-nut-runtime-api-group-boundary.zh-CN.md`
 - 技能参数：`indexes/skill-parameter-index.zh-CN.md`
+- 回调 / 数据 / UI / ACT 边界：`indexes/nut-runtime-callback-data-ui-act-boundary.zh-CN.md`

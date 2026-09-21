@@ -70,6 +70,14 @@ function main() {
     const fallbackBackend = runNode(stageDir, "core/pvf-agent-core/scripts/fallback-backend-self-test.js", []);
     addCheck(checks, errors, "stage.readonly-fallback-self-test", fallbackBackend, (parsed) => parsed?.summary?.ok === true);
 
+    // Exercise the public evidence commands in the staged package too. Their
+    // dedicated fixtures are not covered by the general fallback self-test.
+    for (const test of ["evidence", "scope", "skill-identity", "skill-learning", "equipment-eligibility"]) {
+      const evidenceRun = runNode(stageDir, "core/pvf-agent-core/cli/pvf-readonly.js", [`${test}-self-test`]);
+      addCheck(checks, errors, `stage.pvf-${test}-self-test`, evidenceRun,
+        (parsed) => parsed?.ok === true && parsed?.summary?.failedChecks === 0);
+    }
+
     const knowledge = runNode(stageDir, "core/pvf-agent-core/scripts/check-knowledge-pack.js");
     addCheck(checks, errors, "stage.check-knowledge-pack", knowledge, (_parsed, stdout) => /PASS 0 error\(s\)/.test(stdout));
 
@@ -100,6 +108,28 @@ function main() {
       "--out", researchOut,
     ]);
     addCheck(checks, errors, "stage.research-intake", researchRun, (parsed) => parsed?.ok === true && parsed?.summary?.fileCount === 5);
+
+    const researchMissingSourceId = runNode(stageDir, "core/pvf-agent-core/cli/research-intake.js", [
+      "inventory",
+      "--source", path.join(stageDir, "core", "pvf-agent-core", "contracts", "fixtures"),
+    ]);
+    const researchMissingSourceIdOk =
+      researchMissingSourceId.ok === false &&
+      researchMissingSourceId.parsed?.ok === false &&
+      researchMissingSourceId.parsed?.code === "REQUIRED_OPTION_MISSING" &&
+      researchMissingSourceId.parsed?.missingOption === "--source-id" &&
+      typeof researchMissingSourceId.parsed?.agentHandoff?.nextCommandOnly === "string" &&
+      researchMissingSourceId.parsed.agentHandoff.nextCommandOnly.includes("--source-id REPLACE_WITH_ASCII_SOURCE_ID") &&
+      researchMissingSourceId.parsed?.agentHandoff?.helpProbeRequired === false;
+    checks.push({
+      id: "stage.research-missing-source-id-json-handoff",
+      ok: researchMissingSourceIdOk,
+      exitCode: researchMissingSourceId.exitCode,
+      summary: researchMissingSourceId.parsed || null,
+      stdoutTail: researchMissingSourceIdOk ? undefined : researchMissingSourceId.stdout.slice(-2000),
+      stderr: researchMissingSourceId.stderr || undefined,
+    });
+    if (!researchMissingSourceIdOk) errors.push("stage.research-missing-source-id-json-handoff failed.");
 
     const researchVerify = runNode(stageDir, "core/pvf-agent-core/cli/research-intake.js", [
       "verify",

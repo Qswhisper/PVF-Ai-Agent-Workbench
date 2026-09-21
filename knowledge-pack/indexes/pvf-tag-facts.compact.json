@@ -1007,8 +1007,8 @@
       {
         "section": "none",
         "normalizedSection": "none",
-        "comment": "该词条位于技能树时",
-        "normalizedComment": "该词条位于技能树时",
+        "comment": "该词条位于技能树时，代表未转职职业",
+        "normalizedComment": "该词条位于技能树时，代表未转职职业",
         "fileType": 28
       },
       {
@@ -1350,8 +1350,8 @@
       {
         "section": "command",
         "normalizedSection": "command",
-        "comment": "技能指令",
-        "normalizedComment": "技能指令",
+        "comment": "技能指令，比如“←→+Z”以默认的手搓指令释放鬼剑士的【十字斩】等等",
+        "normalizedComment": "技能指令，比如“←→+Z”以默认的手搓指令释放鬼剑士的【十字斩】等等",
         "fileType": 15
       },
       {
@@ -1511,8 +1511,8 @@
       {
         "section": "skill fitness growtype",
         "normalizedSection": "skill fitness growtype",
-        "comment": "为职业赋予这个技能",
-        "normalizedComment": "为职业赋予这个技能",
+        "comment": "为职业赋予这个技能，需搭配代码：[growtype maximum level]",
+        "normalizedComment": "为职业赋予这个技能，需搭配代码：[growtype maximum level]",
         "fileType": 15
       },
       {
@@ -1735,8 +1735,8 @@
       {
         "section": "stuck",
         "normalizedSection": "stuck",
-        "comment": "命中率（正数减少",
-        "normalizedComment": "命中率（正数减少",
+        "comment": "命中率（正数减少，负数增加）",
+        "normalizedComment": "命中率（正数减少，负数增加）",
         "fileType": 9
       },
       {
@@ -1784,8 +1784,8 @@
       {
         "section": "DAMAGE TYPE",
         "normalizedSection": "damage type",
-        "comment": "霸体代码",
-        "normalizedComment": "霸体代码",
+        "comment": "在动画里选择状态",
+        "normalizedComment": "在动画里选择状态",
         "fileType": 1
       },
       {

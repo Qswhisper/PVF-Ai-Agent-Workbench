@@ -10,7 +10,7 @@
     "safety/README.zh-CN.md",
     "indexes/knowledge-index.json"
   ],
-  "topicCount": 288,
+  "topicCount": 291,
   "topics": {
     "pvf-safety": {
       "status": "默认可用",
@@ -123,11 +123,11 @@
     "pvf-registry-lst-topology": {
       "status": "默认可用",
       "entries": [
-        "safety/README.zh-CN.md",
         "task-cards/pvf-registry-lst-topology-readonly-audit.zh-CN.md",
         "dictionaries/pvf-registry-lst-topology-fields.zh-CN.md",
         "indexes/pvf-registry-lst-topology-orphan-boundary.zh-CN.md",
-        "encyclopedia/pvf-file-types/lst-registry-topology.zh-CN.md"
+        "encyclopedia/pvf-file-types/lst-registry-topology.zh-CN.md",
+        "safety/README.zh-CN.md"
       ]
     },
     "lst-registry": {
@@ -174,11 +174,12 @@
     "text-stringlink-encoding": {
       "status": "默认可用",
       "entries": [
-        "safety/README.zh-CN.md",
         "task-cards/text-stringlink-encoding-readonly-audit.zh-CN.md",
         "dictionaries/text-stringlink-encoding-fields.zh-CN.md",
         "indexes/text-stringlink-encoding-localization-boundary.zh-CN.md",
-        "encyclopedia/pvf-file-types/text-stringlink-localization.zh-CN.md"
+        "encyclopedia/pvf-file-types/text-stringlink-localization.zh-CN.md",
+        "task-cards/stackable-stringlink-detach-controlled-change.zh-CN.md",
+        "safety/README.zh-CN.md"
       ]
     },
     "stringlink": {
@@ -223,12 +224,13 @@
     "npc-shop": {
       "status": "默认可用",
       "entries": [
-        "encyclopedia/pvf-file-types/itemshop-shp.zh-CN.md",
-        "dictionaries/pvf-tags.zh-CN.md",
+        "task-cards/npc-shop-readonly-audit.zh-CN.md",
+        "task-cards/npc-shop-controlled-change.zh-CN.md",
         "dictionaries/npc-shop-fields.zh-CN.md",
         "indexes/npc-shop-itemshop-exchange-price-boundary.zh-CN.md",
-        "task-cards/npc-shop-readonly-audit.zh-CN.md",
-        "workflows/npc-shop-edit.zh-CN.md"
+        "workflows/npc-shop-edit.zh-CN.md",
+        "encyclopedia/pvf-file-types/itemshop-shp.zh-CN.md",
+        "dictionaries/pvf-tags.zh-CN.md"
       ]
     },
     "npc-shop-payment": {
@@ -261,19 +263,22 @@
     "equipment-stackable": {
       "status": "默认可用",
       "entries": [
-        "encyclopedia/pvf-file-types/equipment-stackable.zh-CN.md",
-        "dictionaries/pvf-tags.zh-CN.md",
-        "dictionaries/equipment-fields.zh-CN.md",
-        "indexes/pvf-tag-router-equipment-basic-rules.zh-CN.md",
-        "indexes/equipment-basic-fields.zh-CN.md",
-        "dictionaries/stackable-fields.zh-CN.md",
         "task-cards/equipment-stackable-readonly-audit.zh-CN.md",
+        "task-cards/equipment-stackable-controlled-change.zh-CN.md",
+        "workflows/item-stackable-dependency-planner.zh-CN.md",
+        "dictionaries/equipment-fields.zh-CN.md",
+        "dictionaries/stackable-fields.zh-CN.md",
+        "indexes/equipment-basic-fields.zh-CN.md",
+        "indexes/item-stackable-dependency-planner-boundary.zh-CN.md",
         "task-cards/equipment-avatar-aura-creature-extraction-preview.zh-CN.md",
         "workflows/equipment-avatar-aura-creature-extraction-planner.zh-CN.md",
         "indexes/equipment-avatar-aura-creature-extraction-boundary.zh-CN.md",
         "task-cards/stackable-package-orb-card-extraction-preview.zh-CN.md",
         "workflows/stackable-package-orb-card-extraction-planner.zh-CN.md",
-        "indexes/stackable-package-orb-card-extraction-boundary.zh-CN.md"
+        "indexes/stackable-package-orb-card-extraction-boundary.zh-CN.md",
+        "encyclopedia/pvf-file-types/equipment-stackable.zh-CN.md",
+        "dictionaries/pvf-tags.zh-CN.md",
+        "indexes/pvf-tag-router-equipment-basic-rules.zh-CN.md"
       ]
     },
     "equipment-bracket-value-tokens": {
@@ -544,6 +549,7 @@
         "workflows/action-combat-cross-version-porting.zh-CN.md",
         "task-cards/pvf-registry-lst-topology-readonly-audit.zh-CN.md",
         "task-cards/skill-state-nut-runtime-readonly-audit.zh-CN.md",
+        "task-cards/pvf-existing-nut-controlled-change.zh-CN.md",
         "dictionaries/skill-learnability-command-cooldown-fields.zh-CN.md",
         "dictionaries/nut-runtime-api-boundary-quick.zh-CN.md"
       ]
@@ -551,9 +557,11 @@
     "nut-api": {
       "status": "需验证",
       "entries": [
-        "encyclopedia/pvf-file-types/nut-api-runtime.zh-CN.md",
+        "dictionaries/nut-runtime-api-boundary-quick.zh-CN.md",
         "dictionaries/nut-runtime-api-boundary.zh-CN.md",
         "indexes/skill-state-nut-runtime-api-group-boundary.zh-CN.md",
+        "indexes/nut-runtime-callback-data-ui-act-boundary.zh-CN.md",
+        "encyclopedia/pvf-file-types/nut-api-runtime.zh-CN.md",
         "indexes/skill-atmage-windstrike-native-chain.zh-CN.md",
         "indexes/skill-atmage-crystalattack-native-chain.zh-CN.md",
         "indexes/skill-atmage-darkchange-state-blind-attackinfo-chain.zh-CN.md",
@@ -574,6 +582,15 @@
         "indexes/skill-atmage-holonglight-state-po-skillload-buff-chain.zh-CN.md",
         "indexes/skill-atmage-pieceofice-state-core-shard-po-chain.zh-CN.md",
         "task-cards/skill-state-nut-runtime-readonly-audit.zh-CN.md"
+      ]
+    },
+    "nut-runtime-callback-data-ui-act": {
+      "status": "需验证",
+      "entries": [
+        "dictionaries/nut-runtime-api-boundary-quick.zh-CN.md",
+        "indexes/nut-runtime-callback-data-ui-act-boundary.zh-CN.md",
+        "task-cards/skill-state-nut-runtime-readonly-audit.zh-CN.md",
+        "safety/README.zh-CN.md"
       ]
     },
     "skill-state-nut-runtime-boundary": {
@@ -847,17 +864,17 @@
     "passiveobject-attackinfo-hitbox": {
       "status": "需验证",
       "entries": [
+        "indexes/passiveobject-attackinfo-hitbox-compact-router.zh-CN.md",
+        "dictionaries/passiveobject-obj-fields.zh-CN.md",
+        "dictionaries/passiveobject-action-fields.zh-CN.md",
+        "dictionaries/attackinfo-atk-fields.zh-CN.md",
+        "task-cards/passiveobject-nonmonster-readonly-audit.zh-CN.md",
         "task-cards/attackinfo-payload-damage-element-activestatus-readonly-audit.zh-CN.md",
         "dictionaries/attackinfo-payload-damage-element-activestatus-fields.zh-CN.md",
         "indexes/attackinfo-payload-damage-element-activestatus-boundary.zh-CN.md",
-        "indexes/passiveobject-attackinfo-hitbox-compact-router.zh-CN.md",
         "encyclopedia/pvf-file-types/passiveobject-attackinfo-hitbox.zh-CN.md",
-        "dictionaries/attackinfo-atk-fields.zh-CN.md",
         "indexes/attackinfo-atk-observed-tag-router.zh-CN.md",
-        "indexes/attackinfo-atk-backtick-token-router.zh-CN.md",
-        "dictionaries/passiveobject-obj-fields.zh-CN.md",
-        "dictionaries/passiveobject-action-fields.zh-CN.md",
-        "task-cards/passiveobject-nonmonster-readonly-audit.zh-CN.md"
+        "indexes/attackinfo-atk-backtick-token-router.zh-CN.md"
       ]
     },
     "attackinfo-atk": {
@@ -933,19 +950,21 @@
     "monster": {
       "status": "需验证",
       "entries": [
+        "task-cards/monster-mob-readonly-audit.zh-CN.md",
+        "task-cards/monster-ai-summon-spawn-drop-readonly-audit.zh-CN.md",
+        "dictionaries/monster-fields.zh-CN.md",
+        "indexes/monster-observed-tag-router.zh-CN.md",
+        "indexes/monster-entry-link-router.zh-CN.md",
         "task-cards/monster-ai-action-attack-cross-layer-readonly-audit.zh-CN.md",
         "dictionaries/monster-ai-action-attack-cross-layer-fields.zh-CN.md",
         "indexes/monster-ai-action-attack-cross-layer-boundary.zh-CN.md",
         "encyclopedia/pvf-file-types/monster-mob.zh-CN.md",
         "encyclopedia/pvf-file-types/passiveobject-attackinfo-hitbox.zh-CN.md",
-        "dictionaries/monster-fields.zh-CN.md",
         "dictionaries/attackinfo-atk-fields.zh-CN.md",
         "indexes/monster-field-router-basic.zh-CN.md",
-        "indexes/monster-observed-tag-router.zh-CN.md",
         "indexes/monster-backtick-token-router.zh-CN.md",
         "indexes/attackinfo-atk-observed-tag-router.zh-CN.md",
         "indexes/attackinfo-atk-backtick-token-router.zh-CN.md",
-        "task-cards/monster-mob-readonly-audit.zh-CN.md",
         "task-cards/monster-attackinfo-atk-readonly-audit.zh-CN.md",
         "dictionaries/monster-action-animation-fields.zh-CN.md",
         "indexes/monster-action-animation-act-observed-tag-router.zh-CN.md",
@@ -959,9 +978,7 @@
         "task-cards/monster-created-passiveobject-readonly-audit.zh-CN.md",
         "dictionaries/monster-ai-fields.zh-CN.md",
         "indexes/monster-ai-observed-tag-router.zh-CN.md",
-        "indexes/monster-ai-expression-router.zh-CN.md",
-        "indexes/monster-entry-link-router.zh-CN.md",
-        "task-cards/monster-ai-summon-spawn-drop-readonly-audit.zh-CN.md"
+        "indexes/monster-ai-expression-router.zh-CN.md"
       ]
     },
     "monster-fields": {
@@ -1063,9 +1080,35 @@
       "status": "默认可用",
       "entries": [
         "encyclopedia/pvf-file-types/apc-ai-key-stream.zh-CN.md",
+        "task-cards/apc-combat-attribute-intent-readonly-audit.zh-CN.md",
+        "task-cards/apc-character-status-hardness-readonly-audit.zh-CN.md",
+        "task-cards/apc-opening-action-single-execution-readonly-audit.zh-CN.md",
+        "dictionaries/apc-character-status-fields.zh-CN.md",
         "task-cards/apc-extraction-preview.zh-CN.md",
         "workflows/apc-extraction-planner.zh-CN.md",
         "indexes/apc-extraction-boundary.zh-CN.md"
+      ]
+    },
+    "apc-combat-attribute-intent": {
+      "status": "需验证",
+      "entries": [
+        "safety/README.zh-CN.md",
+        "task-cards/apc-combat-attribute-intent-readonly-audit.zh-CN.md",
+        "dictionaries/apc-character-status-fields.zh-CN.md",
+        "task-cards/apc-character-status-hardness-readonly-audit.zh-CN.md",
+        "encyclopedia/pvf-file-types/apc-ai-key-stream.zh-CN.md",
+        "workflows/apc-extraction-planner.zh-CN.md"
+      ]
+    },
+    "apc-character-status-hardness": {
+      "status": "需验证",
+      "entries": [
+        "safety/README.zh-CN.md",
+        "task-cards/apc-combat-attribute-intent-readonly-audit.zh-CN.md",
+        "task-cards/apc-character-status-hardness-readonly-audit.zh-CN.md",
+        "dictionaries/apc-character-status-fields.zh-CN.md",
+        "encyclopedia/pvf-file-types/apc-ai-key-stream.zh-CN.md",
+        "workflows/apc-extraction-planner.zh-CN.md"
       ]
     },
     "client-assets": {
@@ -1133,13 +1176,14 @@
     "monster-action-animation": {
       "status": "需验证",
       "entries": [
-        "encyclopedia/pvf-file-types/monster-mob.zh-CN.md",
-        "encyclopedia/pvf-file-types/passiveobject-attackinfo-hitbox.zh-CN.md",
+        "task-cards/monster-action-animation-readonly-audit.zh-CN.md",
+        "task-cards/pvf-existing-ani-delay-controlled-change.zh-CN.md",
         "dictionaries/monster-action-animation-fields.zh-CN.md",
         "indexes/monster-action-animation-act-observed-tag-router.zh-CN.md",
         "indexes/monster-action-animation-ani-observed-tag-router.zh-CN.md",
+        "encyclopedia/pvf-file-types/monster-mob.zh-CN.md",
+        "encyclopedia/pvf-file-types/passiveobject-attackinfo-hitbox.zh-CN.md",
         "indexes/monster-action-animation-backtick-token-router.zh-CN.md",
-        "task-cards/monster-action-animation-readonly-audit.zh-CN.md",
         "dictionaries/passiveobject-obj-fields.zh-CN.md",
         "dictionaries/passiveobject-action-fields.zh-CN.md",
         "indexes/monster-created-passiveobject-obj-observed-tag-router.zh-CN.md",
@@ -1389,13 +1433,13 @@
     "quest-drop-reward-ticket": {
       "status": "默认可用",
       "entries": [
-        "safety/README.zh-CN.md",
-        "dictionaries/quest-type-condition-fields.zh-CN.md",
-        "indexes/quest-chain-requirement-boundary.zh-CN.md",
-        "dictionaries/quest-drop-reward-ticket-fields.zh-CN.md",
-        "indexes/quest-drop-reward-ticket-boundary.zh-CN.md",
         "task-cards/quest-drop-reward-ticket-readonly-audit.zh-CN.md",
+        "dictionaries/quest-drop-reward-ticket-fields.zh-CN.md",
+        "dictionaries/quest-type-condition-fields.zh-CN.md",
+        "indexes/quest-drop-reward-ticket-boundary.zh-CN.md",
         "workflows/quest-drop-reward-ticket-edit.zh-CN.md",
+        "safety/README.zh-CN.md",
+        "indexes/quest-chain-requirement-boundary.zh-CN.md",
         "encyclopedia/pvf-file-types/equipment-stackable.zh-CN.md",
         "task-cards/clear-reward-card-flip-independent-drop-probability-readonly-audit.zh-CN.md",
         "dictionaries/clear-reward-card-flip-independent-drop-probability-fields.zh-CN.md",
@@ -1645,16 +1689,16 @@
       "status": "默认可用",
       "entries": [
         "safety/README.zh-CN.md",
-        "task-cards/stackable-container-package-readonly-audit.zh-CN.md",
-        "dictionaries/stackable-container-package-fields.zh-CN.md",
-        "indexes/stackable-container-package-boundary.zh-CN.md",
-        "dictionaries/stackable-fields.zh-CN.md",
         "task-cards/stackable-package-orb-card-extraction-preview.zh-CN.md",
         "workflows/stackable-package-orb-card-extraction-planner.zh-CN.md",
         "indexes/stackable-package-orb-card-extraction-boundary.zh-CN.md",
         "workflows/item-stackable-dependency-planner.zh-CN.md",
         "indexes/item-stackable-dependency-planner-boundary.zh-CN.md",
-        "dictionaries/upgrade-reinforce-amplify-enchant-recipe-fields.zh-CN.md"
+        "dictionaries/stackable-fields.zh-CN.md",
+        "dictionaries/stackable-container-package-fields.zh-CN.md",
+        "dictionaries/upgrade-reinforce-amplify-enchant-recipe-fields.zh-CN.md",
+        "task-cards/stackable-container-package-readonly-audit.zh-CN.md",
+        "indexes/stackable-container-package-boundary.zh-CN.md"
       ]
     },
     "stackable-container": {
@@ -2074,10 +2118,10 @@
     "serverparameter-premium-pcroom-growth-buff": {
       "status": "默认可用",
       "entries": [
-        "safety/README.zh-CN.md",
         "task-cards/serverparameter-premium-pcroom-growth-buff-readonly-audit.zh-CN.md",
         "dictionaries/serverparameter-premium-pcroom-growth-buff-fields.zh-CN.md",
         "indexes/serverparameter-premium-pcroom-growth-buff-boundary.zh-CN.md",
+        "safety/README.zh-CN.md",
         "encyclopedia/pvf-file-types/serverparameter-premium-pcroom-growth-buff.zh-CN.md",
         "task-cards/etc-event-config-readonly-audit.zh-CN.md",
         "task-cards/clear-reward-card-flip-independent-drop-probability-readonly-audit.zh-CN.md"
@@ -2229,6 +2273,9 @@
         "dictionaries/content-lifecycle-dungeon-full-lifecycle-fields.zh-CN.md",
         "indexes/content-lifecycle-dungeon-full-lifecycle-boundary.zh-CN.md",
         "encyclopedia/pvf-file-types/content-lifecycle-dungeon-full-lifecycle.zh-CN.md",
+        "task-cards/dungeon-extraction-preview.zh-CN.md",
+        "workflows/dungeon-extraction-planner.zh-CN.md",
+        "indexes/dungeon-extraction-boundary.zh-CN.md",
         "indexes/dungeon-map-spawn-entry-clear-resource-boundary.zh-CN.md",
         "indexes/formal-region-town-worldmap-area-entry-boundary.zh-CN.md",
         "indexes/quest-drop-reward-ticket-boundary.zh-CN.md",
@@ -2237,10 +2284,7 @@
         "indexes/clear-reward-card-flip-independent-drop-probability-boundary.zh-CN.md",
         "indexes/client-assets-imagepacks-ui-boundary.zh-CN.md",
         "indexes/client-ui-layout-pos-lay-boundary.zh-CN.md",
-        "indexes/audio-soundpacks-music-boundary.zh-CN.md",
-        "task-cards/dungeon-extraction-preview.zh-CN.md",
-        "workflows/dungeon-extraction-planner.zh-CN.md",
-        "indexes/dungeon-extraction-boundary.zh-CN.md"
+        "indexes/audio-soundpacks-music-boundary.zh-CN.md"
       ]
     },
     "dungeon-full-lifecycle": {
@@ -2692,11 +2736,11 @@
     "formal-region-town-worldmap-area-entry": {
       "status": "默认可用",
       "entries": [
-        "safety/README.zh-CN.md",
         "task-cards/formal-region-town-worldmap-area-entry-readonly-audit.zh-CN.md",
         "dictionaries/formal-region-town-worldmap-area-entry-fields.zh-CN.md",
         "indexes/formal-region-town-worldmap-area-entry-boundary.zh-CN.md",
-        "encyclopedia/pvf-file-types/region-town-worldmap-area-entry.zh-CN.md"
+        "encyclopedia/pvf-file-types/region-town-worldmap-area-entry.zh-CN.md",
+        "safety/README.zh-CN.md"
       ]
     },
     "region-town-worldmap": {
@@ -2857,11 +2901,11 @@
     "clear-reward-card-flip": {
       "status": "默认可用",
       "entries": [
-        "safety/README.zh-CN.md",
         "task-cards/clear-reward-card-flip-independent-drop-probability-readonly-audit.zh-CN.md",
         "dictionaries/clear-reward-card-flip-independent-drop-probability-fields.zh-CN.md",
         "indexes/clear-reward-card-flip-independent-drop-probability-boundary.zh-CN.md",
-        "encyclopedia/pvf-file-types/clearreward-independentdrop-probability.zh-CN.md"
+        "encyclopedia/pvf-file-types/clearreward-independentdrop-probability.zh-CN.md",
+        "safety/README.zh-CN.md"
       ]
     },
     "card-flip": {
@@ -3317,6 +3361,10 @@
       "entries": [
         "safety/README.zh-CN.md",
         "task-cards/apc-extraction-preview.zh-CN.md",
+        "task-cards/apc-combat-attribute-intent-readonly-audit.zh-CN.md",
+        "task-cards/apc-character-status-hardness-readonly-audit.zh-CN.md",
+        "task-cards/apc-opening-action-single-execution-readonly-audit.zh-CN.md",
+        "dictionaries/apc-character-status-fields.zh-CN.md",
         "workflows/apc-extraction-planner.zh-CN.md",
         "indexes/apc-extraction-boundary.zh-CN.md",
         "encyclopedia/pvf-file-types/apc-ai-key-stream.zh-CN.md",
@@ -3327,6 +3375,9 @@
     "dungeon-map-entry-clear": {
       "status": "默认可用",
       "entries": [
+        "task-cards/dungeon-map-spawn-entry-clear-resource-readonly-audit.zh-CN.md",
+        "dictionaries/dungeon-map-spawn-entry-clear-resource-fields.zh-CN.md",
+        "indexes/dungeon-map-spawn-entry-clear-resource-boundary.zh-CN.md",
         "task-cards/dungeon-extraction-preview.zh-CN.md",
         "workflows/dungeon-extraction-planner.zh-CN.md",
         "indexes/dungeon-extraction-boundary.zh-CN.md"
@@ -3377,14 +3428,408 @@
     "client-assets-imagepacks-ui": {
       "status": "需验证",
       "entries": [
-        "safety/README.zh-CN.md",
-        "task-cards/client-asset-path-preview.zh-CN.md",
-        "workflows/client-asset-path-preview.zh-CN.md",
-        "indexes/client-asset-path-boundary.zh-CN.md",
+        "task-cards/client-pvf-compatibility-matrix-readonly.zh-CN.md",
+        "dictionaries/client-compatibility-matrix-boundary-quick.zh-CN.md",
+        "workflows/client-pvf-compatibility-matrix.zh-CN.md",
         "task-cards/client-assets-imagepacks-ui-readonly-audit.zh-CN.md",
         "dictionaries/client-assets-imagepacks-ui-fields.zh-CN.md",
         "indexes/client-assets-imagepacks-ui-boundary.zh-CN.md",
-        "encyclopedia/pvf-file-types/assets-imagepacks-ui.zh-CN.md"
+        "encyclopedia/pvf-file-types/assets-imagepacks-ui.zh-CN.md",
+        "safety/README.zh-CN.md",
+        "task-cards/client-asset-path-preview.zh-CN.md",
+        "workflows/client-asset-path-preview.zh-CN.md",
+        "indexes/client-asset-path-boundary.zh-CN.md"
+      ]
+    },
+    "client-pvf-controlled-deployment": {
+      "status": "默认可用",
+      "entries": [
+        "workflows/client-pvf-controlled-deployment.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "unified-knowledge-query": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/unified-knowledge-query-readonly.zh-CN.md",
+        "dictionaries/unified-knowledge-query-boundary-quick.zh-CN.md",
+        "dictionaries/pvf-task-bookmarks-boundary-quick.zh-CN.md",
+        "workflows/unified-knowledge-query.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "pvf-task-bookmarks": {
+      "status": "默认可用",
+      "entries": [
+        "dictionaries/pvf-task-bookmarks-boundary-quick.zh-CN.md",
+        "task-cards/unified-knowledge-query-readonly.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "pvf-entity-name-search": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/pvf-entity-name-search-readonly.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "character-job-branch": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/character-job-growtype-class-enum-readonly-audit.zh-CN.md",
+        "dictionaries/character-job-growtype-class-enum-fields.zh-CN.md",
+        "indexes/character-job-growtype-class-enum-boundary.zh-CN.md"
+      ]
+    },
+    "upgrade-amplification-table-controlled-change": {
+      "status": "需验证",
+      "entries": [
+        "safety/README.zh-CN.md",
+        "task-cards/pvf-upgrade-amplification-table-controlled-change.zh-CN.md",
+        "dictionaries/upgrade-reinforce-amplify-enchant-recipe-fields.zh-CN.md"
+      ]
+    },
+    "skill-parameters": {
+      "status": "需验证",
+      "entries": [
+        "task-cards/character-job-growtype-class-enum-readonly-audit.zh-CN.md",
+        "task-cards/skill-parameter-current-value-readonly-query.zh-CN.md",
+        "indexes/skill-parameter-index.zh-CN.md",
+        "indexes/skill-parameter-facts.compact.json",
+        "indexes/skill-parameter-routes.json",
+        "dictionaries/skill-static-level-parameter-columns.zh-CN.md",
+        "workflows/skill-runtime-parameter-edit.zh-CN.md",
+        "task-cards/skill-state-nut-runtime-readonly-audit.zh-CN.md"
+      ]
+    },
+    "pvf-crosscutting-capabilities": {
+      "status": "默认可用",
+      "entries": [
+        "encyclopedia/pvf-file-types/pvf-crosscutting-productivity.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "pvf-package-quality-audit": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/pvf-package-quality-audit-readonly.zh-CN.md",
+        "dictionaries/pvf-quality-semantic-analysis-fields.zh-CN.md",
+        "workflows/pvf-package-quality-audit.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "pvf-semantic-compare-workset": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/pvf-semantic-compare-workset-readonly.zh-CN.md",
+        "dictionaries/pvf-quality-semantic-analysis-fields.zh-CN.md",
+        "workflows/pvf-semantic-compare-workset.zh-CN.md",
+        "dictionaries/pvf-semantic-lineage-boundary-quick.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "lst-registry-lifecycle": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/lst-registry-lifecycle-readonly-plan.zh-CN.md",
+        "task-cards/pvf-high-risk-new-file-controlled-change.zh-CN.md",
+        "dictionaries/lst-registry-lifecycle-fields.zh-CN.md",
+        "workflows/lst-registry-lifecycle.zh-CN.md",
+        "task-cards/pvf-registry-lst-topology-readonly-audit.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "independent-drop-normalization": {
+      "status": "需验证",
+      "entries": [
+        "task-cards/independent-drop-normalization-readonly-plan.zh-CN.md",
+        "dictionaries/independent-drop-normalization-fields.zh-CN.md",
+        "workflows/independent-drop-normalization-and-heroic-fill.zh-CN.md",
+        "task-cards/clear-reward-card-flip-independent-drop-probability-readonly-audit.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "item-source-graph": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/item-source-graph-readonly.zh-CN.md",
+        "dictionaries/item-source-graph-fields.zh-CN.md",
+        "workflows/item-source-graph.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "skill-tree-layout-merge-safety": {
+      "status": "需验证",
+      "entries": [
+        "task-cards/skill-tree-layout-merge-readonly-plan.zh-CN.md",
+        "dictionaries/skill-tree-layout-merge-fields.zh-CN.md",
+        "workflows/skill-tree-layout-and-merge-safety.zh-CN.md",
+        "task-cards/character-job-growtype-class-enum-readonly-audit.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "atomic-content-generation": {
+      "status": "需验证",
+      "entries": [
+        "task-cards/atomic-content-generation-readonly-plan.zh-CN.md",
+        "dictionaries/atomic-content-generation-fields.zh-CN.md",
+        "workflows/atomic-content-generation.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "same-pvf-file-copy": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/pvf-same-pvf-file-copy-controlled-change.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "skill-learnability-cooldown": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/skill-learnability-tree-command-cooldown-readonly-audit.zh-CN.md",
+        "dictionaries/skill-learnability-command-cooldown-fields.zh-CN.md",
+        "indexes/skill-learnability-tree-command-cooldown-boundary.zh-CN.md",
+        "indexes/skill-learnability-cost-sp-tp-ui-boundary.zh-CN.md"
+      ]
+    },
+    "equipment-skill-levelup-derived-remap": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/skill-learnability-tree-command-cooldown-readonly-audit.zh-CN.md",
+        "dictionaries/skill-learnability-command-cooldown-fields.zh-CN.md",
+        "indexes/skill-learnability-cost-sp-tp-ui-boundary.zh-CN.md",
+        "indexes/skill-registry-routing.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "skill-state-nut-runtime": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/character-job-growtype-class-enum-readonly-audit.zh-CN.md",
+        "indexes/skill-parameter-index.zh-CN.md",
+        "indexes/skill-parameter-facts.compact.json",
+        "dictionaries/skill-static-level-parameter-columns.zh-CN.md",
+        "dictionaries/nut-runtime-api-boundary-quick.zh-CN.md",
+        "indexes/skill-state-nut-runtime-api-group-boundary.zh-CN.md",
+        "workflows/skill-runtime-parameter-edit.zh-CN.md",
+        "task-cards/skill-state-nut-runtime-readonly-audit.zh-CN.md",
+        "task-cards/pvf-existing-nut-controlled-change.zh-CN.md"
+      ]
+    },
+    "existing-nut-controlled-edit": {
+      "status": "默认可用",
+      "entries": [
+        "safety/README.zh-CN.md",
+        "task-cards/pvf-existing-nut-controlled-change.zh-CN.md",
+        "task-cards/skill-state-nut-runtime-readonly-audit.zh-CN.md",
+        "dictionaries/nut-runtime-api-boundary-quick.zh-CN.md"
+      ]
+    },
+    "action-game-modernization": {
+      "status": "默认可用",
+      "entries": [
+        "safety/README.zh-CN.md",
+        "task-cards/action-combat-cross-version-porting.zh-CN.md",
+        "workflows/action-combat-cross-version-porting.zh-CN.md",
+        "task-cards/pvf-registry-lst-topology-readonly-audit.zh-CN.md",
+        "task-cards/skill-state-nut-runtime-readonly-audit.zh-CN.md",
+        "task-cards/pvf-existing-nut-controlled-change.zh-CN.md",
+        "dictionaries/skill-learnability-command-cooldown-fields.zh-CN.md",
+        "dictionaries/nut-runtime-api-boundary-quick.zh-CN.md"
+      ]
+    },
+    "pvf-tag-knowledge": {
+      "status": "需验证",
+      "entries": [
+        "dictionaries/pvf-tag-source-boundary-quick.zh-CN.md",
+        "workflows/pvf-tag-joint-query.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "pvf-semantic-lineage": {
+      "status": "需验证",
+      "entries": [
+        "dictionaries/pvf-semantic-lineage-boundary-quick.zh-CN.md",
+        "workflows/pvf-semantic-lineage-query.zh-CN.md",
+        "task-cards/pvf-registry-lst-topology-readonly-audit.zh-CN.md",
+        "dictionaries/nut-runtime-api-boundary-quick.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "unified-dependency-planner": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/unified-dependency-planner-readonly-preview.zh-CN.md",
+        "dictionaries/dependency-planner-boundary-quick.zh-CN.md",
+        "workflows/unified-dependency-planner.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "dungeon-world-standardization": {
+      "status": "默认可用",
+      "entries": [
+        "indexes/dungeon-world-standardization-capability-router.zh-CN.md",
+        "encyclopedia/pvf-file-types/dungeon-world-standardization.zh-CN.md",
+        "task-cards/map-widescreen-structural-migration-readonly-plan.zh-CN.md",
+        "dictionaries/map-widescreen-structural-migration-fields.zh-CN.md",
+        "workflows/map-widescreen-structural-migration.zh-CN.md",
+        "task-cards/worldmap-dungeon-interface-layout-readonly-plan.zh-CN.md",
+        "dictionaries/worldmap-dungeon-interface-layout-fields.zh-CN.md",
+        "workflows/worldmap-dungeon-interface-layout.zh-CN.md",
+        "task-cards/hellparty-visualization-readonly-plan.zh-CN.md",
+        "dictionaries/hellparty-visualization-fields.zh-CN.md",
+        "workflows/hellparty-visualization-and-edit-plan.zh-CN.md",
+        "task-cards/dungeon-difficulty-ultimate-list-readonly-audit.zh-CN.md",
+        "dictionaries/dungeon-difficulty-ultimate-list-fields.zh-CN.md",
+        "workflows/dungeon-difficulty-and-ultimate-list-audit.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "validated-dungeon-numeric-tuning": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/validated-dungeon-numeric-tuning-readonly.zh-CN.md",
+        "task-cards/complex-dungeon-mechanism-shell-readonly-audit.zh-CN.md",
+        "task-cards/dungeon-map-spawn-entry-clear-resource-readonly-audit.zh-CN.md",
+        "task-cards/dungeon-difficulty-ultimate-list-readonly-audit.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "complex-dungeon-mechanism-shell": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/complex-dungeon-mechanism-shell-readonly-audit.zh-CN.md",
+        "task-cards/dungeon-map-spawn-entry-clear-resource-readonly-audit.zh-CN.md",
+        "task-cards/dungeon-difficulty-ultimate-list-readonly-audit.zh-CN.md",
+        "task-cards/worldmap-dungeon-interface-layout-readonly-plan.zh-CN.md",
+        "task-cards/apc-opening-action-single-execution-readonly-audit.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "map-widescreen-structural-migration": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/map-widescreen-structural-migration-readonly-plan.zh-CN.md",
+        "dictionaries/map-widescreen-structural-migration-fields.zh-CN.md",
+        "workflows/map-widescreen-structural-migration.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "worldmap-dungeon-interface-layout": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/worldmap-dungeon-interface-layout-readonly-plan.zh-CN.md",
+        "task-cards/pvf-high-risk-new-file-controlled-change.zh-CN.md",
+        "dictionaries/worldmap-dungeon-interface-layout-fields.zh-CN.md",
+        "workflows/worldmap-dungeon-interface-layout.zh-CN.md",
+        "task-cards/formal-region-town-worldmap-area-entry-readonly-audit.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "hellparty-visualization": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/hellparty-visualization-readonly-plan.zh-CN.md",
+        "dictionaries/hellparty-visualization-fields.zh-CN.md",
+        "workflows/hellparty-visualization-and-edit-plan.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "dungeon-difficulty-ultimate-list": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/dungeon-difficulty-ultimate-list-readonly-audit.zh-CN.md",
+        "task-cards/pvf-same-pvf-file-copy-controlled-change.zh-CN.md",
+        "dictionaries/dungeon-difficulty-ultimate-list-fields.zh-CN.md",
+        "workflows/dungeon-difficulty-and-ultimate-list-audit.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "dungeon-revive-coin-limit": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/dungeon-revive-coin-limit-readonly-audit.zh-CN.md",
+        "task-cards/validated-dungeon-numeric-tuning-readonly.zh-CN.md",
+        "dictionaries/hellparty-visualization-fields.zh-CN.md",
+        "indexes/dungeon-extraction-boundary.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "tournament-dungeon-native-structure": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/tournament-dungeon-native-structure-readonly-audit.zh-CN.md",
+        "task-cards/dungeon-map-spawn-entry-clear-resource-readonly-audit.zh-CN.md",
+        "task-cards/monster-action-animation-readonly-audit.zh-CN.md",
+        "task-cards/pvf-existing-ani-delay-controlled-change.zh-CN.md",
+        "task-cards/independent-drop-normalization-readonly-plan.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "titlebook-reward-display-delivery": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/titlebook-reward-display-delivery-readonly-audit.zh-CN.md",
+        "dictionaries/quest-drop-reward-ticket-fields.zh-CN.md",
+        "indexes/quest-drop-reward-ticket-boundary.zh-CN.md",
+        "task-cards/client-assets-imagepacks-ui-readonly-audit.zh-CN.md",
+        "task-cards/text-stringlink-encoding-readonly-audit.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "cashshop-avatar-price": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/cashshop-avatar-price-readonly-audit.zh-CN.md",
+        "indexes/avatar-type-select.zh-CN.md",
+        "dictionaries/equipment-fields.zh-CN.md",
+        "task-cards/equipment-stackable-readonly-audit.zh-CN.md",
+        "encyclopedia/pvf-file-types/pvf-crosscutting-productivity.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "client-pvf-compatibility-matrix": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/client-pvf-compatibility-matrix-readonly.zh-CN.md",
+        "dictionaries/client-compatibility-matrix-boundary-quick.zh-CN.md",
+        "workflows/client-pvf-compatibility-matrix.zh-CN.md",
+        "task-cards/client-assets-imagepacks-ui-readonly-audit.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "economy-fatigue-token-counter": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/economy-gold-fatigue-mileage-token-counter-readonly-audit.zh-CN.md",
+        "dictionaries/economy-gold-fatigue-mileage-token-counter-fields.zh-CN.md",
+        "indexes/economy-gold-fatigue-mileage-token-counter-boundary.zh-CN.md"
+      ]
+    },
+    "apc-opening-action-single-execution": {
+      "status": "默认可用",
+      "entries": [
+        "task-cards/apc-opening-action-single-execution-readonly-audit.zh-CN.md",
+        "encyclopedia/pvf-file-types/apc-ai-key-stream.zh-CN.md",
+        "workflows/apc-extraction-planner.zh-CN.md",
+        "task-cards/apc-combat-attribute-intent-readonly-audit.zh-CN.md",
+        "safety/README.zh-CN.md"
+      ]
+    },
+    "apc-fair-duel-standardization": {
+      "status": "需验证",
+      "entries": [
+        "safety/README.zh-CN.md",
+        "task-cards/apc-combat-attribute-intent-readonly-audit.zh-CN.md",
+        "task-cards/apc-character-status-hardness-readonly-audit.zh-CN.md",
+        "dictionaries/apc-character-status-fields.zh-CN.md",
+        "task-cards/apc-fair-duel-level-equipment-standardization.zh-CN.md",
+        "workflows/apc-fair-duel-level-equipment-standardization.zh-CN.md",
+        "indexes/apc-fair-duel-level-equipment-standardization-boundary.zh-CN.md",
+        "workflows/apc-extraction-planner.zh-CN.md",
+        "task-cards/equipment-stackable-readonly-audit.zh-CN.md",
+        "task-cards/equipment-stackable-controlled-change.zh-CN.md"
       ]
     }
   }

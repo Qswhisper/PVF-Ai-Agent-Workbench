@@ -5,15 +5,27 @@
 
 ## 装备强化/增幅字段
 
+### 全局等级表结构
+
+| 文件/区段 | 已确认的静态结构 | 解析边界 |
+| --- | --- | --- |
+| `etc/upgrade.etc [table]` | 每 17 个数字 token 为一个原始组；选择器是从 0 开始的原始组索引。 | 组内第一个 token 不是显式等级号；不得推断全局游戏显示等级映射，B-R 也仅是位置标签。 |
+| `etc/amplifyupgrade.etc [table]` | 同为 17-token 等级组。 | 与强化表共享结构不证明每列玩法语义完全相同。 |
+| `[max upgrade level by rarity]` | 目标版本可观察到六个稀有度/上限对，也有官方参考只包含其中部分稀有度。 | 先按源文件实际行读取；不能把六行当作跨版本必然结构。修改上限须六项逐一声明且源段完整；仅改表格可使用 `tableEdit` 并省略 `maxLevelByRarity`，原上限段逐字保留且核验前后哈希相等，不补造缺失行。 |
+| `etc/amplifyupgrade.etc [amplification const]` | 每 4 个数字 token 为一个组，包含 0 组；原始组索引可独立于 `[table]` 选择。 | 四值的具体玩法顺序未确认，只能按完整四值组复制。 |
+| `etc/upgrade_separate.etc` | 锻造相关独立文件，不属于强化/增幅结构化修改路线。历史目标曾提出某列与界面显示比例相关的运行候选，但证据不足，具体列号、倍率和组值不进入 clean knowledge。 | 必须从当前目标重新读取 `[separate upgrade max]`、`[level]` 与完整表组，并用单变量实机验证列义；界面显示不证明真实随机成功率，也不构成跨版本公式。 |
+
+受控修改读取 `task-cards/pvf-upgrade-amplification-table-controlled-change.zh-CN.md`。小范围恢复可用带精确旧数字的 `tableEdit.setCells`；组件 `no-op` 只复核不写。静态结构仍不能证明成功率、费用或属性公式实机正确。
+
 | 标签 | 观察到的静态含义 | 解析边界 |
 | --- | --- | --- |
 | `[equipment upgrade] ... [/equipment upgrade]` | 装备条件块，可在 `.equ [if]` 下描述 `upgrade` 或 `amplify` 等条件。 | 只证明条件字段存在，不证明强化/增幅状态实机计算正确。 |
 | `[possible kiri protect]` | 大量装备可见的保护相关空标签。 | 只记录静态标记，不证明保护券、NPC 或失败保护实机生效。 |
-| `[not amplify]` | 装备侧禁止增幅样标记，样本为 `1`。 | 不证明服务端一定拒绝，只能作为静态字段复核入口。 |
+| `[not amplify]` | 装备侧禁止增幅样标记。 | 不证明服务端一定拒绝，只能作为静态字段复核入口；值域以目标读回为准。 |
 | `[limit upgradable level] ... [/limit upgradable level]` | 强化/增幅等级限制闭合块，样本含 `normal upgrade`、`amplify upgrade` 和等级段。 | 不能把等级段写成最终规则；需结合装备等级、服务端规则和实机验证。 |
 | `[impossible contents] ... [/impossible contents]` | 装备不可参与内容的 token 块，样本含 `disjoint`、`gift`。 | 不等同于实机分解、赠送或交易一定被拒。 |
-| `[upgrade prob increase]` | 强化成功率修饰线索，样本称号写 `10000`。 | 刻度和最终公式未由静态只读证明。 |
-| `[upgrade cost discount]` | 强化费用折扣线索，样本称号写 `30.0`。 | 不证明金币扣除、折扣叠加或 NPC 费用公式。 |
+| `[upgrade prob increase]` | 强化成功率修饰线索。 | 刻度和最终公式未由静态只读证明；不保存单个样本值。 |
+| `[upgrade cost discount]` | 强化费用折扣线索。 | 不证明金币扣除、折扣叠加或 NPC 费用公式；不保存单个样本值。 |
 | `[assault cost discount]` | 街头争霸费用折扣线索。 | 不属于强化公式；不要混入强化扣费结论。 |
 | `[item overpower part]` | 少量套装装备可见的空标签。 | 当前只记录为装备特殊字段，不解释为强化或附魔机制。 |
 

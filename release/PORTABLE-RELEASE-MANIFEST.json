@@ -3,7 +3,7 @@
   "schemaVersion": "1.0",
   "phase": "agent-workspace-portable-release",
   "packageName": "PVF-Agent-Workbench",
-  "packageVersion": "3.0.1",
+  "packageVersion": "3.1.0",
   "purpose": "Portable self-contained PVF Agent workspace with beginner-first progressive responses, automatic Cn/Tw encoding-conflict protection, round-trip-verified multiline, exact-count batch, and hash-bound exact-range-scoped inline Chinese text changes, dependency-aware same-file ordering with one-pass verified-text batching, explicit cumulative apply chains, reusable SHA256-verified protected-source backups, external persistent local profiles, target-bound skill and script routing, a preferred native backend, a bundled dependency-free TypeScript read-only fallback, SHA-bound indexes, controlled output, client-origin source promotion after verified backup, baseline-safe separately authorized test-client Script.pvf deployment and rollback, clean knowledge routing, Agent Skill, release gates, and deterministic evaluations.",
   "portableCore": {
     "include": [

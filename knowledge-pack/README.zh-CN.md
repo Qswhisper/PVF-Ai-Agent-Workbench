@@ -8,11 +8,11 @@
 
 普通路由任务中，Agent 应先读：
 
-1. `safety/README.zh-CN.md`
-2. `indexes/knowledge-index.json`
-3. 路由命中的 `encyclopedia/`、`dictionaries/`、`workflows/` 或 `task-cards/` 文件
+1. `indexes/knowledge-index.json`，选择一个匹配主题
+2. 该主题唯一首入口；支持资料按条件读取
+3. 写入前再读安全说明和受控修改路由
 
-如果根目录 `AGENTS.md` 已将请求命中“精确只读快速路径”，则直接读取该路径点名的短文件，不再读取根索引来重复发现同一路由。安全 README 和目标 PVF 读回仍保留。
+如果根目录 `AGENTS.md` 已将请求命中“精确只读快速路径”，则直接读取该路径点名的短文件，不再读取根索引来重复发现同一路由。只读任务使用 AGENTS 的全局底线及目标 PVF 读回；写入前再加载安全 README。
 
 `indexes/knowledge-index.json` 是轻量根路由。找不到旧 topic 时，再按需打开 `indexes/knowledge-topic-routes.full.json`；不要默认读取完整 topic 路由或深索引。
 

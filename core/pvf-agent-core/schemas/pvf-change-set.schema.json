@@ -87,6 +87,9 @@
           },
           {
             "$ref": "#/$defs/copyFileChange"
+          },
+          {
+            "$ref": "#/$defs/upgradeTableLevelEditChange"
           }
         ]
       }
@@ -193,6 +196,8 @@
         "textWriteMode": {
           "enum": [
             "verified-inline-text",
+            "verified-stringlink-detach",
+            "verified-scalar-text",
             "verified-inline-cn"
           ],
           "description": "Use only for one complete visible backtick token, including a multiline token. Keep parameter/structure edits as separate ordinary replace-text changes on the same pvfPath. Change array order is semantic when a later structure deletion depends on the verified text result."
@@ -387,6 +392,200 @@
         }
       }
     },
+    "upgradeTableLevelEditChange": {
+      "type": "object",
+      "required": [
+        "id", "type", "pvfPath"
+      ],
+      "additionalProperties": false,
+      "description": "Structured raw-group edit for etc/upgrade.etc or etc/amplifyupgrade.etc. New nested selectors keep table and amplification groups independent; B-R are positional labels only and gameplay display levels are never inferred.",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z0-9._-]+$" },
+        "type": { "const": "upgrade-table-level-edit" },
+        "pvfPath": { "enum": ["etc/upgrade.etc", "etc/amplifyupgrade.etc"] },
+        "pvfEncoding": { "enum": ["Cn", "Tw"] },
+        "rationale": { "type": "string" },
+        "requiredResolvedIds": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["lstPath", "id", "expectedPvfPath"],
+            "additionalProperties": false,
+            "properties": {
+              "lstPath": { "type": "string" },
+              "id": { "type": "integer" },
+              "expectedPvfPath": { "type": "string" }
+            }
+          }
+        },
+        "sourceLevel": { "type": "integer", "minimum": 0 },
+        "targetLevels": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "copyColumns": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "enum": ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R"] }
+        },
+        "preserveColumns": {
+          "type": "array", "uniqueItems": true,
+          "items": { "enum": ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R"] }
+        },
+        "tableEdit": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "sourceGroup": { "type": "integer", "minimum": 0 },
+            "targetGroups": {
+              "type": "array", "minItems": 1, "uniqueItems": true,
+              "items": { "type": "integer", "minimum": 0 }
+            },
+            "copyColumns": {
+              "type": "array", "minItems": 1, "uniqueItems": true,
+              "items": { "enum": ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R"] }
+            },
+            "preserveColumns": {
+              "type": "array", "uniqueItems": true,
+              "items": { "enum": ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R"] }
+            },
+            "setCells": {
+              "type": "array", "minItems": 1, "uniqueItems": true,
+              "items": {
+                "type": "object",
+                "required": ["group", "column", "expectedBefore", "newValue"],
+                "additionalProperties": false,
+                "properties": {
+                  "group": { "type": "integer", "minimum": 0 },
+                  "column": { "enum": ["B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R"] },
+                  "expectedBefore": {
+                    "oneOf": [
+                      { "type": "number" },
+                      { "type": "string", "pattern": "^-?(?:\\d+(?:\\.\\d+)?|\\.\\d+)$" }
+                    ]
+                  },
+                  "newValue": {
+                    "oneOf": [
+                      { "type": "number" },
+                      { "type": "string", "pattern": "^-?(?:\\d+(?:\\.\\d+)?|\\.\\d+)$" }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "anyOf": [
+            { "required": ["sourceGroup", "targetGroups", "copyColumns", "preserveColumns"] },
+            { "required": ["setCells"] }
+          ],
+          "allOf": [
+            {
+              "if": {
+                "anyOf": [
+                  { "required": ["sourceGroup"] },
+                  { "required": ["targetGroups"] },
+                  { "required": ["copyColumns"] },
+                  { "required": ["preserveColumns"] }
+                ]
+              },
+              "then": { "required": ["sourceGroup", "targetGroups", "copyColumns", "preserveColumns"] }
+            }
+          ]
+        },
+        "maxLevelByRarity": {
+          "type": "object",
+          "required": ["common", "uncommon", "rare", "unique", "epic", "chronicle"],
+          "additionalProperties": false,
+          "properties": {
+            "common": { "type": "integer", "minimum": 0 },
+            "uncommon": { "type": "integer", "minimum": 0 },
+            "rare": { "type": "integer", "minimum": 0 },
+            "unique": { "type": "integer", "minimum": 0 },
+            "epic": { "type": "integer", "minimum": 0 },
+            "chronicle": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "copyAmplificationConstFromLevel": { "type": "integer", "minimum": 0 },
+        "copyAmplificationConstToLevels": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "type": "integer", "minimum": 0 }
+        },
+        "amplificationConstGroupWidth": { "const": 4 },
+        "amplificationConstHasLevelZeroGroup": { "const": true }
+        ,
+        "amplificationConstEdit": {
+          "type": "object",
+          "required": ["sourceGroup", "targetGroups", "groupWidth", "hasLevelZeroGroup"],
+          "additionalProperties": false,
+          "properties": {
+            "sourceGroup": { "type": "integer", "minimum": 0 },
+            "targetGroups": {
+              "type": "array", "minItems": 1, "uniqueItems": true,
+              "items": { "type": "integer", "minimum": 0 }
+            },
+            "groupWidth": { "const": 4 },
+            "hasLevelZeroGroup": { "const": true }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "oneOf": [
+            {
+              "required": ["sourceLevel", "targetLevels", "copyColumns", "preserveColumns", "maxLevelByRarity"],
+              "not": {
+                "anyOf": [
+                  { "required": ["tableEdit"] },
+                  { "required": ["amplificationConstEdit"] }
+                ]
+              }
+            },
+            {
+              "required": ["tableEdit"],
+              "not": {
+                "anyOf": [
+                  { "required": ["sourceLevel"] },
+                  { "required": ["targetLevels"] },
+                  { "required": ["copyColumns"] },
+                  { "required": ["preserveColumns"] },
+                  { "required": ["copyAmplificationConstFromLevel"] },
+                  { "required": ["copyAmplificationConstToLevels"] },
+                  { "required": ["amplificationConstGroupWidth"] },
+                  { "required": ["amplificationConstHasLevelZeroGroup"] }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "if": { "properties": { "pvfPath": { "const": "etc/amplifyupgrade.etc" } }, "required": ["pvfPath"] },
+          "then": {
+            "oneOf": [
+              {
+                "required": [
+                  "copyAmplificationConstFromLevel", "copyAmplificationConstToLevels",
+                  "amplificationConstGroupWidth", "amplificationConstHasLevelZeroGroup"
+                ]
+              },
+              { "required": ["amplificationConstEdit"] }
+            ]
+          }
+        },
+        {
+          "if": { "properties": { "pvfPath": { "const": "etc/upgrade.etc" } }, "required": ["pvfPath"] },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["copyAmplificationConstFromLevel"] },
+                { "required": ["copyAmplificationConstToLevels"] },
+                { "required": ["amplificationConstGroupWidth"] },
+                { "required": ["amplificationConstHasLevelZeroGroup"] },
+                { "required": ["amplificationConstEdit"] }
+              ]
+            }
+          }
+        }
+      ]
+    },
     "writeProof": {
       "type": "object",
       "required": ["mode"],
@@ -434,6 +633,21 @@
         "structureCheckRequired": { "type": "boolean" },
         "temporaryRoundTripRequired": { "type": "boolean" },
         "runtimeValidationRequired": { "type": "boolean" },
+        "loadChainKind": { "enum": ["appendage", "direct-character-state", "direct-character-skill-use", "direct-character-skill-proc"] },
+        "skillProc": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["dispatcher", "requiredCall", "stateRegistration", "headerRegistration", "skillId", "skillRegistryPath", "skillPvfPath"],
+          "properties": {
+            "dispatcher": { "type": "string", "pattern": "^procSkill_[A-Za-z0-9]+$" },
+            "requiredCall": { "type": "string", "minLength": 1 },
+            "stateRegistration": { "$ref": "#/$defs/writeProof/properties/loadChain/items" },
+            "headerRegistration": { "$ref": "#/$defs/writeProof/properties/loadChain/items" },
+            "skillId": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+            "skillRegistryPath": { "type": "string", "minLength": 1 },
+            "skillPvfPath": { "type": "string", "minLength": 1 }
+          }
+        },
         "loadChain": {
           "type": "array",
           "items": {
@@ -500,11 +714,20 @@
           "if": { "properties": { "mode": { "const": "existing-nut-controlled-edit" } }, "required": ["mode"] },
           "then": {
             "required": ["sourceTextSha256", "structureCheckRequired", "temporaryRoundTripRequired", "runtimeValidationRequired", "loadChain", "touchedFunctions", "apiSymbols", "apidPlan"],
+            "allOf": [{
+              "if": { "properties": { "loadChainKind": { "enum": ["direct-character-state", "direct-character-skill-use", "direct-character-skill-proc"] } }, "required": ["loadChainKind"] },
+              "then": { "properties": { "loadChain": { "minItems": 1, "maxItems": 1 } } },
+              "else": { "properties": { "loadChain": { "minItems": 2 } } }
+            }, {
+              "if": { "properties": { "loadChainKind": { "const": "direct-character-skill-proc" } }, "required": ["loadChainKind"] },
+              "then": { "required": ["skillProc"] },
+              "else": { "not": { "required": ["skillProc"] } }
+            }],
             "properties": {
               "structureCheckRequired": { "const": true },
               "temporaryRoundTripRequired": { "const": true },
               "runtimeValidationRequired": { "const": true },
-              "loadChain": { "minItems": 2 },
+              "loadChain": { "minItems": 1 },
               "touchedFunctions": { "minItems": 1, "uniqueItems": true },
               "apiSymbols": { "minItems": 1, "uniqueItems": true },
               "apidPlan": {

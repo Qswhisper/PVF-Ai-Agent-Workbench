@@ -18,8 +18,9 @@
 4. `[hellparty]` 按目标确认的 `group_id / weight / wave` 三元组读取。
 5. group ID 在 `etc/hellparty.etc [group index]` 闭合。
 6. 组成员 kind `0` 走 `monster/monster.lst`，kind `1` 走 `aicharacter/aicharacter.lst`；其他 kind 保持 unknown。
-7. 输出 dungeon、wave、group 三种视图及全部 unresolved。
-8. 实机只看到名称时，由 Agent 用波次候选、完整成员组合、kind 对应 registry 和目标 AIC / monster 名称 token 反查；测试者不需要提供代码。重复同名成员同时报告静态条数与实机观察下界。
+7. 守卫或成员审计范围由当前 `hellparty.etc` 的实际组引用和 kind 反解；历史变更集、设计花名册或旧成员清单只能作差异对照，不能替代当前引用图。
+8. 输出 dungeon、wave、group 三种视图及全部 unresolved。
+9. 实机只看到名称时，由 Agent 用波次候选、完整成员组合、kind 对应 registry 和目标 AIC / monster 名称 token 反查；测试者不需要提供代码。重复同名成员同时报告静态条数与实机观察下界。
 
 ## 必须汇报
 

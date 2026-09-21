@@ -22,6 +22,8 @@
 8. 遇到 `[ATTACK BOX]` / `[DAMAGE BOX]` 时，只能记录盒结构入口；实际命中、伤害和手感需要实机验证。
 9. 不写 PVF，不修改客户端，不把教程或候选资料语义直接写成结论。
 
+若用户明确要修改既有二进制 `.ani` 的帧延迟，读取 `task-cards/pvf-existing-ani-delay-controlled-change.zh-CN.md`。当前只开放 `[DELAY]` 的原字节整数补丁，不把本卡的其他观察字段自动变成可写范围。
+
 验收：
 - 每个非空 `.act/.ani` 引用都有存在/缺失判断。
 - `.act` 字段、闭合标签和反引号 token 已按路由覆盖。

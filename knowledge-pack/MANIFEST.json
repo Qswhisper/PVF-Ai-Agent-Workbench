@@ -8,6 +8,11 @@
       "sha256": "b7cb31082057128a5d6d5f6f2faf708d7089dc5b95d997a37195858841c241cc"
     },
     {
+      "dest": "dictionaries/apc-character-status-fields.zh-CN.md",
+      "bytes": 5881,
+      "sha256": "b4174ff51f2f9d9babb7e78e140ea664ff0728f6ada0396df1d2def576af0eb8"
+    },
+    {
       "dest": "dictionaries/appendage-item-common-equipment-special-effect-fields.zh-CN.md",
       "bytes": 4843,
       "sha256": "4a8f877ffe26b285276d1d68119a7ea04354910562a5fe27fef5c5f630369761"
@@ -79,13 +84,13 @@
     },
     {
       "dest": "dictionaries/dungeon-difficulty-ultimate-list-fields.zh-CN.md",
-      "bytes": 2104,
-      "sha256": "85c697e1174724155928b0bae348eb07498a6a071b13b3f97b1b7e01e9b00d8f"
+      "bytes": 4055,
+      "sha256": "267f86a67fccb30414550c4a60fa26f05b49e24a687aa8751c31eb8effb44b28"
     },
     {
       "dest": "dictionaries/dungeon-map-spawn-entry-clear-resource-fields.zh-CN.md",
-      "bytes": 8777,
-      "sha256": "7c65b5f8128c3eb0d0ea762efa3c354d934dff5916bf98b5295a0691385d1aa2"
+      "bytes": 9343,
+      "sha256": "a9c1e2d02e43fa9f312d0ac62dd59a1d5042076cfeab58041b5c439be11fa5fc"
     },
     {
       "dest": "dictionaries/economy-gold-fatigue-mileage-token-counter-fields.zh-CN.md",
@@ -129,18 +134,18 @@
     },
     {
       "dest": "dictionaries/lst-registry-lifecycle-fields.zh-CN.md",
-      "bytes": 1877,
-      "sha256": "b7f9b57a731d42b4819d211a01e849445c3f3b857b62b45cdf6ef6521a70940a"
+      "bytes": 2448,
+      "sha256": "fe47d5c475b699fdf68dd91058d1503065d62ac8fa36634cfafc2d42647092ac"
     },
     {
       "dest": "dictionaries/map-widescreen-structural-migration-fields.zh-CN.md",
-      "bytes": 3671,
-      "sha256": "75f475d76a5589a9a5d82a09d49c7cd319f1396167bd002b28f2ff0191cea13a"
+      "bytes": 4685,
+      "sha256": "8376dc68a5dd6f532599dcc936b6b42ac2ca7a51133ff5dab39aa67b0f161607"
     },
     {
       "dest": "dictionaries/monster-action-animation-fields.zh-CN.md",
-      "bytes": 3699,
-      "sha256": "4268a26ec91518acbebee11f3ccf091c709ed84b0f96feea9c93b91e385eda9c"
+      "bytes": 4180,
+      "sha256": "093f219ada21dd32e13326c0bd3bd8bb607c77b28ef2e9de47999091d1845fa6"
     },
     {
       "dest": "dictionaries/monster-ai-action-attack-cross-layer-fields.zh-CN.md",
@@ -154,8 +159,8 @@
     },
     {
       "dest": "dictionaries/monster-fields.zh-CN.md",
-      "bytes": 7560,
-      "sha256": "3a5884767a4fa9ccfae4f917ddc2514c9cbe5932ece325ddb6009f4101f00378"
+      "bytes": 8271,
+      "sha256": "2dd94e4d63fec2c5cec8b4d9df2dab8ed92768d74e2f1a62d8ea9d2a04425e17"
     },
     {
       "dest": "dictionaries/npc-shop-fields.zh-CN.md",
@@ -164,8 +169,8 @@
     },
     {
       "dest": "dictionaries/nut-runtime-api-boundary-quick.zh-CN.md",
-      "bytes": 4524,
-      "sha256": "1c56e0d8e2de1432b0a2bb1a6729fa6b680524c67b57892df8c5a7e01af0a09b"
+      "bytes": 5448,
+      "sha256": "447222b956c0b4f96d9ee54b41f2c79c4423fad590100461f0477bbbccf4dfa6"
     },
     {
       "dest": "dictionaries/nut-runtime-api-boundary.zh-CN.md",
@@ -224,8 +229,8 @@
     },
     {
       "dest": "dictionaries/quest-type-condition-fields.zh-CN.md",
-      "bytes": 6223,
-      "sha256": "6a82138df0ce0a834de157a687500dd3b08ed0c792f8c5412a6cb3e13cb9b5a9"
+      "bytes": 7633,
+      "sha256": "58920073fcf0c0feefc06c785fe21f0b1286de7c871aa2749b47a5eacddf0d7e"
     },
     {
       "dest": "dictionaries/randomoption-mystic-fields.zh-CN.md",
@@ -244,13 +249,13 @@
     },
     {
       "dest": "dictionaries/skill-learnability-command-cooldown-fields.zh-CN.md",
-      "bytes": 5991,
-      "sha256": "7f8fdd99ef4a5caa577aef82640428672c77797e214cca99b3a3d2f733825b8d"
+      "bytes": 6144,
+      "sha256": "9444995c42d61a74c6d224cd052498b6df01432942aacba7d8d42ea5ba17d829"
     },
     {
       "dest": "dictionaries/skill-static-level-parameter-columns.zh-CN.md",
-      "bytes": 2393,
-      "sha256": "0f4ad6c1823a390fd561541a1d5858aca4fd1783eca14f7366373abd57d4fad7"
+      "bytes": 4165,
+      "sha256": "7cb13dedfb790e59b7abeb2d13bf7a1abec5cea4211439ebfc9c24ee22b6be41"
     },
     {
       "dest": "dictionaries/skill-tree-layout-merge-fields.zh-CN.md",
@@ -264,13 +269,13 @@
     },
     {
       "dest": "dictionaries/stackable-fields.zh-CN.md",
-      "bytes": 5659,
-      "sha256": "3728614e021c99c88a33b14564a12453ca2d0bf55992ca1d803fb38a18a7aee4"
+      "bytes": 7110,
+      "sha256": "b7cf60f3f7cd800497aa695b508497df6eaa6e395d648e490dc1b27fcc89790a"
     },
     {
       "dest": "dictionaries/text-stringlink-encoding-fields.zh-CN.md",
-      "bytes": 7568,
-      "sha256": "564b0642a9015826a8b4baf213d73a131c593e5fac2f0b38f5daa337c8f338ae"
+      "bytes": 8291,
+      "sha256": "ee89830bedbbd89f1df6b64c317d09ec47b2f3898c3c2e77eecdbe1a6f723a81"
     },
     {
       "dest": "dictionaries/unified-knowledge-query-boundary-quick.zh-CN.md",
@@ -279,8 +284,8 @@
     },
     {
       "dest": "dictionaries/upgrade-reinforce-amplify-enchant-recipe-fields.zh-CN.md",
-      "bytes": 6262,
-      "sha256": "8c712b32f48ca78643b7b73ad3a27f8a2ecdb9e60d25a6cafa6d67e87df608ce"
+      "bytes": 8137,
+      "sha256": "c84a88dac54196aceb8bb859cd13b21549d0fef4959500591921a613f4152d55"
     },
     {
       "dest": "dictionaries/worldmap-dungeon-interface-layout-fields.zh-CN.md",
@@ -289,8 +294,8 @@
     },
     {
       "dest": "encyclopedia/pvf-file-types/apc-ai-key-stream.zh-CN.md",
-      "bytes": 924,
-      "sha256": "1cdc7961b90fc42db449a508f4ef22498e831504be8a1d1952db50c8beddf04a"
+      "bytes": 2999,
+      "sha256": "5689b16d6efa6edecd3a9b1a9ddef39a4412e2d77502a7cd65e4f2481be8bbba"
     },
     {
       "dest": "encyclopedia/pvf-file-types/assets-imagepacks-ui.zh-CN.md",
@@ -404,8 +409,8 @@
     },
     {
       "dest": "encyclopedia/pvf-file-types/text-stringlink-localization.zh-CN.md",
-      "bytes": 3596,
-      "sha256": "99ab7ff6a43ec0b74df91bccfc777fe6939e03af489ecf520122cd8d8602aab8"
+      "bytes": 3998,
+      "sha256": "3cd10b8e6d750316776064b7817af61dd025da5c910903e417dd0bd612f03f5e"
     },
     {
       "dest": "encyclopedia/pvf-file-types/upgrade-reinforce-amplify-enchant-recipe.zh-CN.md",
@@ -434,8 +439,8 @@
     },
     {
       "dest": "indexes/apc-extraction-boundary.zh-CN.md",
-      "bytes": 1064,
-      "sha256": "515206efc719c10a9b7486b26ac35c3355a994bc13ad5b9ecb8535ad5fd9bde5"
+      "bytes": 1158,
+      "sha256": "41e239718ae5a5de4bfd48293d0b6bdb35cdacff7ed3058add46c44cd2f39e4c"
     },
     {
       "dest": "indexes/apc-fair-duel-level-equipment-standardization-boundary.zh-CN.md",
@@ -484,8 +489,8 @@
     },
     {
       "dest": "indexes/avatar-type-select.zh-CN.md",
-      "bytes": 3488,
-      "sha256": "1bc44525f7d6327acc81703e7c3f68474c9393c0dae9348fa86985377ad4541c"
+      "bytes": 4586,
+      "sha256": "2e3ff7286fe0e305061f0f23ef112394a83670f9c9d130a09900d9f7786c2e87"
     },
     {
       "dest": "indexes/character-job-growtype-class-enum-boundary.zh-CN.md",
@@ -534,8 +539,8 @@
     },
     {
       "dest": "indexes/dungeon-world-standardization-capability-router.zh-CN.md",
-      "bytes": 3701,
-      "sha256": "74688c243ecc0e7597de446c9125535ddc12d38b5f7234a1600465063b020efb"
+      "bytes": 4356,
+      "sha256": "bce786e0c3edac286038491f95ff2278fd1acec39b266f5fd26fbd66d86a7e1e"
     },
     {
       "dest": "indexes/economy-gold-fatigue-mileage-token-counter-boundary.zh-CN.md",
@@ -559,8 +564,8 @@
     },
     {
       "dest": "indexes/equipment-basic-fields.zh-CN.md",
-      "bytes": 7777,
-      "sha256": "01bec78c8d70225136c0248e881c05a79a063c769f81db02a381e61f3ebe72f7"
+      "bytes": 8456,
+      "sha256": "f3df9422d89a491b4b2b202b931ffed6d81a1f703e4d61db1b3ff566eb7c76d4"
     },
     {
       "dest": "indexes/equipment-bracket-value-tokens.zh-CN.md",
@@ -574,8 +579,8 @@
     },
     {
       "dest": "indexes/equipment-effect-fields.zh-CN.md",
-      "bytes": 18422,
-      "sha256": "4a6b4796575402cb442b45ff1107e0f8b8d266fe2e7cb8d05997ce2d739506a4"
+      "bytes": 19001,
+      "sha256": "3cbb00e5a54b950ce51ceb66fd389efc18d46d8e3c94271489b99a4b7552c2d3"
     },
     {
       "dest": "indexes/equipment-hardcoded-legacy-fields.zh-CN.md",
@@ -589,8 +594,8 @@
     },
     {
       "dest": "indexes/equipment-rule-fields.zh-CN.md",
-      "bytes": 6182,
-      "sha256": "0d5f24686da79832f1a785421c10fb9dd1f952acb181a23124e48d43df217d70"
+      "bytes": 6714,
+      "sha256": "6a84cece102018521a820220edb3522e167cc39b4f8757c620287de692bb9e90"
     },
     {
       "dest": "indexes/equipment-runtime-trigger-fields.zh-CN.md",
@@ -634,13 +639,13 @@
     },
     {
       "dest": "indexes/knowledge-index.json",
-      "bytes": 26932,
-      "sha256": "a0915e9d71df46620b3acc1908bceeec3b9d805f752ae1740ab0ad62de2d8d2e"
+      "bytes": 14093,
+      "sha256": "bb060272fcef6a14e5a7a1101e7c66360b3657ce9423d424c66b11f2389334ef"
     },
     {
       "dest": "indexes/knowledge-topic-routes.full.json",
-      "bytes": 156023,
-      "sha256": "ef62c65c1dc8b8b52b95156b93a90c5577aaf2d69c770ab11228a94cafa20967"
+      "bytes": 175379,
+      "sha256": "847ba72cc57c32f3553f9ca10dddb03253bc6d4221578504b8ea46a507d27d32"
     },
     {
       "dest": "indexes/monster-action-animation-act-observed-tag-router.zh-CN.md",
@@ -649,8 +654,8 @@
     },
     {
       "dest": "indexes/monster-action-animation-ani-observed-tag-router.zh-CN.md",
-      "bytes": 494,
-      "sha256": "f6ac7b9e8fead3c6d8ade3576f489e8dc6bb8d0ae0a82b74202767b52ef557df"
+      "bytes": 739,
+      "sha256": "c06d95c3f2c1eb6cd9c83a45017ecd14673ef8649bf13d365468ba735ee986e9"
     },
     {
       "dest": "indexes/monster-action-animation-backtick-token-router.zh-CN.md",
@@ -713,6 +718,11 @@
       "sha256": "b79f3694994e42520a7f3464a90df442b2fc0e35fe3d56cb2c0065cdd11d3073"
     },
     {
+      "dest": "indexes/nut-runtime-callback-data-ui-act-boundary.zh-CN.md",
+      "bytes": 4626,
+      "sha256": "a858b0f7d472c9f4ab9f4073d43b052fd0a276493b65a9ec791250035cc4596d"
+    },
+    {
       "dest": "indexes/passiveobject-attackinfo-hitbox-compact-router.zh-CN.md",
       "bytes": 1820,
       "sha256": "24c2b1c7dda4afa668434d5d56af9f09e87414303d6dd2c474cc7385a0c12802"
@@ -724,8 +734,8 @@
     },
     {
       "dest": "indexes/pvf-tag-facts.compact.json",
-      "bytes": 858885,
-      "sha256": "30a3b3ff0937ce79b30a2ede7fccc2ccc4b9c33216973471621aa7e71a07f0af"
+      "bytes": 859255,
+      "sha256": "f4a78021028ecd0dfb90a5e87c8e01bca77e9f907de31d215c91712f91727bdd"
     },
     {
       "dest": "indexes/pvf-tag-router-equipment-avatar-visual.zh-CN.md",
@@ -759,8 +769,8 @@
     },
     {
       "dest": "indexes/quest-drop-reward-ticket-boundary.zh-CN.md",
-      "bytes": 6473,
-      "sha256": "e845241d99676ba1c73411a2823390ce96a7a9218c2a650911edd5ad6f3c59f4"
+      "bytes": 6615,
+      "sha256": "d80a7f6b37da9af856476b8cdb0ce56a764083d78094329979db2e21b6ffeac8"
     },
     {
       "dest": "indexes/randomoption-mystic-equipment-boundary.zh-CN.md",
@@ -874,13 +884,13 @@
     },
     {
       "dest": "indexes/skill-data-up-types.zh-CN.md",
-      "bytes": 3650,
-      "sha256": "a3d17ac90e3b1eac2752cb21cb368883efa773ae74ef6a77513a0563056315be"
+      "bytes": 5718,
+      "sha256": "de1c24fd200806674b0324de5e38579eef4fdee5556c8153c7338d654e4c95bf"
     },
     {
       "dest": "indexes/skill-learnability-cost-sp-tp-ui-boundary.zh-CN.md",
-      "bytes": 6383,
-      "sha256": "3632ff31bff40dd1f75bdc7487adec6fe53d05290e848300a60ec8f74d9b53f8"
+      "bytes": 7643,
+      "sha256": "14d7ba46b7599c0ef0d686419710b1c042e378d684d965cdcf5985b037917060"
     },
     {
       "dest": "indexes/skill-learnability-tree-command-cooldown-boundary.zh-CN.md",
@@ -919,8 +929,8 @@
     },
     {
       "dest": "indexes/skill-state-nut-runtime-api-group-boundary.zh-CN.md",
-      "bytes": 2752,
-      "sha256": "5af272e60800e52401f8704684ff25c3b60e2bf69f0f83a7f35a0696064e86a1"
+      "bytes": 2925,
+      "sha256": "9c7c1bd69b3a3acb07f99656e487f22ba4ebe1d9ad6f3e3baeb861c9dc874c86"
     },
     {
       "dest": "indexes/skill-swordman-comminterrupt-lifecycle.zh-CN.md",
@@ -959,23 +969,33 @@
     },
     {
       "dest": "README.zh-CN.md",
-      "bytes": 2849,
-      "sha256": "7744794a8f04808f1c9a76d81f82e664e4985beb01f5d9fcd06d7d0cef1bb85b"
+      "bytes": 2917,
+      "sha256": "7186cc11dc2caff505bde145523f3e95cb51bdaa4ee7a8a8a3dddf00fdceea53"
     },
     {
       "dest": "safety/README.zh-CN.md",
-      "bytes": 15521,
-      "sha256": "2b6eaf293e0daec873c2eb66b0b80f6d070e0f9ab4882b60967145a4bfafe261"
+      "bytes": 26820,
+      "sha256": "40ea92636f38c5304729972970f5c3d15e91db999ecf8754d14e31d6956d288b"
     },
     {
       "dest": "task-cards/action-combat-cross-version-porting.zh-CN.md",
-      "bytes": 5714,
-      "sha256": "5e2319c62460a9a4454f3647ece4cb7cdebb704496c93a1435ab7bffb1f45abe"
+      "bytes": 5895,
+      "sha256": "289dee98aa0f2d0fd63d1271d648978f115ad2ceeb859b6e77c841ba7a06be6b"
     },
     {
       "dest": "task-cards/actionobject-mapobject-breakable-spc-readonly-audit.zh-CN.md",
       "bytes": 2372,
       "sha256": "9451f894267da0d37314e3de47d11fb30d13b1fb1c47b340fc536c849df9bf9e"
+    },
+    {
+      "dest": "task-cards/apc-character-status-hardness-readonly-audit.zh-CN.md",
+      "bytes": 4019,
+      "sha256": "5931dbdbfa2874602dfb77f1021925f79e79a16786e5d6169f0203a21bc1c3a9"
+    },
+    {
+      "dest": "task-cards/apc-combat-attribute-intent-readonly-audit.zh-CN.md",
+      "bytes": 4860,
+      "sha256": "dda0b9d5de61e647d6cde8673a5a5e98d20d31b1b27fe1a1fd6c05e4a073abfe"
     },
     {
       "dest": "task-cards/apc-extraction-preview.zh-CN.md",
@@ -984,8 +1004,13 @@
     },
     {
       "dest": "task-cards/apc-fair-duel-level-equipment-standardization.zh-CN.md",
-      "bytes": 1907,
-      "sha256": "2b5832b027caa73716592401326ceed21264b558b2d1edd43432c7802cd1ffbd"
+      "bytes": 2318,
+      "sha256": "12aa0d03e4241668670474b724e3e89b5806643fddae9086ca5d609d0d51b1c9"
+    },
+    {
+      "dest": "task-cards/apc-opening-action-single-execution-readonly-audit.zh-CN.md",
+      "bytes": 2928,
+      "sha256": "dc4d26fc599f495e2d4d45b4770ff03f21b73f09e16a9ec358145153c60914db"
     },
     {
       "dest": "task-cards/appendage-item-common-equipment-special-effect-readonly-audit.zh-CN.md",
@@ -1013,6 +1038,11 @@
       "sha256": "7b7ceb524c6ab71ec51df900ef50b663ecb35debfa2e5e03edae42edb35b2541"
     },
     {
+      "dest": "task-cards/cashshop-avatar-price-readonly-audit.zh-CN.md",
+      "bytes": 4342,
+      "sha256": "4b451148d63d65d32d1a1d5d397b638d07863bb71377a5fbc86ae15105640e11"
+    },
+    {
       "dest": "task-cards/character-job-growtype-class-enum-readonly-audit.zh-CN.md",
       "bytes": 2398,
       "sha256": "ba587ef74f5baf03c14052e062a1a21c4bf45201c8b9e3380404480997ca0188"
@@ -1029,8 +1059,8 @@
     },
     {
       "dest": "task-cards/client-assets-imagepacks-ui-readonly-audit.zh-CN.md",
-      "bytes": 2197,
-      "sha256": "8b479424ab7cbb75931aadd8cda9a895a1949469da8cf7083e89e5a520586c76"
+      "bytes": 2683,
+      "sha256": "fc1a687d91b5d466b3ba006df05d29bb0bc5c5417bca0f47857b9867f1d9cb5b"
     },
     {
       "dest": "task-cards/client-pvf-compatibility-matrix-readonly.zh-CN.md",
@@ -1043,9 +1073,14 @@
       "sha256": "e5496348768a0fa4bc116bff8c1daffdeacfa8e60dfd99659eb326893961a7df"
     },
     {
+      "dest": "task-cards/complex-dungeon-mechanism-shell-readonly-audit.zh-CN.md",
+      "bytes": 5242,
+      "sha256": "2a30884e898c4e7c64cd501e30ac3486c6a2ab80fc17ed219e6cfd9bd948a4e1"
+    },
+    {
       "dest": "task-cards/content-lifecycle-dungeon-full-lifecycle-readonly-audit.zh-CN.md",
-      "bytes": 1419,
-      "sha256": "2a0978cf1c4817fe8ac660c1bb5252eb57a2cfe0b8cd9de6a117013e0eb2bdd2"
+      "bytes": 2048,
+      "sha256": "39dc64a73c0ef8aa54b3a06b40675b8418671c2d0cca2f14fc760e460baff28c"
     },
     {
       "dest": "task-cards/creature-pet-readonly-audit.zh-CN.md",
@@ -1054,8 +1089,8 @@
     },
     {
       "dest": "task-cards/dungeon-difficulty-ultimate-list-readonly-audit.zh-CN.md",
-      "bytes": 1326,
-      "sha256": "5eda3849a509655f1dc6b4616ca9b6fcb331887477017ac7a25f7d72a1c71aaf"
+      "bytes": 1496,
+      "sha256": "7cc4e575c6d91af7860a634052d9ebd5eb68a1a9aa2c5b30578c5599f7230264"
     },
     {
       "dest": "task-cards/dungeon-extraction-preview.zh-CN.md",
@@ -1068,9 +1103,14 @@
       "sha256": "a3b5a54eab7862c95dc7a2295b309b31cc2156ce50a271a2d514f8df474e0bf9"
     },
     {
+      "dest": "task-cards/dungeon-revive-coin-limit-readonly-audit.zh-CN.md",
+      "bytes": 3305,
+      "sha256": "3510004bfe543dfa624f48b51e251b99c46a5f3e7435d7c455d54783956f0dd8"
+    },
+    {
       "dest": "task-cards/economy-gold-fatigue-mileage-token-counter-readonly-audit.zh-CN.md",
-      "bytes": 2786,
-      "sha256": "58bcdb16c646a2050a9fefb4fd76f404837b229f6180577eb7d92d14e33b4285"
+      "bytes": 3428,
+      "sha256": "19bf5cd951e79032835cb80052c449156fba92a3fec1b3f1fb486a1ed31503a8"
     },
     {
       "dest": "task-cards/equipment-avatar-aura-creature-extraction-preview.zh-CN.md",
@@ -1079,13 +1119,13 @@
     },
     {
       "dest": "task-cards/equipment-stackable-controlled-change.zh-CN.md",
-      "bytes": 1729,
-      "sha256": "1699486e05e4a9939bd63e59807859778de2401166275c875f7df8b145a83fc3"
+      "bytes": 1937,
+      "sha256": "f74489722a68b3ec6bb183f1b09b998f824ee4d0d855cbe95f08572c923ab1bd"
     },
     {
       "dest": "task-cards/equipment-stackable-readonly-audit.zh-CN.md",
-      "bytes": 2379,
-      "sha256": "b3eaac28defd30eed31fda4f7670e9e3166ce3d65ef1cae8b815e13f1e8e775f"
+      "bytes": 5394,
+      "sha256": "e2cea6fbb1bcd07fe7208d8bf7c2ca6ca44d4813fd9cb07be835ae9fa00c1e5f"
     },
     {
       "dest": "task-cards/etc-event-config-readonly-audit.zh-CN.md",
@@ -1104,8 +1144,8 @@
     },
     {
       "dest": "task-cards/hellparty-visualization-readonly-plan.zh-CN.md",
-      "bytes": 1825,
-      "sha256": "b042a3680a1174268ffa732f181871bb52d623466d9feb787897b4efd76318e9"
+      "bytes": 2023,
+      "sha256": "29ffd941581e2e17eb8184afd3e835bd50b21c14c7ed99d173c84d76ae325799"
     },
     {
       "dest": "task-cards/independent-drop-normalization-readonly-plan.zh-CN.md",
@@ -1119,18 +1159,18 @@
     },
     {
       "dest": "task-cards/lst-registry-lifecycle-readonly-plan.zh-CN.md",
-      "bytes": 963,
-      "sha256": "b15425de095b8515e79c8cf44b3333d759148aa94f31c1e58de53ad8361a21fe"
+      "bytes": 1268,
+      "sha256": "31ceab2d6096d9d693afc3a7b49fa504d7217f099389c0f0fa0f11250a960fcc"
     },
     {
       "dest": "task-cards/map-widescreen-structural-migration-readonly-plan.zh-CN.md",
-      "bytes": 1645,
-      "sha256": "e64f78e5259547420c50f192a018d8f1c3ae031d0f8e6d376025f2ed0f0c9630"
+      "bytes": 2032,
+      "sha256": "892ff4c1149b69beb2d66679aea7a8b8f4a44e54f4ba18e1c004ec9f43f85832"
     },
     {
       "dest": "task-cards/monster-action-animation-readonly-audit.zh-CN.md",
-      "bytes": 1888,
-      "sha256": "11e4209a1105fec07b5ab66b99a0b178d1f8cfa025122bf0f484bc31299f2b82"
+      "bytes": 2137,
+      "sha256": "e421b669a10694251d2d9be21e198c382ef63ec7f096eeb97d3c61dff3003a74"
     },
     {
       "dest": "task-cards/monster-ai-action-attack-cross-layer-readonly-audit.zh-CN.md",
@@ -1139,8 +1179,8 @@
     },
     {
       "dest": "task-cards/monster-ai-summon-spawn-drop-readonly-audit.zh-CN.md",
-      "bytes": 1960,
-      "sha256": "e1312e757bf987e83244bb476264943a02f65f0257d1d784dfbca0019524ada9"
+      "bytes": 3037,
+      "sha256": "8aa3c60d989df087ead4e55b5fd2038f690cb06503c7e5cfcf4f516d5a25c69f"
     },
     {
       "dest": "task-cards/monster-attackinfo-atk-readonly-audit.zh-CN.md",
@@ -1173,24 +1213,34 @@
       "sha256": "e1782912d5bbd1c88687ba2529bdc77f282a1ebca6dd02a97ab5ad3a5b70e691"
     },
     {
+      "dest": "task-cards/pvf-controlled-change-routing.zh-CN.md",
+      "bytes": 2039,
+      "sha256": "e39e41d971f5eee19a95c460b6ef4dc492b064669102f961e7eb4837528d8096"
+    },
+    {
       "dest": "task-cards/pvf-entity-name-search-readonly.zh-CN.md",
-      "bytes": 6305,
-      "sha256": "d970c8d132bd2fd36a93f8fe7eea6f0a6375dad488055abd95278cb1d53a0948"
+      "bytes": 6814,
+      "sha256": "1faecb90d47ce7ea06210ad353565f00870ee9117108a8d3b3b19ee1a71d1c06"
+    },
+    {
+      "dest": "task-cards/pvf-existing-ani-delay-controlled-change.zh-CN.md",
+      "bytes": 2781,
+      "sha256": "ae25dcd9714cb4cd550fd8d2363b159eb87437f6a920f607cb31d2b4b19b1444"
     },
     {
       "dest": "task-cards/pvf-existing-nut-controlled-change.zh-CN.md",
-      "bytes": 5760,
-      "sha256": "c70ae03da289fcb2009c7a1cc8ab3aebf6c4bd93b673d883414ad3c2c15765ac"
+      "bytes": 11735,
+      "sha256": "605dd7a297fd77fb18c8a41caba01f3e2dee916b540ed38154f9e949a826b2e8"
     },
     {
       "dest": "task-cards/pvf-high-risk-new-file-controlled-change.zh-CN.md",
-      "bytes": 3885,
-      "sha256": "56205287261ba690c29c4d1871ae30e221bfd094d579c215dd619e3668d52ea9"
+      "bytes": 4578,
+      "sha256": "142d315c6dc942aefddf2ddae664c8892c4021ad673fb07f4bc8f4c5c7473314"
     },
     {
       "dest": "task-cards/pvf-package-quality-audit-readonly.zh-CN.md",
-      "bytes": 1166,
-      "sha256": "2b40f12c0382c12d38b468f9c09099374815fdb6132d2615f5f8075b9448be7f"
+      "bytes": 1568,
+      "sha256": "6b9d0f8009ee176a0d198f0c1db51dbbfdc9122ab74fec84d70f6d4a42192116"
     },
     {
       "dest": "task-cards/pvf-registry-lst-topology-readonly-audit.zh-CN.md",
@@ -1199,13 +1249,23 @@
     },
     {
       "dest": "task-cards/pvf-same-pvf-file-copy-controlled-change.zh-CN.md",
-      "bytes": 2513,
-      "sha256": "0b245988785e324ae34abf05b773a2146e12d4692032df442e3e32f60838c6fb"
+      "bytes": 3105,
+      "sha256": "5515677850bf3859478f8fe6db88a5c6b0aac69314270f5239b44f49c8cbe075"
+    },
+    {
+      "dest": "task-cards/pvf-scalar-text-controlled-change.zh-CN.md",
+      "bytes": 2340,
+      "sha256": "f18de9817a9f599c1cfbcf64294b5d376467e4df3290da8a407369db987c29de"
     },
     {
       "dest": "task-cards/pvf-semantic-compare-workset-readonly.zh-CN.md",
       "bytes": 1005,
       "sha256": "c8fbb9cd70e8e7ed667d415336a971b2db853ec7688981716c70a9d0711ea1b0"
+    },
+    {
+      "dest": "task-cards/pvf-upgrade-amplification-table-controlled-change.zh-CN.md",
+      "bytes": 4684,
+      "sha256": "ea59a5f294524fa7ba07b0df5817ebb2e1931d0bc30eaa01a2f992e970923651"
     },
     {
       "dest": "task-cards/pvp-mission-readonly-audit.zh-CN.md",
@@ -1214,8 +1274,8 @@
     },
     {
       "dest": "task-cards/quest-drop-reward-ticket-readonly-audit.zh-CN.md",
-      "bytes": 3001,
-      "sha256": "1a4394f3812928fbdec9266725352948a3dc820e66e0d6d8e5b80f6499cd8423"
+      "bytes": 3468,
+      "sha256": "b61de2cf8d86fef5cca049e6967c3156a1c771b9590f31a3fac15b7039a5d7f6"
     },
     {
       "dest": "task-cards/randomoption-mystic-readonly-audit.zh-CN.md",
@@ -1224,13 +1284,13 @@
     },
     {
       "dest": "task-cards/README.zh-CN.md",
-      "bytes": 1000,
-      "sha256": "bb337d8dbd07fc11d4fdef1a257fc2019477f8ac6450869f73689d2f9e54a2b6"
+      "bytes": 1708,
+      "sha256": "90b4664d21a6abd1a9791c21c9070368a1d8fc660ef7430a99c21a94d4a206f1"
     },
     {
       "dest": "task-cards/runtime-pass-absorption-checklist.zh-CN.md",
-      "bytes": 1098,
-      "sha256": "1f4c47fe4e4d1743d0e892de79d8348052d78c97de76ff67154beed82841336b"
+      "bytes": 1766,
+      "sha256": "45d40e471b3e45f8342f9145e016498cd544d06cc1ee7e9bde669be37068c4e4"
     },
     {
       "dest": "task-cards/serverparameter-premium-pcroom-growth-buff-readonly-audit.zh-CN.md",
@@ -1239,18 +1299,18 @@
     },
     {
       "dest": "task-cards/skill-learnability-tree-command-cooldown-readonly-audit.zh-CN.md",
-      "bytes": 3846,
-      "sha256": "1c35ae3ef8b87c0b4c6d03bcd94495df97ddeb978b03012df39287349793b6b0"
+      "bytes": 5612,
+      "sha256": "dc327364922168e1b0de9411b33197466de1f1c94dcf08c45f17480e30329741"
     },
     {
       "dest": "task-cards/skill-parameter-current-value-readonly-query.zh-CN.md",
-      "bytes": 2205,
-      "sha256": "c5bc7e33c4290410554f577431fb9ff3ea8362af348c278e0546aa3ed722c4d4"
+      "bytes": 2748,
+      "sha256": "750df4df8d77c394eddbe975f80d55d553c9e3b45bc94c40e477902924220ca8"
     },
     {
       "dest": "task-cards/skill-state-nut-runtime-readonly-audit.zh-CN.md",
-      "bytes": 5475,
-      "sha256": "29e5b8dfc4a02dbaeeb5477987a957a03cf73565e4fb3243b6a10c799838611b"
+      "bytes": 6126,
+      "sha256": "db80d357c6d24d904b15c7eefcaccb889fc69fe9b3f502b87f80f8ade64a951c"
     },
     {
       "dest": "task-cards/skill-tree-layout-merge-readonly-plan.zh-CN.md",
@@ -1268,9 +1328,24 @@
       "sha256": "99b0c43deb0d6585a5812dad9c45ace002b22767dd26be472486c3e225d82c60"
     },
     {
+      "dest": "task-cards/stackable-stringlink-detach-controlled-change.zh-CN.md",
+      "bytes": 2548,
+      "sha256": "67d2fc3aefbab9895741709405e3fda008a2ca50f8fbcb2e518d5a1f5306bf78"
+    },
+    {
       "dest": "task-cards/text-stringlink-encoding-readonly-audit.zh-CN.md",
-      "bytes": 5118,
-      "sha256": "16a66fb53659c1e6e84bc4acd97fe1d8c71c97fcb26fe6f9b6dca86fd5c34be7"
+      "bytes": 6854,
+      "sha256": "47596e1ca98ef17b5d321286c50975ce964e34f023421d4c9d21fac966b6c7d6"
+    },
+    {
+      "dest": "task-cards/titlebook-reward-display-delivery-readonly-audit.zh-CN.md",
+      "bytes": 5281,
+      "sha256": "ded4490ece093bee33298c89e1ff1304ff8e52760453adc4d04b9b40285734cf"
+    },
+    {
+      "dest": "task-cards/tournament-dungeon-native-structure-readonly-audit.zh-CN.md",
+      "bytes": 4494,
+      "sha256": "a58b5077f7158f68f0f68f3169f3fa6a38e6ab0b8c3de1be64485a303b66463c"
     },
     {
       "dest": "task-cards/unified-dependency-planner-readonly-preview.zh-CN.md",
@@ -1288,14 +1363,19 @@
       "sha256": "175b3934835b1a03daa3f59447503ce4906cdc4da18682facbec48cf3952b222"
     },
     {
+      "dest": "task-cards/validated-dungeon-numeric-tuning-readonly.zh-CN.md",
+      "bytes": 4246,
+      "sha256": "439df12f115879d44aac4ee2a3c2903e44b899a4d5b1a6340c2144e0d55c7f35"
+    },
+    {
       "dest": "task-cards/worldmap-dungeon-interface-layout-readonly-plan.zh-CN.md",
       "bytes": 1425,
       "sha256": "6bdf2f71ac55e9a3947900ac29b75ee30afa9c957635d3c16997071177ad8cda"
     },
     {
       "dest": "workflows/action-combat-cross-version-porting.zh-CN.md",
-      "bytes": 13903,
-      "sha256": "425a17435fdefe2e85c3bb2603b05d105cf497c1c80f8d626e1366389e5e1b81"
+      "bytes": 16479,
+      "sha256": "970a1534e5bfe7fc61f1c38bd40e6e932a2d6230c5b59c08bd76ea708a0026b7"
     },
     {
       "dest": "workflows/apc-extraction-planner.zh-CN.md",
@@ -1304,13 +1384,13 @@
     },
     {
       "dest": "workflows/apc-fair-duel-level-equipment-standardization.zh-CN.md",
-      "bytes": 4048,
-      "sha256": "b39e9f530ef2b38a495e6d718806fd33aa94a3944cf864fe1e20b1ccef3d5734"
+      "bytes": 4082,
+      "sha256": "c1d7478ad815d8b483586fce5e14d8321bb1284bc63c2612f151256099ce4513"
     },
     {
       "dest": "workflows/atomic-content-generation.zh-CN.md",
-      "bytes": 3563,
-      "sha256": "72a636827ee24ee98f2d4cd4071f3651d1e0309038fab45ef7a2f97a953e23f8"
+      "bytes": 4387,
+      "sha256": "474d08d7ac2ea728565ce45c9886ac4f8b9b27e9dd9e697575d396fe4d28e5d4"
     },
     {
       "dest": "workflows/client-asset-path-preview.zh-CN.md",
@@ -1324,13 +1404,13 @@
     },
     {
       "dest": "workflows/client-pvf-controlled-deployment.zh-CN.md",
-      "bytes": 2410,
-      "sha256": "e3cf492b302d7cc19c13d4241e8ea2a7b57ccb681c38261114468a7996a2e769"
+      "bytes": 3621,
+      "sha256": "2a6e8439a91661a160c681dc796bb53f725a3c5b19fcca386afcb03ddffa4623"
     },
     {
       "dest": "workflows/dungeon-difficulty-and-ultimate-list-audit.zh-CN.md",
-      "bytes": 1790,
-      "sha256": "71bd74bf263ee49e0801b0cebe66e45b5bd8353d618e2458b8bdb0feb674e8ca"
+      "bytes": 2040,
+      "sha256": "1a4022c997bbc2c809307814ef7b155a1730465d8692aa6806e7d7f237d4e2ae"
     },
     {
       "dest": "workflows/dungeon-extraction-planner.zh-CN.md",
@@ -1344,8 +1424,8 @@
     },
     {
       "dest": "workflows/hellparty-visualization-and-edit-plan.zh-CN.md",
-      "bytes": 4201,
-      "sha256": "178eeb9658c48566890071123f5586e26ad93c3506ff9394ea9971ee68d7724b"
+      "bytes": 4366,
+      "sha256": "5f22c436c1418ef53c5c825e2c6b675204a97839b44f8cb35833f6ba29bb6f73"
     },
     {
       "dest": "workflows/independent-drop-normalization-and-heroic-fill.zh-CN.md",
@@ -1364,13 +1444,13 @@
     },
     {
       "dest": "workflows/lst-registry-lifecycle.zh-CN.md",
-      "bytes": 2480,
-      "sha256": "db31dddaf5409af56827e6109171927f917ddaae9134662af7b84c9b48da9e72"
+      "bytes": 2992,
+      "sha256": "566fc3f0243c22ebdecd05a7a7c3bcf5ac44fad02f1857f6db80d7fa038b14a3"
     },
     {
       "dest": "workflows/map-widescreen-structural-migration.zh-CN.md",
-      "bytes": 3957,
-      "sha256": "6f5bf90b7cafb0efa2f3df0303e0f914af3df41cd32f0478b4c23958dc8491c4"
+      "bytes": 4981,
+      "sha256": "41c8ca07669d0e4dd257b466b9c5bfade2e585c53961506b523a652f17fe6d3d"
     },
     {
       "dest": "workflows/npc-shop-edit.zh-CN.md",
@@ -1379,8 +1459,8 @@
     },
     {
       "dest": "workflows/pvf-package-quality-audit.zh-CN.md",
-      "bytes": 3051,
-      "sha256": "96c89c64a1b6889a041b3747a4e8a7baed6764bcdf17659d08292e2c3d17a71c"
+      "bytes": 4010,
+      "sha256": "b4a96cbff9591102b9b40ac26d012845e3042f238e36e947fe380951f7e20595"
     },
     {
       "dest": "workflows/pvf-semantic-compare-workset.zh-CN.md",
@@ -1389,8 +1469,8 @@
     },
     {
       "dest": "workflows/pvf-semantic-lineage-query.zh-CN.md",
-      "bytes": 982,
-      "sha256": "2a1a4569e91b84fb0ba510c9749b6c851ff5dc72c1145000f04de813b1bb0196"
+      "bytes": 1175,
+      "sha256": "225ebadddcde7536992d1e5ec43f709036d45975794361cd02cdb6c279ed0e82"
     },
     {
       "dest": "workflows/pvf-tag-joint-query.zh-CN.md",
@@ -1399,8 +1479,8 @@
     },
     {
       "dest": "workflows/quest-drop-reward-ticket-edit.zh-CN.md",
-      "bytes": 3929,
-      "sha256": "83b4d97fc339d02ac990f7a74bed36b66aa2244280aa5e41a59955c511129b8e"
+      "bytes": 4868,
+      "sha256": "108469e73f3129e9f7bfe68c473ffc5bd9f8a1535d33a9ac201fe0459db617cc"
     },
     {
       "dest": "workflows/README.zh-CN.md",
@@ -1409,8 +1489,8 @@
     },
     {
       "dest": "workflows/runtime-validation-absorption.zh-CN.md",
-      "bytes": 1795,
-      "sha256": "13979c4fba2273c96eef6b641822152ca6df1a17b5ea002a52a62648f2775748"
+      "bytes": 3602,
+      "sha256": "f5977574b59034cce93b048c14f8a7af5297f01505d219ff0e34a7e79bfaa4ef"
     },
     {
       "dest": "workflows/skill-derivative-and-cancel.zh-CN.md",
@@ -1419,8 +1499,8 @@
     },
     {
       "dest": "workflows/skill-runtime-parameter-edit.zh-CN.md",
-      "bytes": 2278,
-      "sha256": "9a6ec7c0ccfd4324cca90d284970405493fc722118ffc45cce888d78f423b294"
+      "bytes": 3669,
+      "sha256": "9855c307b27866cffd65f4710ce9bc9145dc8742e838a3bc4ad52717fa73560e"
     },
     {
       "dest": "workflows/skill-tree-layout-and-merge-safety.zh-CN.md",
@@ -1449,7 +1529,7 @@
     }
   ],
   "summary": {
-    "entryCount": 289,
-    "totalBytes": 5552457
+    "entryCount": 305,
+    "totalBytes": 5692484
   }
 }

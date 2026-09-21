@@ -15,8 +15,26 @@ workbench.bat pvf-read search-script --pvf "D:\MyDNFWork\Script.pvf" --keyword s
 workbench.bat pvf-read read --pvf "D:\MyDNFWork\Script.pvf" --path itemshop/itemshop.lst --max-chars 2000
 rem 普通 read 是便于阅读的显示结果，不可复制为修改原文；准备 change-set 时对同一路径加 --raw，并采用返回的实际编码
 workbench.bat pvf-read read --pvf "D:\MyDNFWork\Script.pvf" --path itemshop/test.shp --pvf-encoding Tw --raw --max-chars 30000
+rem 大文件按字符续读；--offset/--limit 是 --start-char/--max-chars 的兼容别名
+workbench.bat pvf-read read --pvf "D:\MyDNFWork\Script.pvf" --path dungeon/Towers/table/TowerOfBloodyFight.tbl --pvf-encoding Tw --raw --start-char 30000 --max-chars 12000
 rem 用户要求完整 SHA256、源保持不变或最终确认源未变化时才运行；它紧跟任务规定的第一条命令且早于任何 pvf-change，多份 PVF 可重复 --pvf，最终原样重跑
 workbench.bat pvf-read fingerprint --pvf "D:\MyDNFWork\Script.pvf" --pvf "D:\MyDNFWork\another\Script.pvf"
+rem 对已定位的大文件完整取证；不修改 PVF，下一步按返回命令重新核验
+workbench.bat pvf-read export-evidence --pvf "D:\MyDNFWork\Script.pvf" --path itemshop/test.shp --out "D:\MyDNFWorkEvidence\run-01" --purpose rebuild-evidence
+workbench.bat pvf-read evidence-self-test
+rem 原始区块定位与范围外保护；用法和边界见 docs/PVF-SCOPE-PRESERVATION.zh-CN.md
+workbench.bat pvf-read scope-audit --pvf "D:\MyDNFWork\Script.pvf" --path stackable/known.stk --section "[exact section]" --out "D:\MyDNFWorkEvidence\scope.json"
+workbench.bat pvf-read scope-self-test
+rem 当前角色与技能登记身份检查；只证明登记关系，用法和边界见 docs/PVF-SKILL-IDENTITY.zh-CN.md
+workbench.bat pvf-read skill-identity-audit --pvf "D:\MyDNFWork\Script.pvf" --out "D:\MyDNFWorkEvidence\identity-graph.json"
+workbench.bat pvf-read skill-identity-check --pvf "D:\MyDNFWork\Script.pvf" --claims "D:\MyDNFWorkEvidence\identity-claims.json" --out "D:\MyDNFWorkEvidence\identity-check.json"
+workbench.bat pvf-read skill-identity-self-test
+rem 学习字段只读取证；保留缺失和未解析引用，不计算实际可学上限；见 docs/PVF-SKILL-LEARNING-EVIDENCE.zh-CN.md
+workbench.bat pvf-read skill-learning-audit --pvf "D:\MyDNFWork\Script.pvf" --out "D:\MyDNFWorkEvidence\learning.json"
+workbench.bat pvf-read skill-learning-self-test
+rem 从全部装备登记观察类型和适用限制，不分配气息池；见 docs/PVF-EQUIPMENT-ELIGIBILITY.zh-CN.md
+workbench.bat pvf-read equipment-eligibility-audit --pvf "D:\MyDNFWork\Script.pvf" --out "D:\MyDNFWorkEvidence\equipment-run"
+workbench.bat pvf-read equipment-eligibility-self-test
 workbench.bat pvf-read resolve-lst --pvf "D:\MyDNFWork\Script.pvf" --lst itemshop/itemshop.lst --id 1
 rem 同一登记表的多个 ID 一次解析；quest/dungeon 等领域名可直接作 registry 别名，按返回的 agentHandoff.nextCommandOnly 一次读回
 workbench.bat pvf-read resolve-lst-batch --pvf "D:\MyDNFWork\Script.pvf" --lst quest --id 9707 --id 350
@@ -45,7 +63,9 @@ workbench.bat absorb new --id KV-XX --title "Runtime validation" --domain itemsh
 
 只要任务是按自然语言寻找实体，即使同时出现地图号、层号或猜测 ID，也必须先用 `SearchName`；只有用户明确给出数字 ID/登记路径作为选择器时才可先 `resolve-lst`/`resolve-path`。
 
-纯数字/英文的完整原始 token 参数路线已覆盖 `.cre`、`.npc`、`.msn`、`.wdm`、`.twn`、`.rgn` 和 `.mm`。既有 `.co`、`.lst`、NUT、`.sqr`、`.str` 仍受保护；新增这些高风险文件只能提交匹配的 `writeProof`。既有 `sqr/*.nut` 另有 `existing-nut-controlled-edit` ASCII 专用路线，绑定完整原文 SHA256、目标路径作为函数调用参数的预先存在 load_state/passive/appendage 链、目标 API 证据、函数/APID 审计、临时独立 PVF 往返与最终独立文本/原始字节 SHA256 读回；写入只替换唯一定位的原始 ASCII 字节区间，不重编码整份 NUT，并逐段证明其余字节不变，因此可原样保留不可还原的 Cn/Tw 旧字节。它不替代实机验证，也不开放中文、StringLink 或其他既有高风险类型。新增 `.wdm` 还必须把 worldmap registry、UI、dungeon、town/region 入口作为一个原子闭合组审阅。
+纯数字/英文的完整原始 token 参数路线已覆盖 `.cre`、`.npc`、`.msn`、`.wdm`、`.twn`、`.rgn` 和 `.mm`。既有 `.co`、`.lst`、NUT、`.sqr`、`.str` 仍受保护；新增这些高风险文件只能提交匹配的 `writeProof`。既有 `sqr/*.nut` 另有 `existing-nut-controlled-edit` ASCII 专用路线，绑定完整原文 SHA256、目标路径作为函数调用参数的预先存在 load_state/passive/appendage 链、目标 API 证据、函数/APID 审计、临时独立 PVF 往返与最终独立文本/原始字节 SHA256 读回；写入只替换唯一定位的原始 ASCII 字节区间，不重编码整份 NUT，并逐段证明其余字节不变，因此可原样保留不可还原的 Cn/Tw 旧字节。它不替代实机验证，也不开放中文、StringLink 或其他既有高风险类型。既有二进制 `.ani` 另有仅 `[DELAY]` 的窄路线：每个文件一条替换，只覆盖已解析的 4 字节有符号整数，要求全部字节可解析、非目标字节不变、临时独立 PVF 往返及最终原始字节 SHA256 读回；其他 ANI 字段、结构、路径、文字和新增 ANI 仍阻断。新增 `.wdm` 还必须把 worldmap registry、UI、dungeon、town/region 入口作为一个原子闭合组审阅。
+
+`.til` 的既有字段仍不开放通用原始参数补丁。需要复用正确 TIL 时，可以在一个 change-set 中 `copy-file` 到不存在的新 `.til`，并同时对其他既有 `.map` 做精确引用替换；只有修改刚复制的新路径本身才需要累计下一轮。复制/新建 `.map` 或更改其资源引用时，预演会用最终原子方案从源、目标目录分别重解析 `.map -> .til -> .img`，记录路径、哈希、IMG 引用和 `[img pos]`；相同相对 token 静默命中不同 TIL 内容时扣留许可。
 
 直接给出 `--pvf` 时不需要先检查或创建 profile。本机 profile 写入工作台外的 `PVF-Agent-Workbench-State/profiles/<workbench-id>/`。
 
@@ -60,8 +80,16 @@ workbench.bat absorb new --id KV-XX --title "Runtime validation" --domain itemsh
 然后仍执行上面的 `dry-run` 与 `apply`。预演时优先按 `validate.agentHandoff.nextCommandOnly` 原样执行，不要自行补一个指向最初源的 `--pvf`。可以省略第二轮命令中的 `--pvf`；若显式填写，它必须是上一轮 `APPLY-MANIFEST.json` 记录的 `outputPvf`，不能再填最初源 PVF。
 完整第二轮格式见 `workspaces\examples\change-set.cumulative-second-round.example.json`。不要把上一轮输出直接写成新的 `target.sourcePvf`，也不要把同一文件的多项改动拆成多个临时“新源”。
 
+部署最终累计输出时，如果客户端仍停在更早的已验证祖先版本，`client-pvf preview` 会递归核对每份 `previousApplyManifest` 的文件 SHA256、相邻输入/输出 SHA256、受保护源锚点/来源和连续 chainDepth。完整线性链通过后，可一次部署最终输出并备份当前客户端，无需逐轮安装中间 PVF。断链、清单漂移、循环或客户端 SHA256 不在链上仍阻断；`--confirm-baseline-switch` 继续只表示用户明确切换到另一条分支。
+
 同文件若必须先把完整中文清空、再删除其所在结构，请把安全文字变化写在前、只含数字/英文/常见符号的结构删除写在后。工作台会保留这条依赖顺序，同时仍把该文件的全部安全文字合为一批验证。可直接参考 `workspaces\examples\change-set.verified-cn-text.example.json` 末尾的三步删除链，不需要阅读执行器或自测源码来猜格式。
+
+`.dgn [tower dialog]` 的完整对话 token 只有在前一项为整数层号、后一项为 `` `on start` `` 或 `` `on complete` `` 时才进入 `verified-inline-text`；事件 token 自身仍阻断。若同文件某条变化先失败，其他已通过静态检查的变化返回 `FILE_CHANGE_BATCH_BLOCKED`，并通过 `blockedByChangeId` 与 `agentHandoff.sameFileBatchRecovery` 指出应修正或移除的变化；这些合法变化保持原样重试，不应按 `CN_TEXT_ROUNDTRIP_REQUIRED` 处理。
 
 若多个部位的正文和相邻上下文完全相同，让该部位的每条文字、删除和重编号变化共用 `scope.startText`、`scope.endText`、`scope.expectedRanges`。三个值必须逐字来自同一次 `--raw` 读回；范围只负责缩小匹配，边界不能改写。完整格式见 `workspaces\examples\change-set.exact-scope.example.json`。`validate` 会拒绝 `scopePart` 等未知字段，避免字段看似通过却在执行时被忽略。
 
 普通 `read`/`read-batch` 返回 `textUsage.safeForChangeSetSource=false`，因为中文可能已转成简体，换行与 Tab 也可能只是阅读布局。`--raw` 才返回修改校验使用的规范 token；未显式填写 `--pvf-encoding` 时，工作台会只读比较 Cn/Tw 并选择明显更干净的一种，在 `textUsage.automaticEncodingSelection` 中公开结果。若两种都不明显更好则保持声明/默认编码，不猜字、不混合写入。若预演零命中同时返回 `DISPLAY_TEXT_USED_AS_CHANGE_SOURCE` 或 `CHANGE_TEXT_ENCODING_MISMATCH`，按其中的路径和编码重新 `--raw` 读取并重建 change-set；工作台不会自动改繁简或跨编码写入。
+
+大文件读取会返回本段字符区间、全文字符数、剩余字符数和下一条续读命令。`--start-char` 从 0 开始，`--offset` 是它的兼容别名；`--limit` 是单文件字符上限的兼容别名。分段 raw 只提供本段 SHA256，不冒充完整原文绑定；变更集仍靠完整可见的精确 token 定位，若流程要求完整源文本 SHA256，必须取得未分段且未截断的完整 raw 结果。
+
+`--pvf-encoding Cn|Tw` 控制脚本文字解码；`--encoding` 只控制 PVF 容器打开方式，不能替代前者。未知或放错子命令的参数会直接报错；字符上限没有 `--count` 参数。
