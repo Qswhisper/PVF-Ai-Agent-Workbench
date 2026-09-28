@@ -974,8 +974,8 @@
     },
     {
       "dest": "safety/README.zh-CN.md",
-      "bytes": 26820,
-      "sha256": "40ea92636f38c5304729972970f5c3d15e91db999ecf8754d14e31d6956d288b"
+      "bytes": 26726,
+      "sha256": "d197f1717366a339f7abaa6e0dcae53046f77a6f33dc22fea97ad81527d74abe"
     },
     {
       "dest": "task-cards/action-combat-cross-version-porting.zh-CN.md",
@@ -1229,8 +1229,8 @@
     },
     {
       "dest": "task-cards/pvf-existing-nut-controlled-change.zh-CN.md",
-      "bytes": 11735,
-      "sha256": "605dd7a297fd77fb18c8a41caba01f3e2dee916b540ed38154f9e949a826b2e8"
+      "bytes": 11650,
+      "sha256": "a4012f217c80a7b8d2b90bdea38049a3512e9076399b6aca019c3528cb90ee63"
     },
     {
       "dest": "task-cards/pvf-high-risk-new-file-controlled-change.zh-CN.md",
@@ -1334,8 +1334,8 @@
     },
     {
       "dest": "task-cards/text-stringlink-encoding-readonly-audit.zh-CN.md",
-      "bytes": 6854,
-      "sha256": "47596e1ca98ef17b5d321286c50975ce964e34f023421d4c9d21fac966b6c7d6"
+      "bytes": 6852,
+      "sha256": "7bbcae18e3dd0d15f0f1f252a3737351727d56370a9803bca5ff7b180edc9409"
     },
     {
       "dest": "task-cards/titlebook-reward-display-delivery-readonly-audit.zh-CN.md",
@@ -1530,6 +1530,6 @@
   ],
   "summary": {
     "entryCount": 305,
-    "totalBytes": 5692484
+    "totalBytes": 5692303
   }
 }
