@@ -45,17 +45,38 @@ function blockingProcesses(clientRoot, rows) {
   return rows.filter(p => (p.ExecutablePath && key(p.ExecutablePath).startsWith(root)) ||
     /dnf|地下城|launcher/i.test(String(p.Name || "")));
 }
-function assertClientStopped(clientRoot) {
-  if (process.platform !== "win32") fail("Automatic client process verification is supported on Windows only.");
-  const script = "$ErrorActionPreference='Stop'; @(Get-CimInstance Win32_Process | Select-Object ProcessId,Name,ExecutablePath) | ConvertTo-Json -Compress";
+function readProcessRows(query) {
+  // -EncodedCommand controls input only; Windows PowerShell's redirected output
+  // must explicitly match the UTF-8 decoder below, including Chinese paths.
+  const script = "$ErrorActionPreference='Stop'; [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false); @(" + query + ") | ConvertTo-Json -Compress";
   const result = cp.spawnSync(path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe"),
     ["-NoProfile", "-NonInteractive", "-EncodedCommand", Buffer.from(script, "utf16le").toString("base64")],
     { encoding: "utf8", windowsHide: true, timeout: 30000, maxBuffer: 8 * 1024 * 1024 });
   if (result.error || result.status !== 0 || !result.stdout.trim()) fail("Could not verify client/launcher processes; automatic deployment stopped.");
   const parsed = JSON.parse(result.stdout.replace(/^\uFEFF/, ""));
-  const blocked = blockingProcesses(clientRoot, Array.isArray(parsed) ? parsed : [parsed]);
+  return Array.isArray(parsed) ? parsed : [parsed];
+}
+function assertClientStopped(clientRoot) {
+  if (process.platform !== "win32") fail("Automatic client process verification is supported on Windows only.");
+  const rows = readProcessRows("Get-CimInstance Win32_Process | Select-Object ProcessId,Name,ExecutablePath");
+  const blocked = blockingProcesses(clientRoot, rows);
   if (blocked.length) fail("Client or launcher is running; close it and retry automatic deployment: " + blocked.map(p => p.Name).join(", "));
   return { checkedAt: new Date().toISOString(), method: "Win32_Process", closed: true };
+}
+function processEncodingSelfTest() {
+  // Exercise the real PowerShell -> pipe -> Node boundary with synthetic rows;
+  // do not enumerate or depend on the user's running applications.
+  const clientRoot = path.join(require("os").tmpdir(), "pvf-process-fixture", "清风 客户端");
+  const executable = path.join(clientRoot, "游戏.exe");
+  const literal = value => "'" + value.replace(/'/g, "''") + "'";
+  const row = "[pscustomobject]@{ProcessId=123;Name='游戏.exe';ExecutablePath=" + literal(executable) + "}";
+  const single = readProcessRows(row);
+  const multiple = readProcessRows(row + "; [pscustomobject]@{ProcessId=124;Name='editor.exe';ExecutablePath=$null}");
+  return [
+    { id: "process-query-chinese-name-and-path-utf8", ok: single.length === 1 && single[0].Name === "游戏.exe" && single[0].ExecutablePath === executable },
+    { id: "process-query-chinese-client-detected", ok: blockingProcesses(clientRoot, single).length === 1 },
+    { id: "process-query-multiple-rows-and-null-path", ok: multiple.length === 2 && multiple[1].ExecutablePath === null && blockingProcesses(clientRoot, multiple).length === 1 },
+  ];
 }
 function autoDeployAfterApply(root, manifestPath, manifest) {
   try {
@@ -73,4 +94,4 @@ function autoDeployAfterApply(root, manifestPath, manifest) {
     return JSON.parse(result.stdout);
   } catch (error) { return { status: "blocked", message: error.message }; }
 }
-module.exports = { readPreference, savePreference, preferencePath, blockingProcesses, assertClientStopped, autoDeployAfterApply };
+module.exports = { readPreference, savePreference, preferencePath, blockingProcesses, assertClientStopped, autoDeployAfterApply, processEncodingSelfTest };

@@ -163,11 +163,22 @@ function auditReleaseTree(workbenchRoot, includedFiles) {
   const warnings = [];
   const forbiddenFiles = [];
   const unlistedFiles = [];
+  const unlistedDirectories = [];
   const specialEntries = [];
   const textFindings = [];
   const windowsPathIssues = [];
   const caseCollisions = [];
   const included = new Set((includedFiles || []).map((item) => normalizeRel(item.path).toLowerCase()));
+  // The staged package contains files plus their parent directories. Git and
+  // file-only inventories cannot reveal unrelated empty directory leftovers.
+  const includedDirectories = new Set();
+  for (const file of included) {
+    let parent = path.posix.dirname(file);
+    while (parent !== ".") {
+      includedDirectories.add(parent);
+      parent = path.posix.dirname(parent);
+    }
+  }
   const caseMap = new Map();
   let fileCount = 0;
   let totalBytes = 0;
@@ -183,7 +194,9 @@ function auditReleaseTree(workbenchRoot, includedFiles) {
     caseMap.set(folded, entry.path);
 
     if (entry.type !== "file") {
-      if (entry.type !== "directory") specialEntries.push({ path: entry.path, type: entry.type });
+      if (entry.type === "directory") {
+        if (!includedDirectories.has(folded)) unlistedDirectories.push(entry.path);
+      } else specialEntries.push({ path: entry.path, type: entry.type });
       continue;
     }
     fileCount += 1;
@@ -200,6 +213,7 @@ function auditReleaseTree(workbenchRoot, includedFiles) {
 
   if (forbiddenFiles.length > 0) errors.push(`Release tree contains ${forbiddenFiles.length} forbidden file(s).`);
   if (unlistedFiles.length > 0) errors.push(`Release tree contains ${unlistedFiles.length} file(s) outside the portable manifest.`);
+  if (unlistedDirectories.length > 0) errors.push(`Release tree contains ${unlistedDirectories.length} directory/directories not used by portable files (including empty leftovers).`);
   if (specialEntries.length > 0) errors.push(`Release tree contains ${specialEntries.length} symbolic link or special file(s).`);
   if (textFindings.length > 0) errors.push(`Release tree contains ${textFindings.length} text purity finding(s).`);
   if (windowsPathIssues.length > 0) errors.push(`Release tree contains ${windowsPathIssues.length} Windows-incompatible path(s).`);
@@ -215,6 +229,7 @@ function auditReleaseTree(workbenchRoot, includedFiles) {
       maxRelativePathLength,
       forbiddenFileCount: forbiddenFiles.length,
       unlistedFileCount: unlistedFiles.length,
+      unlistedDirectoryCount: unlistedDirectories.length,
       specialEntryCount: specialEntries.length,
       textFindingCount: textFindings.length,
       windowsPathIssueCount: windowsPathIssues.length,
@@ -222,6 +237,7 @@ function auditReleaseTree(workbenchRoot, includedFiles) {
     },
     forbiddenFiles,
     unlistedFiles,
+    unlistedDirectories,
     specialEntries,
     textFindings,
     windowsPathIssues,
@@ -237,13 +253,26 @@ function releaseAuditSelfTest() {
     const clean = auditReleaseTree(tempRoot, [{ path: "README.md" }]);
     checks.push({ id: "clean-tree-accepted", ok: clean.errors.length === 0 });
 
+    fs.mkdirSync(path.join(tempRoot, "docs", "nested"), { recursive: true });
+    fs.writeFileSync(path.join(tempRoot, "docs", "nested", "guide.md"), "clean nested fixture\n", "utf8");
+    const included = [{ path: "README.md" }, { path: "docs/nested/guide.md" }];
+    const nestedClean = auditReleaseTree(tempRoot, included);
+    checks.push({ id: "portable-parent-directories-accepted", ok: nestedClean.errors.length === 0 && nestedClean.summary.unlistedDirectoryCount === 0 });
+    for (const directory of [".zcode/plans", "%SystemDrive%/ProgramData", "docs/empty-leftover", ".git/objects"]) {
+      fs.mkdirSync(path.join(tempRoot, directory), { recursive: true });
+    }
+    const emptyLeftovers = auditReleaseTree(tempRoot, included);
+    checks.push({ id: "empty-directory-leftovers-rejected", ok: emptyLeftovers.errors.length > 0 &&
+      emptyLeftovers.summary.unlistedDirectoryCount === 5 && emptyLeftovers.summary.unlistedFileCount === 0 });
+    checks.push({ id: "git-metadata-remains-excluded", ok: !emptyLeftovers.unlistedDirectories.some(dir => dir.startsWith(".git")) });
+
     fs.mkdirSync(path.join(tempRoot, "config"), { recursive: true });
     fs.writeFileSync(path.join(tempRoot, "config", "workspace-profiles.local.json"), "{}\n", "utf8");
     const fakeToken = ["sk", "releaseAuditFixtureOnly1234567890"].join("-");
     const fakePrivatePath = ["C:", "Users", "release-audit-user", "private", "Script.pvf"].join("\\");
     fs.writeFileSync(path.join(tempRoot, ".env"), `TOKEN=${fakeToken}\n`, "utf8");
     fs.writeFileSync(path.join(tempRoot, "leaked-path.md"), `${fakePrivatePath}\n`, "utf8");
-    const dirty = auditReleaseTree(tempRoot, [{ path: "README.md" }]);
+    const dirty = auditReleaseTree(tempRoot, included);
     checks.push({ id: "private-files-rejected", ok: dirty.summary.forbiddenFileCount === 2 });
     checks.push({ id: "unlisted-files-rejected", ok: dirty.summary.unlistedFileCount === 3 });
     checks.push({ id: "secrets-and-machine-paths-rejected", ok: dirty.summary.textFindingCount >= 2 });

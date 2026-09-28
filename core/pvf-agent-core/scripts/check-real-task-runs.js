@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const childProcess = require("child_process");
 const { runtimePath } = require("../lib/runtime-state");
 const { sha256File } = require("../lib/release-utils");
 
@@ -17,6 +18,7 @@ const command = args[0] || "check";
 function usage() {
   return `Usage:
   workbench.bat real-task-check check [--runs <dir>] [--out <dir>] [--strict] [--strict-encoding]
+  workbench.bat real-task-check self-test
 `;
 }
 
@@ -147,21 +149,76 @@ function sourceInitialEntries(summary) {
 }
 
 function validateSourceStates(errors, warnings, summary) {
+  const initials = sourceInitialEntries(summary);
   const finals = sourceStateEntries(summary);
   if (finals.length === 0) {
     warnings.push("No source PVF final-state entries were recorded.");
     return;
   }
-  for (const [index, entry] of finals.entries()) {
-    if (!entry.path) {
-      warnings.push(`source final entry ${index} has no path.`);
+  // Compare recorded snapshots only: no stat, PVF read or new full-file hash.
+  const snapshots = (entries, label) => {
+    const byPath = new Map();
+    for (const [index, entry] of entries.entries()) {
+      const recordedPath = entry.path || entry.sourcePvf;
+      if (typeof recordedPath !== "string" || !recordedPath.trim()) {
+        errors.push(`source ${label} entry ${index} has no valid path.`);
+        continue;
+      }
+      const resolved = path.resolve(recordedPath);
+      const key = process.platform === "win32" ? resolved.toLowerCase() : resolved;
+      if (byPath.has(key)) errors.push(`Duplicate source ${label} path: ${recordedPath}`);
+      byPath.set(key, entry);
     }
+    return byPath;
+  };
+  const beforeByPath = snapshots(initials, "initial");
+  const afterByPath = snapshots(finals, "final");
+  const fields = [
+    { name: "sha256", aliases: ["sha256", "sourcePvfSha256"], normalize: value => typeof value === "string" && /^[a-f0-9]{64}$/i.test(value) ? value.toLowerCase() : null },
+    { name: "size", aliases: ["size", "sourceSize"], normalize: value => Number.isSafeInteger(value) && value >= 0 ? value : null },
+    { name: "mtime", aliases: ["mtimeUtc", "sourceMtimeMs"], normalize: (value, alias) => alias === "mtimeUtc" ? (typeof value === "string" ? Date.parse(value) : null) : (typeof value === "number" ? value : null) },
+  ];
+  const fieldValue = (entry, field, label) => {
+    const aliases = field.aliases.filter(alias => entry[alias] !== undefined);
+    const values = aliases.map(alias => field.normalize(entry[alias], alias));
+    if (values.some(value => value === null || (typeof value === "number" && !Number.isFinite(value)))) {
+      errors.push(`Invalid recorded source ${label} ${field.name}: ${entry.path || entry.sourcePvf}`);
+    }
+    if (values.some(value => value !== values[0])) {
+      errors.push(`Conflicting recorded source ${label} ${field.name} aliases: ${entry.path || entry.sourcePvf}`);
+    }
+    return { present: aliases.length > 0, value: values[0] };
+  };
+  for (const [key, entry] of afterByPath) {
+    const label = entry.path || entry.sourcePvf;
     if (entry.unchanged === false) {
-      errors.push(`source final entry ${index} is marked unchanged=false.`);
+      errors.push(`source final entry ${label} is marked unchanged=false.`);
     }
     if (entry.unchanged === undefined && summary.mode !== "read-only") {
-      warnings.push(`source final entry ${index} has no unchanged flag.`);
+      warnings.push(`source final entry ${label} has no unchanged flag.`);
     }
+    const before = beforeByPath.get(key);
+    if (!before) {
+      errors.push(`Source final snapshot has no matching initial snapshot: ${label}`);
+      continue;
+    }
+    const compared = [];
+    for (const field of fields) {
+      const initial = fieldValue(before, field, "initial");
+      const final = fieldValue(entry, field, "final");
+      if (initial.present !== final.present) {
+        errors.push(`Source ${field.name} is recorded on only one side: ${label}`);
+      } else if (initial.present) {
+        compared.push(field.name);
+        if (initial.value !== final.value) errors.push(`Source ${field.name} changed between recorded snapshots: ${label}`);
+      }
+    }
+    if (!compared.includes("sha256") && !(compared.includes("size") && compared.includes("mtime"))) {
+      warnings.push(`Source snapshots lack a paired SHA256 or size/mtime pair: ${label}`);
+    }
+  }
+  for (const [key, entry] of beforeByPath) {
+    if (!afterByPath.has(key)) errors.push(`Source initial snapshot has no matching final snapshot: ${entry.path || entry.sourcePvf}`);
   }
 }
 
@@ -379,6 +436,7 @@ function runCheck() {
 
   const failed = runs.filter((run) => !run.ok).length;
   const warningCount = runs.reduce((total, run) => total + run.warnings.length, 0);
+  const errors = runs.length === 0 ? ["No real-task records found; validation is incomplete."] : [];
   const report = {
     schemaVersion: "1.0",
     phase: "phase-6-real-task-validation",
@@ -389,12 +447,13 @@ function runCheck() {
     strict,
     strictEncoding,
     summary: {
-      ok: failed === 0,
+      ok: errors.length === 0 && failed === 0,
       runCount: runs.length,
       passed: runs.length - failed,
       failed,
       warnings: warningCount,
     },
+    errors,
     runs,
   };
 
@@ -404,15 +463,94 @@ function runCheck() {
   return report;
 }
 
+function runSelfTest() {
+  const parent = runtimePath(workbenchRoot, "self-tests", "real-task-check");
+  fs.mkdirSync(parent, { recursive: true });
+  const outRoot = fs.mkdtempSync(path.join(parent, "run-"));
+  // This source deliberately does not exist: snapshot validation must not open
+  // the PVF or recalculate its hash just to compare already recorded evidence.
+  const sourcePath = path.join(outRoot, "unopened-source", "Script.pvf");
+  const initial = { path: sourcePath, size: 10, mtimeUtc: "2026-01-01T00:00:00.000Z", sha256: "a".repeat(64) };
+  const base = {
+    schemaVersion: "1.0", taskId: "synthetic-snapshot-check", mode: "read-only",
+    limitations: ["Synthetic recorded evidence; no PVF is read."],
+    sourcePvfInitial: [initial], sourcePvfFinal: [{ ...initial, unchanged: true }],
+    sourcePvfWrite: false, clientResourceWrite: false,
+  };
+  const checks = [];
+  const check = (id, edit, expectedOk, errorFragment, strict = true) => {
+    const testRoot = path.join(outRoot, id);
+    const runsRoot = path.join(testRoot, "runs");
+    fs.mkdirSync(runsRoot, { recursive: true });
+    if (edit !== null) {
+      const summary = JSON.parse(JSON.stringify(base));
+      edit(summary);
+      const runDir = path.join(runsRoot, "fixture");
+      fs.mkdirSync(runDir);
+      fs.writeFileSync(path.join(runDir, "SUMMARY.json"), JSON.stringify(summary), "utf8");
+      fs.writeFileSync(path.join(runDir, "README.zh-CN.md"), "Synthetic self-test record.\n", "utf8");
+    }
+    const run = childProcess.spawnSync(process.execPath, [__filename, "--root", workbenchRoot,
+      "check", "--runs", runsRoot, "--out", path.join(testRoot, "report"),
+      ...(strict ? ["--strict", "--strict-encoding"] : [])],
+    { encoding: "utf8", windowsHide: true, timeout: 10000, maxBuffer: 1024 * 1024 });
+    let report;
+    try { report = JSON.parse(run.stdout); } catch { /* Include diagnostics below. */ }
+    const errors = [...(report?.errors || []), ...(report?.runs || []).flatMap(item => item.errors || [])];
+    const ok = !run.error && run.status === (expectedOk ? 0 : 1) && report?.summary?.ok === expectedOk &&
+      (!errorFragment || errors.some(message => message.includes(errorFragment)));
+    checks.push({ id, ok, ...(ok ? {} : { exitCode: run.status, error: run.error?.message, stderr: run.stderr, report }) });
+  };
+  check("matching-snapshots-without-opening-source", () => {}, true);
+  check("hash-change-overrides-unchanged-claim", s => { s.sourcePvfFinal[0].sha256 = "b".repeat(64); }, false, "sha256 changed", false);
+  check("size-change-rejected", s => { s.sourcePvfFinal[0].size = 20; }, false, "size changed");
+  check("mtime-change-rejected", s => { s.sourcePvfFinal[0].mtimeUtc = "2026-01-02T00:00:00Z"; }, false, "mtime changed");
+  check("unchanged-false-rejected", s => { s.sourcePvfFinal[0].unchanged = false; }, false, "unchanged=false");
+  check("metadata-only-records-remain-supported", s => { delete s.sourcePvfInitial[0].sha256; delete s.sourcePvfFinal[0].sha256; }, true);
+  check("hash-only-records-remain-supported", s => {
+    for (const entry of [...s.sourcePvfInitial, ...s.sourcePvfFinal]) { delete entry.size; delete entry.mtimeUtc; }
+  }, true);
+  check("fingerprint-fields-and-uppercase-hash", s => {
+    s.sourcePvfFinal = [{ sourcePvf: sourcePath, sourcePvfSha256: "A".repeat(64), sourceSize: 10,
+      sourceMtimeMs: Date.parse(initial.mtimeUtc), unchanged: true }];
+  }, true);
+  check("equivalent-time-format", s => { s.sourcePvfFinal[0].mtimeUtc = "2026-01-01T08:00:00+08:00"; }, true);
+  check("dropped-final-hash-rejected", s => { delete s.sourcePvfFinal[0].sha256; }, false, "only one side");
+  check("invalid-hash-rejected", s => { s.sourcePvfInitial[0].sha256 = s.sourcePvfFinal[0].sha256 = "invalid"; }, false, "Invalid recorded");
+  check("conflicting-hash-aliases-rejected", s => { s.sourcePvfFinal[0].sourcePvfSha256 = "b".repeat(64); }, false, "Conflicting recorded");
+  check("duplicate-final-rejected", s => { s.sourcePvfFinal.push({ ...s.sourcePvfFinal[0] }); }, false, "Duplicate source final");
+  check("unpaired-final-rejected", s => { s.sourcePvfFinal[0].path = path.join(outRoot, "other.pvf"); }, false, "no matching initial");
+  check("missing-one-final-rejected", s => { s.sourcePvfInitial.push({ ...initial, path: path.join(outRoot, "other.pvf") }); }, false, "no matching final");
+  check("paths-only-insufficient-in-strict-mode", s => {
+    s.sourcePvfInitial = [{ path: sourcePath }]; s.sourcePvfFinal = [{ path: sourcePath, unchanged: true }];
+  }, false, "Warnings are errors");
+  check("reordered-multiple-sources-match-by-path", s => {
+    const second = { ...initial, path: path.join(outRoot, "second.pvf"), sha256: "b".repeat(64) };
+    s.sourcePvfInitial.push(second); s.sourcePvfFinal.unshift({ ...second, unchanged: true });
+  }, true);
+  if (process.platform === "win32") {
+    check("windows-case-and-separator-normalization", s => { s.sourcePvfFinal[0].path = sourcePath.toUpperCase().replace(/\\/g, "/"); }, true);
+  }
+  check("empty-runs-rejected", null, false, "No real-task records", false);
+  check("empty-runs-rejected-in-strict-mode", null, false, "No real-task records");
+  const report = {
+    schemaVersion: "1.0", phase: "real-task-check-self-test", reportPath: path.join(outRoot, "SELF-TEST.json"),
+    summary: { ok: checks.every(item => item.ok), checkCount: checks.length, failedChecks: checks.filter(item => !item.ok).length },
+    checks,
+  };
+  fs.writeFileSync(report.reportPath, JSON.stringify(report, null, 2) + "\n", "utf8");
+  return report;
+}
+
 async function main() {
   if (command === "help" || command === "--help" || command === "-h") {
     process.stdout.write(usage());
     return;
   }
-  if (command !== "check") {
+  if (command !== "check" && command !== "self-test") {
     throw new Error(`Unknown command: ${command}\n${usage()}`);
   }
-  const report = runCheck();
+  const report = command === "self-test" ? runSelfTest() : runCheck();
   output(report);
   if (!report.summary.ok) {
     process.exitCode = 1;

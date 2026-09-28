@@ -2371,6 +2371,9 @@ function selfTest(options) {
       checks.push({ id: "process-detection-client-and-launcher", ok:
         blockingProcesses(clientRoot, [{ Name: "game.exe", ExecutablePath: path.join(clientRoot, "game.exe") },
           { Name: "launcher.exe" }, { Name: "editor.exe", ExecutablePath: path.join(tempRoot, "editor.exe") }]).length === 2 });
+      if (process.platform === "win32") {
+        checks.push(...require("../lib/client-pvf-preferences").processEncodingSelfTest());
+      }
       const localBackupRoot = path.join(clientRoot, "PVF-Backups");
       fs.symlinkSync(profileOutput, localBackupRoot, process.platform === "win32" ? "junction" : "dir");
       try {
